@@ -12,7 +12,7 @@
  */
 
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import { AppState, Keyboard, Platform } from 'react-native';
+import { Keyboard } from 'react-native';
 
 import type { AuthStanding } from '../hooks/useAuthStanding';
 import { clearPendingIntent, consumePendingIntent, setPendingIntent } from '../gate/gateIntent';
@@ -106,17 +106,6 @@ jest.mock('../api/authApi', () => ({
 
 const mockSession = { status: 'signedIn', userId: 'u1' };
 jest.mock('../hooks/useSession', () => ({ useSession: () => mockSession }));
-
-// The clipboard, for the code autofill. Empty by default, so every other test
-// here is untouched by it.
-const mockHasString = jest.fn(async () => false);
-const mockGetString = jest.fn(async () => '');
-const mockSetString = jest.fn(async (_text: string) => true);
-jest.mock('expo-clipboard', () => ({
-  hasStringAsync: () => mockHasString(),
-  getStringAsync: () => mockGetString(),
-  setStringAsync: (text: string) => mockSetString(text),
-}));
 
 async function enterEmailAndCode(screen: Awaited<ReturnType<typeof render>>) {
   await act(async () => {
@@ -303,83 +292,5 @@ describe('AuthSheet', () => {
       fireEvent.press(screen.getByText('Use a different email'));
     });
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
-  });
-});
-
-describe('the code fills itself in from the clipboard (Android, 2026-10-15)', () => {
-  let appStateListener: ((state: string) => void) | null = null;
-
-  beforeEach(() => {
-    appStateListener = null;
-    jest.replaceProperty(Platform, 'OS', 'android');
-    jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, fn) => {
-      appStateListener = fn as (state: string) => void;
-      return { remove: jest.fn() } as unknown as ReturnType<typeof AppState.addEventListener>;
-    });
-    mockHasString.mockResolvedValue(true);
-    mockGetString.mockResolvedValue('87654321');
-  });
-
-  afterEach(() => {
-    jest.restoreAllMocks();
-    mockHasString.mockResolvedValue(false);
-    mockGetString.mockResolvedValue('');
-  });
-
-  /** Open the sheet and reach the code step, typing nothing into it. */
-  async function reachCodeStep() {
-    const screen = await render(<AuthSheet />);
-    await act(async () => {
-      setPendingIntent({ context: 'post_car', run: jest.fn() });
-    });
-    await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
-    await act(async () => {
-      fireEvent.changeText(screen.getByLabelText('Email'), 'sam@example.com');
-    });
-    await act(async () => {
-      fireEvent.press(screen.getByText('Continue'));
-    });
-    await waitFor(() => expect(screen.getByText(/Enter the code we emailed/)).toBeTruthy());
-    return screen;
-  }
-
-  /** Off to Gmail to copy the code, and back. */
-  const returnFromEmail = async () => {
-    await act(async () => {
-      appStateListener?.('background');
-    });
-    await act(async () => {
-      appStateListener?.('active');
-    });
-  };
-
-  it('says it will — "Copy the code from the email"', async () => {
-    const screen = await reachCodeStep();
-    expect(screen.getByText(/Copy the code from the email/)).toBeTruthy();
-  });
-
-  it('back from the email with the code copied: signs in with it — nothing typed', async () => {
-    await reachCodeStep();
-    // ⚠️ Never on arrival: nothing read until they come back.
-    expect(mockGetString).not.toHaveBeenCalled();
-
-    await returnFromEmail();
-    await waitFor(() => expect(mockVerifyEmailOtp).toHaveBeenCalledWith('sam@example.com', '87654321'));
-    // The spent code doesn't linger on the clipboard.
-    await waitFor(() => expect(mockSetString).toHaveBeenCalledWith(''));
-  });
-
-  it('⚠️ a clipboard code that failed is not tried again on the next return', async () => {
-    mockVerifyEmailOtp.mockRejectedValueOnce(new Error('expired'));
-    await reachCodeStep();
-    await returnFromEmail();
-    await waitFor(() => expect(mockVerifyEmailOtp).toHaveBeenCalledTimes(1));
-
-    await returnFromEmail();
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    });
-    expect(mockVerifyEmailOtp).toHaveBeenCalledTimes(1);
-    expect(mockSetString).not.toHaveBeenCalled();
   });
 });

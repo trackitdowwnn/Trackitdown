@@ -242,31 +242,6 @@ can read which actions actually convert guests (`gate_completed` also carries
 `newUser`; `gate_dismissed` carries the step it died on). The email is
 **always redacted** (`redactEmail`) — never logged in full (SECURITY_AND_TRUST §3).
 
-### Code autofill (2026-10-15)
-
-Nobody should have to type the 8 digits.
-
-- **iOS:** Mail offers the code above the keyboard (`textContentType="oneTimeCode"`
-  on OtpInput's one real input). Nothing more is needed.
-- **Android:** the system only autofills *SMS* codes, and ours are emailed. So
-  `useClipboardCode` watches for the spotter **coming back** to the app on the
-  code step. If they copied the code (Gmail's "Copy code", or a long-press), it
-  fills the boxes and signs them in, with no tap (owner's choice over a "Paste"
-  button). The hint "Copy the code from the email — we'll fill it in." sets that
-  expectation.
-- **Guardrails,** because a wrong guess costs an attempt with only 2 emails an hour:
-  - it never reads on mount;
-  - `hasStringAsync` checks first, which costs no "pasted from your clipboard"
-    notice;
-  - `extractOtp` is strict (the clip IS the code, or holds exactly one 8-digit run);
-  - a code is never tried twice, typed or pasted;
-  - it retries briefly for Android's focus-gated clipboard;
-  - nothing it reads is logged;
-  - a clipboard code is cleared after a successful sign-in.
-- **Why not SMS or magic links:** SMS means cost, collecting phone numbers and
-  wider GDPR scope. Magic links get consumed by email link scanners and need App
-  Links plus a new build (dev-team review, 2026-10-15).
-
 **Out of scope** — phone/SMS OTP, magic links (deep-link), passwords, biometric
 re-auth, alert radius (→ notifications), account deletion (→ profile).
 
