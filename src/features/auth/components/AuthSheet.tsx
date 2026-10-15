@@ -27,6 +27,7 @@ import {
   AuthActionError,
   createProfile,
   requestEmailOtp,
+  isGoogleSignInConfigured,
   signInWithApple,
   signInWithGoogle,
   verifyEmailOtp,
@@ -67,6 +68,9 @@ export function AuthSheet() {
   // sheet shows it — which also lands an orphaned session there on open.
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
+  // A new user who came through Google: their given name, so "What should
+  // we call you?" starts filled in (2026-10-15) — still theirs to change.
+  const [suggestedName, setSuggestedName] = useState('');
   const renderStep: Step = intent && standing === 'incomplete' ? 'profile' : step;
 
   const openRef = useRef(false); // sheet currently presented (or presenting)
@@ -139,6 +143,7 @@ export function AuthSheet() {
     // Reset for the next gate (an event handler, so plain setState is fine).
     setStep('email');
     setEmail('');
+    setSuggestedName('');
     sawProfileStepRef.current = false;
     // Dismissal = cancel: drop the intent gracefully (no nagging). When the
     // close came from the resolve path the intent was already consumed and
@@ -161,11 +166,12 @@ export function AuthSheet() {
             email={email}
             onChangeEmail={setEmail}
             onCodeSent={() => setStep('otp')}
+            onSocialName={setSuggestedName}
           />
         ) : renderStep === 'otp' ? (
           <OtpStep email={email} onUseDifferentEmail={() => setStep('email')} />
         ) : (
-          <ProfileStep />
+          <ProfileStep initialFirstName={suggestedName} />
         )}
       </StepSlide>
     </BottomSheet>
@@ -219,10 +225,13 @@ function EmailStep({
   email,
   onChangeEmail,
   onCodeSent,
+  onSocialName,
 }: {
   email: string;
   onChangeEmail: (value: string) => void;
   onCodeSent: () => void;
+  /** The provider's given name, for a new user's name step. */
+  onSocialName: (name: string) => void;
 }) {
   const styles = useThemedStyles(makeStyles);
   const [busy, setBusy] = useState(false);
@@ -254,7 +263,10 @@ function EmailStep({
     try {
       // On success the session flips and AuthSheet resolves the intent; a
       // cancel is a no-op. Nothing to advance here.
-      await signIn();
+      const result = await signIn();
+      if (!result.cancelled && result.firstName?.trim()) {
+        onSocialName(result.firstName.trim());
+      }
     } catch (err) {
       setSocialError(err instanceof AuthActionError ? err.message : GENERIC_ERROR);
     } finally {
@@ -283,6 +295,7 @@ function EmailStep({
         onApple={() => handleSocial(signInWithApple)}
         onGoogle={() => handleSocial(signInWithGoogle)}
         disabled={busy}
+        showGoogle={isGoogleSignInConfigured()}
       />
       {socialError ? (
         <Text style={styles.error} accessibilityLiveRegion="polite">
@@ -381,10 +394,10 @@ function OtpStep({
 
 // --- Step 3: first name (new users) --------------------------------------------
 
-function ProfileStep() {
+function ProfileStep({ initialFirstName = '' }: { initialFirstName?: string }) {
   const styles = useThemedStyles(makeStyles);
   const session = useSession();
-  const [firstName, setFirstName] = useState('');
+  const [firstName, setFirstName] = useState(initialFirstName);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

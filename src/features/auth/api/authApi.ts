@@ -103,7 +103,23 @@ export async function verifyEmailOtp(email: string, token: string): Promise<stri
 
 /** Success returns the user id; a user-cancel returns `{ cancelled: true }`
  *  (no error toast); a real failure throws AuthActionError. */
-export type SocialResult = { cancelled: true } | { cancelled: false; userId: string };
+export type SocialResult =
+  | { cancelled: true }
+  | {
+      cancelled: false;
+      userId: string;
+      /** The provider's given name, to start a new user's name box with. */
+      firstName?: string | null;
+    };
+
+/**
+ * Whether Google sign-in can work in this bundle: the WEB client id is
+ * inlined at bundle time (EXPO_PUBLIC_*), so an app published without it has
+ * a button that can only fail. The sheet hides the button until it's set.
+ */
+export function isGoogleSignInConfigured(): boolean {
+  return Boolean(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID);
+}
 
 /** Sign in with Apple (iOS). Uses the identity token; the caller must only
  *  render the button on a device where AppleAuthentication.isAvailableAsync(). */
@@ -178,6 +194,12 @@ export async function signInWithGoogle(): Promise<SocialResult> {
     });
     await GoogleSignin.hasPlayServices();
     const response = await GoogleSignin.signIn();
+    // ⚠️ v13+ RETURNS a cancel ({ type: 'cancelled' }) rather than throwing
+    // it (the installed v16 included). Read as "no token", backing out of the
+    // account picker showed "Sign-in failed" to someone who changed their mind.
+    if (response.type === 'cancelled') {
+      return { cancelled: true };
+    }
     const idToken = response.data?.idToken;
     if (!idToken) {
       throw new AuthActionError(SOCIAL_FAILED, 'SOCIAL_FAILED');
@@ -191,13 +213,25 @@ export async function signInWithGoogle(): Promise<SocialResult> {
       throw new AuthActionError(SOCIAL_FAILED, 'SOCIAL_FAILED');
     }
     log.info('social_signin', { provider: 'google', userId: data.user.id });
-    return { cancelled: false, userId: data.user.id };
+    // Their given name starts a NEW user's name box (never sent anywhere by
+    // this; createProfile writes only what they confirm).
+    return {
+      cancelled: false,
+      userId: data.user.id,
+      // Optional all the way: a name is a nicety, never a reason to fail.
+      firstName: response.data?.user?.givenName ?? null,
+    };
   } catch (err) {
     if (isErrorWithCode(err) && err.code === statusCodes.SIGN_IN_CANCELLED) {
       return { cancelled: true };
     }
     if (err instanceof AuthActionError) throw err;
-    log.error('social_signin_failed', { provider: 'google' });
+    // The native code, never anything personal: DEVELOPER_ERROR ("10") is a
+    // client id / SHA-1 mismatch in Google Cloud — the setup error to expect.
+    log.error('social_signin_failed', {
+      provider: 'google',
+      code: isErrorWithCode(err) ? err.code : undefined,
+    });
     throw new AuthActionError(SOCIAL_FAILED, 'SOCIAL_FAILED');
   }
 }

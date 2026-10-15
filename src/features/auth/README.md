@@ -314,14 +314,39 @@ hourly budget). Raise it in the dashboard only if beta feedback needs it.
 1. **Apple** — Apple Developer: enable "Sign in with Apple" for the app id;
    Supabase dashboard → Auth → Providers → Apple: add the Services ID / secret.
    (The `expo-apple-authentication` plugin adds the iOS entitlement.)
-2. **Google** — Google Cloud → Credentials: create OAuth client ids (Web, iOS,
-   Android). Supabase dashboard → Auth → Providers → Google: set the **Web**
-   client id as "Client ID" and add the iOS/Android ids to "Authorized Client
-   IDs". In `.env`: `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`,
-   `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`, and `GOOGLE_IOS_URL_SCHEME` (the reversed
-   iOS client id) — read by `app.config.ts`.
-3. **Rebuild** — Apple/Google are native modules; make a new dev build
-   (`npx expo run:ios` / `run:android`), not Expo Go. The buttons activate then.
+2. **Google** — **on Android, no rebuild is needed** (2026-10-15). The module
+   has been in every build since July and needs no Android config plugin. Only
+   the web client id is missing, and it's inlined at bundle time, so an OTA
+   switches it on. Until it's set, the button is HIDDEN
+   (`isGoogleSignInConfigured`): never a button that can only fail.
+   1. **Google Cloud → APIs & Services → OAuth consent screen:** External,
+      app name, support email, scopes `openid`/`email`/`profile`. **Publish** the
+      app. In "Testing" mode only listed test users can sign in. Basic scopes
+      need no verification, but adding a logo triggers it.
+   2. **Credentials → Create OAuth client ID → Web application:** this is the
+      id Supabase checks the token against. Keep its **client id** and
+      **secret**.
+   3. **Credentials → Create OAuth client ID → Android:** package
+      `com.olliet97.trackitdown` and the **SHA-1 of the key EAS signs with**
+      (expo.dev → project → Credentials → Android → the keystore's SHA-1). A
+      missing or wrong SHA-1 is `DEVELOPER_ERROR` (code `10`), which is logged
+      as `social_signin_failed {code}`.
+   4. **Supabase → Authentication → Sign In / Providers → Google:** enable it,
+      with Client ID(s) = the **web** client id and Client Secret = the web
+      secret.
+   5. **EAS:** set the web client id in the environment the OTA builds from:
+      `npx eas-cli env:create --environment preview --name
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID --value <web client id> --visibility
+      plaintext`. It isn't a secret; it ships in the app. Also put it in `.env`
+      for local builds.
+   6. **Publish an OTA.** The button appears and works.
+   - **iOS (before the first iOS build):** an iOS client id goes in
+     `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`, and its reversed form in
+     `GOOGLE_IOS_URL_SCHEME`, which turns on the config plugin in
+     `app.config.ts`.
+   - **First name:** a new user from Google finds "What should we call you?"
+     already filled with their Google first name. It's still theirs to change.
+3. **Apple** needs a new build (its entitlement comes from the plugin).
 
 ## Notes / follow-ups
 

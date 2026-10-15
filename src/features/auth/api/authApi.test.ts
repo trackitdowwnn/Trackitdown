@@ -16,6 +16,7 @@ import {
   hasProfile,
   requestEmailOtp,
   signInWithApple,
+  isGoogleSignInConfigured,
   signInWithGoogle,
   verifyEmailOtp,
 } from './authApi';
@@ -124,10 +125,23 @@ describe('social sign-in', () => {
   });
 
   it('google: success returns the user id', async () => {
-    mockGoogleSignIn.mockResolvedValue({ data: { idToken: 'g-tok' } });
+    mockGoogleSignIn.mockResolvedValue({ type: 'success', data: { idToken: 'g-tok' } });
     mockSignInWithIdToken.mockResolvedValue({ data: { user: { id: 'u3' } }, error: null });
-    await expect(signInWithGoogle()).resolves.toEqual({ cancelled: false, userId: 'u3' });
+    await expect(signInWithGoogle()).resolves.toEqual({
+      cancelled: false,
+      userId: 'u3',
+      firstName: null,
+    });
     expect(mockSignInWithIdToken).toHaveBeenCalledWith({ provider: 'google', token: 'g-tok' });
+  });
+
+  it('google: carries their given name, for a new user’s name box (2026-10-15)', async () => {
+    mockGoogleSignIn.mockResolvedValue({
+      type: 'success',
+      data: { idToken: 'g-tok', user: { givenName: 'Sam', familyName: 'Jones' } },
+    });
+    mockSignInWithIdToken.mockResolvedValue({ data: { user: { id: 'u3' } }, error: null });
+    await expect(signInWithGoogle()).resolves.toMatchObject({ firstName: 'Sam' });
   });
 
   it('google: user cancel returns the cancelled flag', async () => {
@@ -135,8 +149,20 @@ describe('social sign-in', () => {
     await expect(signInWithGoogle()).resolves.toEqual({ cancelled: true });
   });
 
+  it('⚠️ google: v13+ RETURNS a cancel — a calm cancel, never "Sign-in failed"', async () => {
+    mockGoogleSignIn.mockResolvedValue({ type: 'cancelled', data: null });
+    await expect(signInWithGoogle()).resolves.toEqual({ cancelled: true });
+    expect(mockSignInWithIdToken).not.toHaveBeenCalled();
+  });
+
+  it('google: is set up only when the web client id is in the bundle', () => {
+    expect(isGoogleSignInConfigured()).toBe(true);
+    delete process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+    expect(isGoogleSignInConfigured()).toBe(false);
+  });
+
   it('google: a real failure throws AuthActionError', async () => {
-    mockGoogleSignIn.mockResolvedValue({ data: { idToken: null } });
+    mockGoogleSignIn.mockResolvedValue({ type: 'success', data: { idToken: null } });
     await expect(signInWithGoogle()).rejects.toBeInstanceOf(AuthActionError);
   });
 

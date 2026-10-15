@@ -57,7 +57,15 @@ jest.mock('@gorhom/bottom-sheet', () => {
 });
 
 // Presentational pieces with native/browser deps — not what this test exercises.
-jest.mock('./SocialSignInButtons', () => ({ SocialSignInButtons: () => null }));
+// The Google button as a plain pressable, so a test can sign in with it.
+jest.mock('./SocialSignInButtons', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const { Text } = require('react-native');
+  return {
+    SocialSignInButtons: ({ onGoogle, showGoogle }: { onGoogle: () => void; showGoogle?: boolean }) =>
+      showGoogle ? <Text onPress={onGoogle}>Continue with Google</Text> : null,
+  };
+});
 jest.mock('./AuthLegalNotice', () => ({ AuthLegalNotice: () => null }));
 
 // A controllable standing store so tests can flip guest → incomplete → member
@@ -101,8 +109,11 @@ jest.mock('../api/authApi', () => ({
   verifyEmailOtp: (...a: unknown[]) => mockVerifyEmailOtp(...a),
   createProfile: (...a: unknown[]) => mockCreateProfile(...a),
   signInWithApple: jest.fn(),
-  signInWithGoogle: jest.fn(),
+  signInWithGoogle: () => mockSignInWithGoogle(),
+  isGoogleSignInConfigured: () => mockGoogleConfigured(),
 }));
+const mockSignInWithGoogle = jest.fn();
+const mockGoogleConfigured = jest.fn(() => true);
 
 const mockSession = { status: 'signedIn', userId: 'u1' };
 jest.mock('../hooks/useSession', () => ({ useSession: () => mockSession }));
@@ -292,5 +303,53 @@ describe('AuthSheet', () => {
       fireEvent.press(screen.getByText('Use a different email'));
     });
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
+  });
+});
+
+describe('Continue with Google (2026-10-15)', () => {
+  async function openSheet() {
+    const screen = await render(<AuthSheet />);
+    await act(async () => {
+      setPendingIntent({ context: 'post_car', run: jest.fn() });
+    });
+    await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
+    return screen;
+  }
+
+  it('a NEW user from Google: "What should we call you?" starts with their first name', async () => {
+    mockSignInWithGoogle.mockResolvedValue({ cancelled: false, userId: 'u1', firstName: 'Sam' });
+    const screen = await openSheet();
+    await act(async () => {
+      fireEvent.press(screen.getByText('Continue with Google'));
+    });
+    // Signed in, no profiles row yet: the name step — already filled in.
+    await act(async () => {
+      setMockStanding('incomplete');
+    });
+    await waitFor(() => expect(screen.getByText('What should we call you?')).toBeTruthy());
+    expect(screen.getByLabelText('First name').props.value).toBe('Sam');
+
+    // Still theirs to confirm: one tap.
+    await act(async () => {
+      fireEvent.press(screen.getByText('Get started'));
+    });
+    await waitFor(() => expect(mockCreateProfile).toHaveBeenCalledWith('u1', { firstName: 'Sam' }));
+  });
+
+  it('a cancel from Google: no error, still on the email step', async () => {
+    mockSignInWithGoogle.mockResolvedValue({ cancelled: true });
+    const screen = await openSheet();
+    await act(async () => {
+      fireEvent.press(screen.getByText('Continue with Google'));
+    });
+    expect(screen.getByLabelText('Email')).toBeTruthy();
+    expect(screen.queryByText(/couldn’t|didn’t|failed/i)).toBeNull();
+  });
+
+  it('⚠️ Google not set up in this bundle: no button that can only fail', async () => {
+    mockGoogleConfigured.mockReturnValue(false);
+    const screen = await openSheet();
+    expect(screen.queryByText('Continue with Google')).toBeNull();
+    mockGoogleConfigured.mockReturnValue(true);
   });
 });
