@@ -359,6 +359,13 @@ commenting standards.
   (access + refresh) are stored in the OS keychain via expo-secure-store,
   encrypted at rest — never in plaintext AsyncStorage. Emails are personal data:
   never logged in full (redactEmail).
+- **The app reads the clipboard in one place only (2026-10-15):** the sign-in
+  code step on Android, and only when the user comes back to the app there
+  (`useClipboardCode`). Before reading, it checks whether there is text at all,
+  without reading the content. The text never leaves the device and is never
+  logged. Only a strictly matched 8-digit code goes to `verifyOtp`, and that
+  code is cleared from the clipboard after a successful sign-in. It never reads
+  on iOS, nor anywhere else in the app.
 - Spotter GPS is captured **only** at the moment of reporting a sighting —
   no background location tracking anywhere in the app.
 - **In-memory location speed caches** (2026-10-08, #142): recent reverse-geocode
