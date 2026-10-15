@@ -353,8 +353,10 @@ hourly budget). Raise it in the dashboard only if beta feedback needs it.
      `trackitdown://auth-callback` (`lib/oauthReturn.ts`,
      `signInWithAppleWeb`, `+native-intent`). There is one idempotent return
      handler, because Android can report a success as 'dismiss' and the
-     same URL can arrive three ways. The button stays hidden until
-     `EXPO_PUBLIC_APPLE_SIGN_IN=true` is in the bundle.
+     same URL can arrive three ways. The button shows on Android now
+     (owner, 2026-10-15). Until `EXPO_PUBLIC_APPLE_SIGN_IN=true` is in the
+     bundle, it opens a "Coming soon" sheet (`AppleComingSoonSheet`) and
+     signs nobody in; after that, it signs in.
      **Setup (owner, once):**
      1. **Enrol** in the Apple Developer Program (developer.apple.com,
         $99/yr; approval can take 1–2 days).

@@ -44,6 +44,7 @@ import {
 import { invalidateProfileCheck, useAuthStanding } from '../hooks/useAuthStanding';
 import { useResendCountdown } from '../hooks/useResendCountdown';
 import { useSession } from '../hooks/useSession';
+import { AppleComingSoonSheet } from './AppleComingSoonSheet';
 import { AuthLegalNotice } from './AuthLegalNotice';
 import { OtpInput } from './OtpInput';
 import { SocialSignInButtons } from './SocialSignInButtons';
@@ -73,6 +74,7 @@ export function AuthSheet() {
   // A new user who came through Google: their given name, so "What should
   // we call you?" starts filled in (2026-10-15) — still theirs to change.
   const [suggestedName, setSuggestedName] = useState('');
+  const [appleComingSoon, setAppleComingSoon] = useState(false);
   const renderStep: Step = intent && standing === 'incomplete' ? 'profile' : step;
 
   const openRef = useRef(false); // sheet currently presented (or presenting)
@@ -157,26 +159,35 @@ export function AuthSheet() {
   };
 
   return (
-    <BottomSheet
-      ref={sheetRef}
-      title={lastContext ? GATE_TITLES[lastContext] : ''}
-      onDismiss={handleDismiss}
-    >
-      <StepSlide stepKey={renderStep} direction={STEP_ORDER[renderStep]}>
-        {renderStep === 'email' ? (
-          <EmailStep
-            email={email}
-            onChangeEmail={setEmail}
-            onCodeSent={() => setStep('otp')}
-            onSocialName={setSuggestedName}
-          />
-        ) : renderStep === 'otp' ? (
-          <OtpStep email={email} onUseDifferentEmail={() => setStep('email')} />
-        ) : (
-          <ProfileStep initialFirstName={suggestedName} />
-        )}
-      </StepSlide>
-    </BottomSheet>
+    <>
+      <BottomSheet
+        ref={sheetRef}
+        title={lastContext ? GATE_TITLES[lastContext] : ''}
+        onDismiss={handleDismiss}
+      >
+        <StepSlide stepKey={renderStep} direction={STEP_ORDER[renderStep]}>
+          {renderStep === 'email' ? (
+            <EmailStep
+              email={email}
+              onChangeEmail={setEmail}
+              onCodeSent={() => setStep('otp')}
+              onSocialName={setSuggestedName}
+              onAppleComingSoon={() => {
+                Keyboard.dismiss();
+                setAppleComingSoon(true);
+              }}
+            />
+          ) : renderStep === 'otp' ? (
+            <OtpStep email={email} onUseDifferentEmail={() => setStep('email')} />
+          ) : (
+            <ProfileStep initialFirstName={suggestedName} />
+          )}
+        </StepSlide>
+      </BottomSheet>
+      {/* Android's Apple button, before Apple is switched on (2026-10-15):
+          a sheet over this one saying it's coming. Mounted only while open. */}
+      {appleComingSoon ? <AppleComingSoonSheet onClose={() => setAppleComingSoon(false)} /> : null}
+    </>
   );
 }
 
@@ -228,12 +239,15 @@ function EmailStep({
   onChangeEmail,
   onCodeSent,
   onSocialName,
+  onAppleComingSoon,
 }: {
   email: string;
   onChangeEmail: (value: string) => void;
   onCodeSent: () => void;
   /** The provider's given name, for a new user's name step. */
   onSocialName: (name: string) => void;
+  /** Android's Apple button before Apple sign-in is switched on. */
+  onAppleComingSoon: () => void;
 }) {
   const styles = useThemedStyles(makeStyles);
   const [busy, setBusy] = useState(false);
@@ -295,13 +309,18 @@ function EmailStep({
       <Button label="Continue" onPress={handleContinue} disabled={!canContinue} loading={busy} />
       <SocialSignInButtons
         // iOS: Apple's native sheet. Android: Apple's web flow (no native kit).
-        onApple={() =>
-          handleSocial(Platform.OS === 'android' ? signInWithAppleWeb : signInWithApple)
-        }
+        // iOS: Apple's native sheet. Android: Apple's web flow once it's
+        // switched on — until then, the "coming soon" sheet (owner, 2026-10-15).
+        onApple={() => {
+          if (Platform.OS !== 'android') return void handleSocial(signInWithApple);
+          if (isAppleWebSignInConfigured()) return void handleSocial(signInWithAppleWeb);
+          onAppleComingSoon();
+        }}
         onGoogle={() => handleSocial(signInWithGoogle)}
         disabled={busy}
         showGoogle={isGoogleSignInConfigured()}
-        showAppleWeb={Platform.OS === 'android' && isAppleWebSignInConfigured()}
+        // Always on Android now: it signs in, or says it's coming.
+        showAppleWeb={Platform.OS === 'android'}
       />
       {socialError ? (
         <Text style={styles.error} accessibilityLiveRegion="polite">
