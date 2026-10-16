@@ -53,6 +53,9 @@ export interface SocialSignInButtonsProps {
   /** Android's Apple button (Apple's web flow) — false until the Apple
    *  Developer + Supabase setup is done. iOS always has the native one. */
   showAppleWeb?: boolean;
+  /** Where the "or" sits: before the buttons (email first) or after them
+   *  (social first — the sign-in sheet since 2026-10-15). */
+  dividerPosition?: 'before' | 'after';
 }
 
 export function SocialSignInButtons({
@@ -61,6 +64,7 @@ export function SocialSignInButtons({
   disabled,
   showGoogle = true,
   showAppleWeb = false,
+  dividerPosition = 'before',
 }: SocialSignInButtonsProps) {
   const styles = useThemedStyles(makeStyles);
   const { scheme } = useThemeControls();
@@ -69,13 +73,17 @@ export function SocialSignInButtons({
   // Nothing to offer: no lonely "or" either.
   if (!showApple && !showAppleOnAndroid && !showGoogle) return null;
 
+  const divider = (
+    <View style={styles.dividerRow}>
+      <View style={styles.line} />
+      <Text style={styles.or}>or</Text>
+      <View style={styles.line} />
+    </View>
+  );
+
   return (
     <View style={styles.root}>
-      <View style={styles.dividerRow}>
-        <View style={styles.line} />
-        <Text style={styles.or}>or</Text>
-        <View style={styles.line} />
-      </View>
+      {dividerPosition === 'before' ? divider : null}
 
       {showApple ? (
         // pointerEvents gates the native Apple button on `disabled` too — it
@@ -93,7 +101,7 @@ export function SocialSignInButtons({
                 : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
             }
             cornerRadius={radii.md}
-            style={styles.brandButton}
+            style={styles.nativeAppleButton}
             onPress={onApple}
           />
         </View>
@@ -108,6 +116,8 @@ export function SocialSignInButtons({
       {showGoogle ? (
         <GoogleSignInButton onPress={onGoogle} disabled={disabled} dark={scheme === 'dark'} />
       ) : null}
+
+      {dividerPosition === 'after' ? divider : null}
     </View>
   );
 }
@@ -278,9 +288,15 @@ const makeStyles = (c: Palette) =>
       ...typography.caption,
       color: c.textSecondary,
     },
-    // Both brand buttons share the app's control height and corner, so they
-    // sit level with "Continue" above them.
+    // Our brand buttons share the app's control height and corner, so they
+    // sit level with "Continue". A MINIMUM, not a fixed height (2026-10-15):
+    // at large text sizes the label grows instead of being clipped.
     brandButton: {
+      minHeight: sizes.control,
+      paddingVertical: spacing.sm,
+    },
+    // Apple's native button draws itself, so it needs a fixed height.
+    nativeAppleButton: {
       height: sizes.control,
     },
     googleButton: {

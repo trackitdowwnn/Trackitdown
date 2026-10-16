@@ -22,7 +22,14 @@ import { StyleSheet, Text, View } from 'react-native';
 import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { BottomSheet, Button, type BottomSheetRef } from '@/shared/ui';
 
-export function AppleComingSoonSheet({ onClose }: { onClose: () => void }) {
+export function AppleComingSoonSheet({
+  onClose,
+  googleAvailable,
+}: {
+  onClose: () => void;
+  /** Only point at Google when Google is actually offered. */
+  googleAvailable: boolean;
+}) {
   const styles = useThemedStyles(makeStyles);
   const sheetRef = useRef<BottomSheetRef>(null);
 
@@ -37,8 +44,8 @@ export function AppleComingSoonSheet({ onClose }: { onClose: () => void }) {
           Coming soon
         </Text>
         <Text style={styles.text}>
-          Signing in with Apple is on its way. For now, continue with Google or your email — it
-          only takes a moment.
+          Signing in with Apple is on its way. For now, continue with{' '}
+          {googleAvailable ? 'Google or your email' : 'your email'} — it only takes a moment.
         </Text>
         <Button label="Got it" onPress={() => sheetRef.current?.close()} />
       </View>

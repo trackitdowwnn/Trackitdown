@@ -188,3 +188,28 @@ describe('Apple on Android — our button, Apple’s rules (2026-10-15)', () => 
     expect(view.getByText('Continue with Apple')).toBeTruthy(); // the native one
   });
 });
+
+describe('sign-in best-practice pass (2026-10-15)', () => {
+  beforeEach(() => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+  });
+
+  it('with the social buttons first, the "or" comes AFTER them', async () => {
+    const view = await render(
+      <ThemeControlsContext.Provider value={{ preference: 'light', scheme: 'light', setPreference: jest.fn() }}>
+        <SocialSignInButtons {...props} showGoogle dividerPosition="after" />
+      </ThemeControlsContext.Provider>,
+    );
+    const tree = JSON.stringify(view.toJSON());
+    expect(tree.indexOf('Continue with Google')).toBeLessThan(tree.indexOf('"or"'));
+  });
+
+  it('⚠️ brand buttons have a MINIMUM height — large text grows them, never clips the label', async () => {
+    const view = await renderIn('light', true, true);
+    for (const id of ['google-sign-in', 'apple-sign-in']) {
+      const style = StyleSheet.flatten(view.getByTestId(id).props.style);
+      expect(style.minHeight).toBeGreaterThan(0);
+      expect(style.height).toBeUndefined();
+    }
+  });
+});

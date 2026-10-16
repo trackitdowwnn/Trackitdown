@@ -17,7 +17,18 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Animated, Easing, Keyboard, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  AccessibilityInfo,
+  Animated,
+  Easing,
+  Keyboard,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import { createLogger, isValidEmail } from '@/shared/lib';
 import { motion, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
@@ -52,7 +63,26 @@ import { SocialSignInButtons } from './SocialSignInButtons';
 const log = createLogger('auth');
 
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
+// GOV.UK's wording for a malformed address — with an example of a good one.
+const INVALID_EMAIL = 'Enter an email address like name@example.com';
 const RESEND_SECONDS = 60;
+// Must match Supabase's `otp_length` and `otp_expiry` (supabase/config.toml
+// + the hosted dashboard) and the email template's "expires in" line.
+const CODE_LENGTH = 8;
+const CODE_EXPIRY_MINUTES = 60;
+// The shortest code Verify accepts — so a change of length on the server
+// never strands anyone (the 8 → 6 switch, 2026-10-15).
+const MIN_CODE_LENGTH = 6;
+/** Said when a step comes in — a sheet that changes under a screen reader
+ *  otherwise changes in silence. */
+const STEP_ANNOUNCEMENTS: Partial<Record<Step, string>> = {
+  otp: 'Enter the code we emailed you.',
+  profile: 'What should we call you?',
+};
+/** "an 8-digit code", "a 6-digit code" — the article follows the number's sound. */
+const codeArticle = (n: number) => (/^(8|11|18|8\d)$/.test(String(n)) ? 'an' : 'a');
+/** The sheet's title once they're signed in — "Log in to …" would be stale. */
+const WELCOME_TITLE = 'Welcome to Trackitdown';
 /** Longest a completed gate waits for the sheet to report it has closed
  *  before running its action anyway. */
 const CLOSE_FALLBACK_MS = 600;
@@ -95,6 +125,10 @@ export function AuthSheet() {
   useEffect(() => {
     stepRef.current = renderStep;
     if (renderStep === 'profile') sawProfileStepRef.current = true;
+    // Tell a screen reader the sheet moved on (2026-10-15, UI best-practice
+    // pass): focus otherwise stays where it was, on a control that's gone.
+    const announcement = STEP_ANNOUNCEMENTS[renderStep];
+    if (announcement) AccessibilityInfo.announceForAccessibility(announcement);
   }, [renderStep]);
 
   useEffect(() => {
@@ -162,7 +196,9 @@ export function AuthSheet() {
     <>
       <BottomSheet
         ref={sheetRef}
-        title={lastContext ? GATE_TITLES[lastContext] : ''}
+        title={
+          renderStep === 'profile' ? WELCOME_TITLE : lastContext ? GATE_TITLES[lastContext] : ''
+        }
         onDismiss={handleDismiss}
       >
         <StepSlide stepKey={renderStep} direction={STEP_ORDER[renderStep]}>
@@ -186,7 +222,12 @@ export function AuthSheet() {
       </BottomSheet>
       {/* Android's Apple button, before Apple is switched on (2026-10-15):
           a sheet over this one saying it's coming. Mounted only while open. */}
-      {appleComingSoon ? <AppleComingSoonSheet onClose={() => setAppleComingSoon(false)} /> : null}
+      {appleComingSoon ? (
+        <AppleComingSoonSheet
+          onClose={() => setAppleComingSoon(false)}
+          googleAvailable={isGoogleSignInConfigured()}
+        />
+      ) : null}
     </>
   );
 }
@@ -205,11 +246,13 @@ function StepSlide({
   const [translateX] = useState(() => new Animated.Value(0));
   const [opacity] = useState(() => new Animated.Value(1));
   const prevDirectionRef = useRef(direction);
+  // Reduce Motion: a fade, no slide (2026-10-15).
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     const forward = direction >= prevDirectionRef.current;
     prevDirectionRef.current = direction;
-    translateX.setValue(forward ? spacing.xxl : -spacing.xxl);
+    translateX.setValue(reduceMotion ? 0 : forward ? spacing.xxl : -spacing.xxl);
     opacity.setValue(0);
     Animated.parallel([
       Animated.timing(translateX, {
@@ -225,7 +268,7 @@ function StepSlide({
         useNativeDriver: true,
       }),
     ]).start();
-  }, [stepKey, direction, translateX, opacity]);
+  }, [stepKey, direction, translateX, opacity, reduceMotion]);
 
   return (
     <Animated.View style={{ opacity, transform: [{ translateX }] }}>{children}</Animated.View>
@@ -290,25 +333,29 @@ function EmailStep({
     }
   };
 
-  const canContinue = isValidEmail(email) && !busy;
+  // ⚠️ SAY WHY, DON'T JUST GREY OUT (2026-10-15, GOV.UK). Continue used to
+  // sit disabled until the address was valid, which told nobody what was
+  // wrong. Now it is pressable once anything is typed, and a malformed
+  // address says so — on leaving the field or on Continue, never mid-word.
+  const checkEmail = (): boolean => {
+    if (isValidEmail(email)) return true;
+    setEmailError(INVALID_EMAIL);
+    return false;
+  };
+  const submitEmail = () => {
+    if (busy || !checkEmail()) return;
+    void handleContinue();
+  };
+  const canContinue = email.trim().length > 0 && !busy;
 
   return (
     <View style={styles.step}>
-      <Text style={styles.body}>
-        Sign up and log in are the same — we’ll email you an 8-digit code. No password needed.
-      </Text>
-      <TextField
-        label="Email"
-        variant="email"
-        textContentType="emailAddress"
-        value={email}
-        onChangeText={onChangeEmail}
-        onSubmitEditing={canContinue ? handleContinue : undefined}
-        error={emailError ?? undefined}
-      />
-      <Button label="Continue" onPress={handleContinue} disabled={!canContinue} loading={busy} />
+      <Text style={styles.body}>Sign up and log in are the same. No password needed.</Text>
+      {/* THE NO-TYPING WAYS FIRST (owner, 2026-10-15): Apple and Google,
+          then "or", then email. Each brand's rules ask its button to be at
+          least as prominent as any other way in. */}
       <SocialSignInButtons
-        // iOS: Apple's native sheet. Android: Apple's web flow (no native kit).
+        dividerPosition="after"
         // iOS: Apple's native sheet. Android: Apple's web flow once it's
         // switched on — until then, the "coming soon" sheet (owner, 2026-10-15).
         onApple={() => {
@@ -327,6 +374,26 @@ function EmailStep({
           {socialError}
         </Text>
       ) : null}
+      <TextField
+        label="Email"
+        variant="email"
+        textContentType="emailAddress"
+        value={email}
+        onChangeText={(value) => {
+          onChangeEmail(value);
+          if (emailError) setEmailError(null);
+        }}
+        onBlur={() => {
+          if (email.trim()) checkEmail();
+        }}
+        onSubmitEditing={submitEmail}
+        returnKeyType="go"
+        // What happens next, before they commit to it.
+        helperText={`We’ll email you ${codeArticle(CODE_LENGTH)} ${CODE_LENGTH}-digit code.`}
+        error={emailError ?? undefined}
+        disabled={busy}
+      />
+      <Button label="Continue" onPress={submitEmail} disabled={!canContinue} loading={busy} />
       {/* Below all actions: "By continuing…" covers the social buttons too. */}
       <AuthLegalNotice />
     </View>
@@ -348,9 +415,19 @@ function OtpStep({
   const [errorNonce, setErrorNonce] = useState(0);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [resending, setResending] = useState(false);
+  // "New code sent to …" after a resend — the countdown restarting alone
+  // said nothing (2026-10-15).
+  const [resent, setResent] = useState(false);
   const { secondsLeft, canResend, restart } = useResendCountdown(RESEND_SECONDS);
 
+  /** An error, said — the live region covers Android; iOS needs telling. */
+  const showError = (message: string) => {
+    setErrorText(message);
+    if (Platform.OS === 'ios') AccessibilityInfo.announceForAccessibility(message);
+  };
+
   const handleComplete = async (fullCode: string) => {
+    if (submitting) return;
     setSubmitting(true);
     setErrorText(null);
     try {
@@ -360,7 +437,7 @@ function OtpStep({
     } catch (err) {
       setCode('');
       setErrorNonce((n) => n + 1);
-      setErrorText(err instanceof AuthActionError ? err.message : GENERIC_ERROR);
+      showError(err instanceof AuthActionError ? err.message : GENERIC_ERROR);
       setSubmitting(false);
     }
   };
@@ -371,11 +448,14 @@ function OtpStep({
     if (resending) return;
     setResending(true);
     setErrorText(null);
+    setResent(false);
     try {
       await requestEmailOtp(email);
       restart();
+      setResent(true);
+      AccessibilityInfo.announceForAccessibility(`New code sent to ${email.trim()}`);
     } catch (err) {
-      setErrorText(err instanceof AuthActionError ? err.message : GENERIC_ERROR);
+      showError(err instanceof AuthActionError ? err.message : GENERIC_ERROR);
     } finally {
       setResending(false);
     }
@@ -383,15 +463,22 @@ function OtpStep({
 
   return (
     <View style={styles.step}>
-      <Text style={styles.body}>Enter the code we emailed to {email}</Text>
+      <Text style={styles.body}>
+        Enter the code we emailed to <Text style={styles.emphasis}>{email.trim()}</Text>
+      </Text>
       <Pressable onPress={onUseDifferentEmail} accessibilityRole="button" hitSlop={14}>
         <Text style={styles.link}>Use a different email</Text>
       </Pressable>
 
       <OtpInput
         value={code}
-        onChangeText={setCode}
-        onComplete={handleComplete}
+        // An error stays only until they start again (2026-10-15).
+        onChangeText={(next) => {
+          setCode(next);
+          if (errorText) setErrorText(null);
+        }}
+        onComplete={(full) => void handleComplete(full)}
+        length={CODE_LENGTH}
         submitting={submitting}
         errorNonce={errorNonce}
       />
@@ -400,7 +487,21 @@ function OtpStep({
         <Text style={styles.error} accessibilityLiveRegion="polite">
           {errorText}
         </Text>
-      ) : null}
+      ) : (
+        // ⚠️ SAID BEFORE IT HAPPENS (WCAG F36): the code is checked the moment
+        // it's complete — and Verify below does the same by hand.
+        <Text style={styles.hint}>We’ll check it as soon as it’s in.</Text>
+      )}
+
+      {/* ⚠️ A BUTTON AS WELL AS AUTO-SUBMIT (2026-10-15). Auto-submit with no
+          button is WCAG failure F36, and a code SHORTER than the boxes (the
+          8 → 6 switch on the server) would otherwise never submit at all. */}
+      <Button
+        label="Verify"
+        onPress={() => void handleComplete(code)}
+        disabled={code.length < MIN_CODE_LENGTH || submitting}
+        loading={submitting}
+      />
 
       <Pressable
         onPress={handleResend}
@@ -413,6 +514,16 @@ function OtpStep({
           {canResend ? 'Resend code' : `Resend code in ${secondsLeft}s`}
         </Text>
       </Pressable>
+      {resent ? (
+        <Text style={styles.hint} testID="otp-resent">
+          New code sent to {email.trim()}.
+        </Text>
+      ) : null}
+      {/* Codes get filtered (NN/g), and when they expire is theirs to know. */}
+      <Text style={styles.hint}>
+        Codes can take a minute to arrive — check your spam folder. Each code works for{' '}
+        {CODE_EXPIRY_MINUTES} minutes.
+      </Text>
     </View>
   );
 }
@@ -445,13 +556,21 @@ function ProfileStep({ initialFirstName = '' }: { initialFirstName?: string }) {
 
   return (
     <View style={styles.step}>
-      <Text style={styles.heading}>What should we call you?</Text>
+      <Text style={styles.heading} accessibilityRole="header">
+        What should we call you?
+      </Text>
       <Text style={styles.body}>
         Your first name is what other people see. That’s all we need to get you started.
       </Text>
       <TextField
         label="First name"
         autoComplete="given-name"
+        textContentType="givenName"
+        // A name: a capital, the keyboard up, Done finishes (2026-10-15).
+        autoCapitalize="words"
+        autoFocus
+        returnKeyType="done"
+        onSubmitEditing={canSubmit ? handleSubmit : undefined}
         value={firstName}
         onChangeText={setFirstName}
         error={error ?? undefined}
@@ -486,5 +605,14 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   error: {
     ...typography.caption,
     color: c.danger,
+  },
+  hint: {
+    ...typography.caption,
+    color: c.textSecondary,
+  },
+  // The address the code went to — what they'll look for in their inbox.
+  emphasis: {
+    fontFamily: typography.cardTitle.fontFamily,
+    color: c.textPrimary,
   },
 });
