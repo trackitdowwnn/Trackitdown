@@ -108,6 +108,7 @@ import {
   syncMyPayoutAccount,
   startConnectOnboarding,
   submitPayoutTokens,
+  type PayoutSyncResult,
 } from '../api/payoutsApi';
 import { createBankToken } from '../api/stripeTokens';
 import { BankDetailsForm } from '../components/BankDetailsForm';
@@ -253,12 +254,24 @@ export function PayoutsScreen() {
   // (2026-10-14) — said as "we need one more thing from you", never as
   // "being checked", which told people to wait for a check waiting on them.
   const [needsAction, setNeedsAction] = useState(false);
+  // The last check itself failed (2026-10-16): the two flags above are then
+  // unknown, and the screen says "couldn't check", never "being checked".
+  const [checkFailed, setCheckFailed] = useState(false);
+  // A check the spotter asked for by hand, once the automatic ones stopped.
+  const [recheckingByHand, setRecheckingByHand] = useState(false);
+  // A failed check changes ONLY checkFailed: what an earlier check found (a
+  // bank, a photo ID) stays on screen rather than turning into "checking".
+  const applyCheck = useCallback((result: PayoutSyncResult) => {
+    setCheckFailed(result.failed);
+    if (!result.failed) {
+      setNeedsBank(result.needsBank);
+      setNeedsAction(result.needsAction);
+    }
+  }, []);
   const checkWithStripe = useCallback(async () => {
-    const result = await syncMyPayoutAccount();
-    setNeedsBank(result.needsBank);
-    setNeedsAction(result.needsAction);
+    applyCheck(await syncMyPayoutAccount());
     refresh();
-  }, [refresh]);
+  }, [applyCheck, refresh]);
   const checkedThisVisit = useRef(false);
   const statusNow = useRef(status);
   useEffect(() => {
@@ -281,11 +294,10 @@ export function PayoutsScreen() {
     if (status !== 'verifying' && status !== 'unfinished') return;
     checkedThisVisit.current = true;
     void syncMyPayoutAccount().then((result) => {
-      setNeedsBank(result.needsBank);
-      setNeedsAction(result.needsAction);
+      applyCheck(result);
       refresh();
     });
-  }, [status, refresh]);
+  }, [status, refresh, applyCheck]);
 
   // KEEP ASKING WHILE IT SAYS "BEING CHECKED" (2026-10-14). One check on
   // arrival came seconds too early for a test-mode check that finishes in
@@ -552,7 +564,8 @@ export function PayoutsScreen() {
   // "Something is happening" (owner, 2026-10-14) — and only while it is: the
   // bounded re-checks are running for an account Stripe is reviewing, not one
   // waiting on the spotter.
-  const checkingNow = status === 'verifying' && !needsBank && !needsAction && !pollSpent;
+  const checkingNow =
+    status === 'verifying' && !needsBank && !needsAction && (!pollSpent || recheckingByHand);
 
   // ONE decision about what this screen says (payoutView, 2026-10-14). The
   // hero, the chip, the road and its one button all come from here; nothing
@@ -566,6 +579,8 @@ export function PayoutsScreen() {
       checkingNow,
       needsBank,
       needsAction,
+      checkFailed,
+      canCheckAgain: pollSpent && !recheckingByHand,
       creditCheckFailed,
       credit,
       latestPayout,
@@ -599,6 +614,9 @@ export function PayoutsScreen() {
       setShowBankForm(true);
     } else if (intent === 'retry') {
       retryCreditCheck();
+    } else if (intent === 'recheck') {
+      setRecheckingByHand(true);
+      void checkWithStripe().finally(() => setRecheckingByHand(false));
     } else if (intent === 'idCheck') {
       // Straight to the check: the step has already said what it is.
       void open({ skipIntro: true });

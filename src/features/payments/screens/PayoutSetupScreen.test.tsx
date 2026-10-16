@@ -421,6 +421,23 @@ describe('the send', () => {
     expect(takePayoutSetupOutcome('user-1')).toBe('rejected');
   });
 
+  it('⚠️ offline on the bank step: "try again", answers kept, and NOT a refusal', async () => {
+    // 2026-10-16: the bank path called every error a refusal, which leaves
+    // "rejected" for Payouts — and its "Set up another way" can't be undone.
+    mockBankToken.mockRejectedValue(
+      new PaymentError('We couldn’t reach our payment partner. Please try again.', 'STRIPE_UNAVAILABLE'),
+    );
+    const view = await render(<PayoutSetupScreen />);
+    await walkToSend(view);
+    await send(view);
+
+    await waitFor(() => expect(view.getByText(/couldn’t reach our payment partner/)).toBeTruthy());
+    expect(view.queryByText(/another way to set up/)).toBeNull();
+    expect(mockBack).not.toHaveBeenCalled();
+    expect(view.getByTestId('payout-account-number').props.value).toBe('00012345');
+    expect(takePayoutSetupOutcome('user-1')).not.toBe('rejected');
+  });
+
   it('…and a retry that then goes through is what Payouts hears', async () => {
     mockIdentityToken
       .mockRejectedValueOnce(new PaymentError('No.', 'DETAILS_REJECTED'))
