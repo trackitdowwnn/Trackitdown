@@ -32,7 +32,7 @@ import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { z } from 'zod';
 
 import { legalHref } from '@/shared/lib';
-import { sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
+import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { TextField } from '@/shared/ui';
 import type { WizardStepProps } from '@/shared/wizard';
 
@@ -78,6 +78,9 @@ function useFieldErrors(schema: z.ZodType, { answers, setAnswers }: StepProps) {
     key: Field,
     options: { format?: (value: string) => string; digits?: number } = {},
   ) => ({
+    // Every box in this wizard: a fixed label over it, never a floating one
+    // (owner, 2026-10-16: "input labels are all over the place").
+    labelPlacement: 'above' as const,
     value: answers[key] ?? '',
     error: errors[key],
     onChangeText: (value: string) => {
@@ -134,7 +137,7 @@ export function AboutYouStep(props: StepProps) {
       <TextField label="Last name" autoComplete="family-name" testID="payout-last-name" {...field('lastName')} />
       <TextField
         label="Date of birth"
-        helperText="DD/MM/YYYY"
+        helperText="For example, 27/03/1990"
         keyboardType="number-pad"
         maxLength={10}
         testID="payout-dob"
@@ -268,6 +271,7 @@ export function BankStep(props: StepProps) {
           disabled={busy}
           testID="payout-summary-you"
         />
+        <View style={styles.summaryDivider} />
         <SummaryRow
           label="Home address"
           value={describeAddress(answers)}
@@ -358,18 +362,16 @@ export function PayoutTermsNotice() {
           would test hardest; the tokens are minted on the phone today
           (ADR-0010), but the sentence is kept to what holds across both the
           tokenised path and the server-side fallback. */}
-      <Text style={styles.note}>
-        We pass these straight to our payment partner, who handles payments and the ID
-        check, and we never store them.
-      </Text>
-      {/* ⚠️ THE ONE PROVIDER NAME KEPT (owner asked for none in the app,
+      {/* ONE BLOCK, not two paragraphs (owner, 2026-10-16: too much text).
+          ⚠️ THE ONE PROVIDER NAME KEPT (owner asked for none in the app,
           2026-10-13). The agreement is a named legal document: the identity
           token attests it was SHOWN and accepted, so the link must say what it
           is. Renaming it ("our partner's terms") would weaken exactly the
           claim `shown_and_accepted: true` makes. Everything around it says
           "payment partner". */}
       <Text style={styles.note}>
-        By sending you agree to{' '}
+        We pass these straight to our payment partner and never store them. By sending,
+        you agree to{' '}
         <Text
           style={styles.link}
           onPress={() => router.push(legalHref('terms'))}
@@ -393,12 +395,15 @@ export function PayoutTermsNotice() {
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
+    // Room between fields now each carries its own label above it.
     body: {
-      gap: spacing.md,
+      gap: spacing.xl,
     },
+    // A quiet panel: reads as a note about the form, not part of it.
     terms: {
-      gap: spacing.sm,
-      paddingTop: spacing.sm,
+      backgroundColor: c.surfaceSubtle,
+      borderRadius: radii.md,
+      padding: spacing.lg,
     },
     note: {
       ...typography.caption,
@@ -409,13 +414,17 @@ const makeStyles = (c: Palette) =>
       color: c.textPrimary,
       textDecorationLine: 'underline',
     },
-    // The folded-in review: a hairline above, then two quiet rows.
+    // The folded-in review, as one card: its title, then two rows.
     summary: {
       gap: spacing.md,
-      marginTop: spacing.md,
-      paddingTop: spacing.lg,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: c.border,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radii.lg,
+      padding: spacing.lg,
+    },
+    summaryDivider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: c.border,
     },
     summaryTitle: {
       ...typography.cardTitle,

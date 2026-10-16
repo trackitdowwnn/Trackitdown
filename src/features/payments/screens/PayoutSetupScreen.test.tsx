@@ -317,6 +317,17 @@ describe('check and send — on the bank step (PR6)', () => {
     expect(view.getByText(/may be asked to verify your identity/i)).toBeTruthy();
   });
 
+  it('labels sit ABOVE every box, hint first (owner, 2026-10-16: "all over the place")', async () => {
+    const view = await render(<PayoutSetupScreen />);
+    await walkToSend(view);
+    // A floating label carries no hint on the input; a label above does.
+    expect(view.getByTestId('payout-sort-code').props.accessibilityHint).toBe('6 digits');
+    expect(view.getByTestId('payout-account-number').props.accessibilityHint).toBe('8 digits');
+    expect(view.getByTestId('payout-confirm-account-number').props.accessibilityLabel).toBe(
+      'Confirm account number',
+    );
+  });
+
   it('⚠️ names no payment provider — except the agreement, which the law needs', async () => {
     // Owner request (2026-10-13): no "Stripe" in the app's own words. The one
     // exception is the Connected Account Agreement's name: the identity token
