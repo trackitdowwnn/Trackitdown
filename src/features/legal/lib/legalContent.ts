@@ -170,7 +170,10 @@ const TERMS: LegalDocument = {
   // listing's reward banner, with at least 14 days' notice where Stripe's
   // 90-day limit allows (claim_reward_term_notices, 20261005140000).
   // (30 Sep: the "Vehicle data" credit — no notice needed.)
-  lastUpdated: '7 October 2026',
+  // 16 Oct: "a bounty in escrow" → "a bounty we are still holding". Same
+  // meaning, no notice needed; "escrow" is a restricted category at Stripe,
+  // whose reviewers read the published page (as with reward_hold, 2 Oct).
+  lastUpdated: '16 October 2026',
   intro: [
     `These terms are an agreement between you and ${OPERATOR}. By creating an account you accept them.`,
     'They are written to be read. Where a term matters to your money or your safety, it is stated plainly rather than buried.',
@@ -307,7 +310,7 @@ const TERMS: LegalDocument = {
     {
       heading: 'Closing your account',
       body: [
-        'You can delete your account at any time from your profile. If you have a listing with a bounty in escrow you will need to cancel or complete it first, because we cannot leave money without an owner.',
+        'You can delete your account at any time from your profile. If you have a listing with a bounty we are still holding, you will need to cancel or complete it first, because we cannot leave money without an owner.',
         'We may suspend or close an account that breaks these terms, and we will refund any bounty still held unless we are required not to.',
       ],
     },
@@ -338,9 +341,11 @@ const TERMS: LegalDocument = {
 const PRIVACY: LegalDocument = {
   // The only one this change touched: "What we collect" gained a bug-reports
   // bullet naming the four diagnostic fields.
+  // 16 Oct: "a bounty in escrow" → "a bounty we are still holding" under
+  // "Deleting your account" — wording only (see TERMS).
   slug: 'privacy',
   title: 'Privacy policy',
-  lastUpdated: '24 August 2026',
+  lastUpdated: '16 October 2026',
   intro: [
     `${OPERATOR} is the controller of the personal data described here.`,
     'This app handles location, vehicle details, photographs and payments, so this policy is specific rather than generic. If something below is not clear, ask us before you use the service.',
@@ -441,7 +446,7 @@ const PRIVACY: LegalDocument = {
       body: [
         'You can delete your account from your profile. It removes your profile, your listings, your sightings, your saved vehicles, your alerts and your photographs.',
         'Two things do not go. Photographs you took of somebody else’s stolen vehicle stay attached to that listing, because they are evidence in someone else’s live case and removing them would take away their only record. Once your account is gone those photographs are no longer linked to you. And we keep a minimal record that a deletion happened, plus any payment references we are required to retain.',
-        'If you have a listing with a bounty in escrow, cancel or complete it first — we cannot delete an account while it holds money.',
+        'If you have a listing with a bounty we are still holding, cancel or complete it first — we cannot delete an account while it holds money.',
       ],
     },
     {

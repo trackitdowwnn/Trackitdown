@@ -188,17 +188,15 @@ LEGAL_PUBLIC_URLS in src/shared/lib/legal.ts — in that order, never before.
 ⚠️ KNOWN GAPS IN THE TEXT ITSELF, from legalContent.ts's own header. These are
    not formatting problems and publishing does not fix them:
 
-   1. THE TERMS DO NOT MENTION THE £5 LISTING FEE. legalContent.ts:59 says so
-      outright — ADR-0014 added a second pricing mode and the Terms still
-      describe only the bounty. You would be charging for a product whose terms
-      do not cover it.
-   2. THE MONEY WORDING IS UNREVIEWED. The header flags whether the escrow
-      arrangement needs FCA authorisation as "a question for a lawyer".
-   3. THE LIABILITY WORDING IS UNREVIEWED against the Consumer Rights Act 2015
+   1. THE MONEY WORDING IS UNREVIEWED. The header flags whether holding a
+      bounty for its owner needs FCA authorisation as "a question for a lawyer".
+   2. THE LIABILITY WORDING IS UNREVIEWED against the Consumer Rights Act 2015
       — you cannot exclude liability for death or personal injury from
       negligence, and this product invites the public to look for stolen cars.
-   4. ICO REGISTRATION likely applies and is not recorded as done.
+   3. ICO REGISTRATION likely applies and is not recorded as done.
 
-   1 is a content edit and is squarely ours. 2-4 want a lawyer, and this is the
-   point at which the file's header says to get one.
+   All three want a lawyer, and this is the point at which the file's header
+   says to get one. (The £5 listing fee gap this list used to open with was
+   closed in the Terms on 2026-09-01 — "The listing fee is £5. It is not
+   refundable…".)
 `);
