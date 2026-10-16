@@ -342,7 +342,8 @@ const PRIVACY: LegalDocument = {
   // The only one this change touched: "What we collect" gained a bug-reports
   // bullet naming the four diagnostic fields.
   // 16 Oct: "a bounty in escrow" → "a bounty we are still holding" under
-  // "Deleting your account" — wording only (see TERMS).
+  // "Deleting your account" — wording only (see TERMS). Same day: "Who we
+  // share it with" names the email address Stripe now gets for receipts.
   slug: 'privacy',
   title: 'Privacy policy',
   lastUpdated: '16 October 2026',
@@ -425,7 +426,7 @@ const PRIVACY: LegalDocument = {
       heading: 'Who we share it with',
       body: [
         '• Supabase — hosting, database and file storage, in the EU (Ireland).',
-        '• Stripe — payments and identity checks for anyone receiving a bounty. Stripe is a controller in its own right for that.',
+        '• Stripe — payments, including your email address so they can send your receipt, and identity checks for anyone receiving a bounty. Stripe is a controller in its own right for that.',
         '• Expo, and Apple or Google — delivery of push notifications.',
         '• Google Maps — map display and converting locations into place names.',
         '• The police, if we are required to disclose information or where we believe it is necessary to prevent harm.',
