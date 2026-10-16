@@ -271,6 +271,8 @@ describe('ChangeRewardScreen', () => {
     await flush();
     expect(mockToast).not.toHaveBeenCalled();
     expect(mockBack).not.toHaveBeenCalled();
+    // …but says so (2026-10-16), the same line as Post a car.
+    expect(view.getByText('Payment not completed. Tap to try again when ready.')).toBeTruthy();
   });
 
   it('a server refusal shows its sentence and charges nothing', async () => {

@@ -19,8 +19,10 @@
 import { PaymentSheetError, useStripe } from '@stripe/stripe-react-native';
 import { useCallback } from 'react';
 
+import { supabase } from '@/shared/api';
 import { createLogger } from '@/shared/lib/logger';
 
+import { paymentSheetAppearance } from '../lib/paymentSheetAppearance';
 import { ensureStripeReady } from '../lib/stripeReady';
 
 const log = createLogger('payments');
@@ -34,6 +36,22 @@ export interface BountyPaymentResult {
 }
 
 const PAYMENT_FAILED_MESSAGE = 'Your payment didn’t go through. Please try again.';
+/** Built once: the tokens are constants, so there is nothing to recompute. */
+const APPEARANCE = paymentSheetAppearance();
+
+/**
+ * The signed-in email, for the sheet's billing details (2026-10-16) — the same
+ * address the receipt goes to (#211), and it lets Link recognise them. Read
+ * from the local session, never the network; no email simply means no prefill.
+ */
+async function sessionEmail(): Promise<string | undefined> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.user.email || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * GOOGLE PAY, FIRST (2026-10-14, payments plan PR7): one tap, the phone's own
@@ -65,6 +83,7 @@ export function useBountyPayment() {
         log.warn('Stripe init failed');
         return { outcome: 'failed', message: PAYMENT_FAILED_MESSAGE };
       }
+      const email = await sessionEmail();
       const initResult = await initPaymentSheet({
         paymentIntentClientSecret: clientSecret,
         merchantDisplayName: 'Trackitdown',
@@ -73,6 +92,10 @@ export function useBountyPayment() {
         allowsDelayedPaymentMethods: false,
         returnURL: 'trackitdown://stripe-redirect',
         googlePay: GOOGLE_PAY,
+        appearance: APPEARANCE,
+        // The postcode field stays as the sheet decides: it feeds the bank's
+        // fraud check, and the first live payment showed it is used.
+        ...(email ? { defaultBillingDetails: { email } } : {}),
       });
       if (initResult.error) {
         log.warn('PaymentSheet init failed', { code: initResult.error.code });

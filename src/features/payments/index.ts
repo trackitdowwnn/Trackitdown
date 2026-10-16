@@ -28,6 +28,7 @@ export {
   type DeactivateResult,
   type ExitCheck,
 } from './api/paymentsApi';
+export { PAYMENT_CANCELLED_MESSAGE } from './lib/paymentMessages';
 export {
   useBountyPayment,
   type BountyPaymentOutcome,

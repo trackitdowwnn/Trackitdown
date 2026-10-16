@@ -30,7 +30,12 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 
 import { getCurrentUserId } from '@/features/auth';
-import { PaymentError, createBountyPaymentIntent, useBountyPayment } from '@/features/payments';
+import {
+  PAYMENT_CANCELLED_MESSAGE,
+  PaymentError,
+  createBountyPaymentIntent,
+  useBountyPayment,
+} from '@/features/payments';
 import { successHaptic } from '@/shared/lib/haptics';
 import { prefetchDefaultMapCentre } from '@/shared/lib/location/useDefaultMapCentre';
 import { useAfterTransition } from '@/shared/hooks/useAfterTransition';
@@ -229,7 +234,7 @@ export function PostACarScreen({
     // 3. Present Stripe's PaymentSheet.
     const { outcome, message } = await payBounty(clientSecret);
     if (outcome === 'cancelled') {
-      throw new PaymentError('Payment not completed. Tap to try again when ready.', 'CANCELLED');
+      throw new PaymentError(PAYMENT_CANCELLED_MESSAGE, 'CANCELLED');
     }
     if (outcome === 'failed') {
       throw new PaymentError(message ?? 'Your payment didn’t go through. Please try again.', 'FAILED');
