@@ -210,7 +210,8 @@ announced to screen readers.
      "We'll check it as soon as it's in" notice was cut on 2026-10-16 (owner).
    - A wrong code shakes the boxes, and the error clears as they retype.
    - A 60s resend shows "New code sent to …" afterwards.
-   - A spam and expiry hint.
+   - No spam/expiry hint: "Codes can take a minute to arrive…" was cut on
+     2026-10-16 (owner). The 15-minute expiry is in the email.
 3. **First name (new users only)**, under the title "Welcome to Trackitdown".
    It's the public identity (DOMAIN).
 
