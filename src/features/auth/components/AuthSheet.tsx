@@ -68,8 +68,10 @@ const INVALID_EMAIL = 'Enter an email address like name@example.com';
 const RESEND_SECONDS = 60;
 // Must match Supabase's `otp_length` and `otp_expiry` (supabase/config.toml
 // + the hosted dashboard) and the email template's "expires in" line.
-const CODE_LENGTH = 8;
-const CODE_EXPIRY_MINUTES = 60;
+// 6 digits, 15 minutes since 2026-10-16 (was 8 / 60): NIST asks for at least
+// 6 digits and a short life, and no source recommends 8 (best-practice pass).
+const CODE_LENGTH = 6;
+const CODE_EXPIRY_MINUTES = 15;
 // The shortest code Verify accepts — so a change of length on the server
 // never strands anyone (the 8 → 6 switch, 2026-10-15).
 const MIN_CODE_LENGTH = 6;
