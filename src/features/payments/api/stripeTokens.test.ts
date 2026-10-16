@@ -375,6 +375,40 @@ describe('createBankToken', () => {
     expect(everythingLogged()).not.toContain('00012345');
   });
 
+  it('⚠️ a request that hangs is given up on — a retry, not a spinner forever', async () => {
+    jest.useFakeTimers();
+    try {
+      globalThis.fetch = jest.fn(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+          }),
+      ) as unknown as typeof fetch;
+
+      const pending = createBankToken(details).catch((err: unknown) => err);
+      await jest.advanceTimersByTimeAsync(20_000);
+
+      expect(((await pending) as PaymentError).code).toBe('STRIPE_UNAVAILABLE');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('a 2xx whose body will not parse is no answer, in our words', async () => {
+    globalThis.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new SyntaxError('Unexpected token < in JSON');
+      },
+    })) as unknown as typeof fetch;
+
+    const error = await createBankToken(details).catch((err: unknown) => err);
+
+    expect((error as PaymentError).code).toBe('STRIPE_UNAVAILABLE');
+    expect((error as PaymentError).message).not.toMatch(/JSON|token </);
+  });
+
   it('never touches the SDK: no native call can blur the answer again', async () => {
     mockFetch({ ok: true, body: { id: 'btok_123' } });
     await createBankToken(details);

@@ -47,6 +47,43 @@ const TOKEN_FAILURE = 'We couldn’t save your details. Please try again.';
  *  rest of the app says it. */
 const UNREACHABLE = 'We couldn’t reach our payment partner. Please try again.';
 
+/** Long enough for a slow mobile connection; short enough that a dead one
+ *  doesn't leave the button spinning for good (security review, 2026-10-16). */
+const REQUEST_TIMEOUT_MS = 20_000;
+
+/**
+ * POST to Stripe, where NO ANSWER — offline, a dropped connection, a request
+ * that hangs past the timeout — is always STRIPE_UNAVAILABLE, never a refusal.
+ */
+async function postToStripe(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, method: 'POST', signal: controller.signal });
+  } catch {
+    throw new PaymentError(UNREACHABLE, 'STRIPE_UNAVAILABLE');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The token id from a 2xx — a body that won't parse is no answer, in our words. */
+async function tokenIdFrom(response: Response): Promise<string | undefined> {
+  try {
+    const body = (await response.json()) as { id?: string };
+    return body.id;
+  } catch {
+    throw new PaymentError(UNREACHABLE, 'STRIPE_UNAVAILABLE');
+  }
+}
+
+/** Form encoding by hand: the engine's URLSearchParams is not the one Jest runs. */
+function formBody(fields: Record<string, string>): string {
+  return Object.entries(fields)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join('&');
+}
+
 /**
  * Mint the v2 account token carrying identity + ToS acceptance.
  *
@@ -63,9 +100,8 @@ export async function createIdentityToken(
 
   const [year, month, day] = details.dob.split('-').map(Number);
 
-  // Offline or a dropped connection: no answer at all, so never a refusal.
-  const response = await fetch('https://api.stripe.com/v2/core/account_tokens', {
-    method: 'POST',
+  // Offline, dropped or timed out: no answer at all, so never a refusal.
+  const response = await postToStripe('https://api.stripe.com/v2/core/account_tokens', {
     headers: {
       Authorization: `Bearer ${publishableKey}`,
       'Stripe-Version': STRIPE_VERSION,
@@ -98,8 +134,6 @@ export async function createIdentityToken(
         },
       },
     }),
-  }).catch(() => {
-    throw new PaymentError(UNREACHABLE, 'STRIPE_UNAVAILABLE');
   });
 
   if (!response.ok) {
@@ -120,11 +154,11 @@ export async function createIdentityToken(
     );
   }
 
-  const body = (await response.json()) as { id?: string };
-  if (!body.id) {
+  const id = await tokenIdFrom(response);
+  if (!id) {
     throw new PaymentError(TOKEN_FAILURE, 'BAD_SHAPE');
   }
-  return body.id;
+  return id;
 }
 
 /**
@@ -160,7 +194,7 @@ export async function createBankToken(details: BankTokenDetails): Promise<string
   if (!publishableKey) {
     throw new PaymentError(TOKEN_FAILURE, 'NO_PUBLISHABLE_KEY');
   }
-  const form = new URLSearchParams({
+  const fields: Record<string, string> = {
     'bank_account[country]': 'GB',
     'bank_account[currency]': 'gbp',
     'bank_account[account_holder_type]': 'individual',
@@ -168,20 +202,17 @@ export async function createBankToken(details: BankTokenDetails): Promise<string
     // obvious, and getting it wrong makes a token Stripe accepts and can't pay.
     'bank_account[routing_number]': details.sortCode,
     'bank_account[account_number]': details.accountNumber,
-  });
+  };
   if (details.firstName && details.lastName) {
-    form.append('bank_account[account_holder_name]', `${details.firstName} ${details.lastName}`);
+    fields['bank_account[account_holder_name]'] = `${details.firstName} ${details.lastName}`;
   }
 
-  const response = await fetch('https://api.stripe.com/v1/tokens', {
-    method: 'POST',
+  const response = await postToStripe('https://api.stripe.com/v1/tokens', {
     headers: {
       Authorization: `Bearer ${publishableKey}`,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: form.toString(),
-  }).catch(() => {
-    throw new PaymentError(UNREACHABLE, 'STRIPE_UNAVAILABLE');
+    body: formBody(fields),
   });
 
   if (!response.ok) {
@@ -195,11 +226,11 @@ export async function createBankToken(details: BankTokenDetails): Promise<string
     );
   }
 
-  const body = (await response.json()) as { id?: string };
-  if (!body.id) {
+  const id = await tokenIdFrom(response);
+  if (!id) {
     throw new PaymentError(UNREACHABLE, 'STRIPE_UNAVAILABLE');
   }
-  return body.id;
+  return id;
 }
 
 /**
