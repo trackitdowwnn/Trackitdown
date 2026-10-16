@@ -438,6 +438,23 @@ Turn it on once the app update with the new notification kinds is live
 (`eas update:list`) and this migration is deployed. Then run the sweep once by
 hand and read `payoutReminders` and `payoutsLapsed` in its summary.
 
+**A payment was disputed** (alert: "A payment was disputed (chargeback)"). An
+owner's bank took a reward or a £5 fee back. Stripe has already taken the
+amount and its fee from the platform balance. **The platform takes the loss;
+never reverse the spotter's payout** (owner's decision, 2026-10-16).
+1. Open the dispute in Stripe before the "Evidence due by" date in the alert.
+2. Submit evidence: the post, the sighting trail and the recovery, the
+   reward-hold wording the owner agreed to, and any refund already made.
+3. A second alert ("A dispute closed") reports the outcome.
+   If the reward had not been paid out yet, the ledger still says `held`. Stripe
+   refuses to refund a disputed charge (`charge_disputed`), so any refund the
+   sweep or an exit tries will fail and be logged, and no second refund goes
+   out. Settle the post by hand once the dispute closes.
+
+**A spotter's payout was reversed** (alert). Nothing in the app reverses
+transfers, so someone did it in the dashboard. The ledger still says paid.
+Check that this was deliberate, and settle the post and the spotter by hand.
+
 **A reward_end hold** shows in §2's dispute query like any other. Upholding a
 dispute on one credits the spotter on a listing that is still live: the post
 moves to `recovery_claimed` and the payout runs as usual.
