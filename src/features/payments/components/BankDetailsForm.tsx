@@ -105,8 +105,11 @@ export function BankDetailsForm({ onSubmit, onCancel, busy = false }: BankDetail
           (payoutSetupSteps.tsx), typed the same way: the sort code takes its
           own dashes (12-34-56), lengths are capped, and nothing autocorrects
           or autofills a bank number. */}
+      {/* Labels ABOVE the box, as in the setup wizard (owner, 2026-10-16:
+          floating labels were "all over the place"). */}
       <TextField
         label="Sort code"
+        labelPlacement="above"
         value={fields.sortCode}
         onChangeText={set('sortCode', formatSortCode)}
         onBlur={check('sortCode')}
@@ -120,6 +123,7 @@ export function BankDetailsForm({ onSubmit, onCancel, busy = false }: BankDetail
       />
       <TextField
         label="Account number"
+        labelPlacement="above"
         value={fields.accountNumber}
         onChangeText={set('accountNumber')}
         onBlur={check('accountNumber')}
@@ -133,6 +137,7 @@ export function BankDetailsForm({ onSubmit, onCancel, busy = false }: BankDetail
       />
       <TextField
         label="Confirm account number"
+        labelPlacement="above"
         value={fields.confirmAccountNumber}
         onChangeText={set('confirmAccountNumber')}
         onBlur={check('confirmAccountNumber')}
