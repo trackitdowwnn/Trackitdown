@@ -104,6 +104,13 @@ jest.mock('../api/payoutsApi', () => ({
   syncMyPayoutAccount: (...args: unknown[]) => mockSyncAccount(...(args as [])),
 }));
 
+// The bounded re-checks run on a ten-second timer these tests never advance;
+// `spent` is what the screen reads from them, so it is set directly.
+let mockPollSpent = false;
+jest.mock('../hooks/usePollWhileChecking', () => ({
+  usePollWhileChecking: () => ({ spent: mockPollSpent }),
+}));
+
 // The tokenisers go straight to Stripe from the device; in a test they answer
 // with opaque ids, which is also all the screen ever sees of them.
 const mockIdentityToken = jest.fn();
@@ -1068,5 +1075,49 @@ describe('⚠️ waiting on THEM is said plainly, never "being checked" (2026-10
 
     expect(getByText('Your details are being checked')).toBeTruthy();
     expect(queryByText('We need one more thing from you')).toBeNull();
+  });
+});
+
+describe('⚠️ a check that failed is said as one, with a way to ask again (2026-10-16)', () => {
+  afterEach(() => {
+    mockSyncAccount.mockResolvedValue({ needsBank: false });
+    mockPollSpent = false;
+  });
+
+  it('the check failed: "couldn’t check", never "being checked" — and Check again asks again', async () => {
+    mockPollSpent = true;
+    mockSyncAccount.mockResolvedValue({ needsBank: false, needsAction: false, failed: true } as never);
+    mockAccountState = { status: 'verifying', settling: false };
+    const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
+
+    expect(getByText('We couldn’t check your details just now')).toBeTruthy();
+    expect(queryByText('Your details are being checked')).toBeNull();
+
+    mockSyncAccount.mockClear();
+    mockSyncAccount.mockResolvedValue({ needsBank: false, needsAction: true, failed: false } as never);
+    await act(async () => {
+      fireEvent.press(getByText('Check again'));
+    });
+    expect(mockSyncAccount).toHaveBeenCalledTimes(1);
+    // The answer that comes back is the one the screen tells.
+    expect(getByText('We need one more thing from you')).toBeTruthy();
+  });
+
+  it('the automatic checks have stopped: Check again sits beside "being checked"', async () => {
+    mockPollSpent = true;
+    mockSyncAccount.mockResolvedValue({ needsBank: false, needsAction: false, failed: false } as never);
+    mockAccountState = { status: 'verifying', settling: false };
+    const { getByText } = await act(async () => render(<PayoutsScreen />));
+
+    expect(getByText('Your details are being checked')).toBeTruthy();
+    expect(getByText('Check again')).toBeTruthy();
+  });
+
+  it('while the automatic checks run: no button — the screen is already asking', async () => {
+    mockSyncAccount.mockResolvedValue({ needsBank: false, needsAction: false, failed: false } as never);
+    mockAccountState = { status: 'verifying', settling: false };
+    const { queryByText } = await act(async () => render(<PayoutsScreen />));
+
+    expect(queryByText('Check again')).toBeNull();
   });
 });

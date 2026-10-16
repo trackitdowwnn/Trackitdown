@@ -189,6 +189,21 @@ describe('createIdentityToken', () => {
     },
   );
 
+  it('⚠️ offline (fetch itself fails) is a retry in our words, not a refusal', async () => {
+    globalThis.fetch = jest.fn(async () => {
+      throw new TypeError('Network request failed');
+    }) as unknown as typeof fetch;
+
+    const error = await createIdentityToken(details, 'alex@example.com').catch(
+      (err: unknown) => err,
+    );
+
+    expect((error as PaymentError).code).toBe('STRIPE_UNAVAILABLE');
+    expect((error as PaymentError).message).toBe(
+      'We couldn’t reach our payment partner. Please try again.',
+    );
+  });
+
   it('⚠️ never puts the rejection body in front of a person', async () => {
     // Stripe's rejection can echo the values it rejected. This one echoes a
     // date of birth, which is exactly the shape of the accident being guarded.
@@ -317,18 +332,55 @@ describe('createBankToken', () => {
     );
   });
 
-  it('treats a token with no id as a failure', async () => {
+  it('no token and no error is no answer — a retry, not a refusal', async () => {
     mockCreateToken.mockResolvedValue({ token: null, error: null });
 
     const error = await createBankToken(details).catch((err: unknown) => err);
 
-    expect((error as PaymentError).code).toBe('DETAILS_REJECTED');
+    expect((error as PaymentError).code).toBe('STRIPE_UNAVAILABLE');
+  });
+
+  // ⚠️ 2026-10-16: every SDK error used to be DETAILS_REJECTED, and that leads
+  // to "Set up another way", which spends the prefill window for good — so a
+  // spotter who lost signal on the bank step lost the in-app form with it.
+  it.each([
+    ['offline', { code: 'Failed', message: 'The Internet connection appears to be offline.', type: 'api_connection_error' }],
+    ['Stripe down', { code: 'Failed', message: 'Server error', type: 'api_error' }],
+    ['Stripe busy', { code: 'Failed', message: 'Too many requests', type: 'rate_limit_error' }],
+    ['our key', { code: 'Failed', message: 'Invalid API key', type: 'authentication_error' }],
+    ['no type, no Stripe code', { code: 'Failed', message: 'Something went wrong' }],
+  ])('⚠️ %s is a retry, never the irreversible path', async (_label, error) => {
+    mockCreateToken.mockResolvedValue({ token: null, error });
+
+    const thrown = await createBankToken(details).catch((err: unknown) => err);
+
+    expect((thrown as PaymentError).code).toBe('STRIPE_UNAVAILABLE');
+    expect((thrown as PaymentError).message).toBe(
+      'We couldn’t reach our payment partner. Please try again.',
+    );
+  });
+
+  it.each([
+    ['an invalid request', { code: 'Failed', message: 'x', type: 'invalid_request_error', stripeErrorCode: 'account_number_invalid' }],
+    ['a card error', { code: 'Failed', message: 'x', type: 'card_error' }],
+    ['a Stripe code with no type', { code: 'Failed', message: 'x', stripeErrorCode: 'routing_number_invalid' }],
+  ])('%s is Stripe answering about the details — a refusal', async (_label, error) => {
+    mockCreateToken.mockResolvedValue({ token: null, error });
+
+    const thrown = await createBankToken(details).catch((err: unknown) => err);
+
+    expect((thrown as PaymentError).code).toBe('DETAILS_REJECTED');
   });
 
   it('⚠️ never leaks the account number through the SDK error', async () => {
     mockCreateToken.mockResolvedValue({
       token: null,
-      error: { message: 'Invalid account_number: 00012345', code: 'invalid_bank_account' },
+      error: {
+        message: 'Invalid account_number: 00012345',
+        code: 'Failed',
+        type: 'invalid_request_error',
+        stripeErrorCode: 'account_number_invalid',
+      },
     });
 
     const error = await createBankToken(details).catch((err: unknown) => err);

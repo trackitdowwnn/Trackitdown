@@ -31,7 +31,7 @@ import type { PayoutAccountStatus } from '../hooks/usePayoutAccount';
 import { COPY, byDay, carLabel, onDay } from './payoutCopy';
 
 /** What a button does — the screen maps each to a handler. */
-export type PayoutIntent = 'start' | 'continue' | 'bank' | 'idCheck' | 'retry';
+export type PayoutIntent = 'start' | 'continue' | 'bank' | 'idCheck' | 'retry' | 'recheck';
 
 export type ChipTone = 'neutral' | 'warning' | 'success';
 
@@ -57,6 +57,10 @@ export interface PayoutViewInput {
   needsBank: boolean;
   /** Stripe wants something only its own check collects. */
   needsAction: boolean;
+  /** The last check with Stripe failed, so needsBank/needsAction are unknown. */
+  checkFailed: boolean;
+  /** The automatic re-checks have stopped for this visit — offer one by hand. */
+  canCheckAgain: boolean;
   /** The reward read failed — "couldn't check", never "nothing owed". */
   creditCheckFailed: boolean;
   /** The waiting reward; null for none; undefined while still asking. */
@@ -133,6 +137,10 @@ export function payoutView(input: PayoutViewInput, now: Date): PayoutView {
 /** Not payable yet: the setup leads. */
 function setupView(input: PayoutViewInput): PayoutView {
   const { status, credit, settling, checkingNow, needsBank, needsAction } = input;
+  // ⚠️ A FAILED CHECK IS NOT "BEING CHECKED" (2026-10-16). It used to read as
+  // "nothing needed", so someone Stripe was waiting on was told to wait.
+  const checkFailed = !settling && !checkingNow && input.checkFailed;
+  const checkAgain = { label: COPY.action.checkAgain, intent: 'recheck' as const };
 
   if (status === 'notStarted' && credit === null) {
     return input.creditCheckFailed
@@ -173,21 +181,31 @@ function setupView(input: PayoutViewInput): PayoutView {
           detail: COPY.detail.needsId,
           action: { label: COPY.action.startCheck, intent: 'idCheck' },
         })
-      : step('check', COPY.step.check, 'current', {
-          detail: settling
-            ? COPY.detail.settling
-            : checkingNow
-              ? COPY.detail.checkingNow
-              : COPY.detail.checking,
-          working: settling || checkingNow,
-        });
+      : checkFailed
+        ? step('check', COPY.step.check, 'current', {
+            detail: COPY.detail.checkFailed,
+            action: checkAgain,
+          })
+        : step('check', COPY.step.check, 'current', {
+            detail: settling
+              ? COPY.detail.settling
+              : checkingNow
+                ? COPY.detail.checkingNow
+                : COPY.detail.checking,
+            working: settling || checkingNow,
+            // The re-checks have stopped: a way to ask again that isn't
+            // pull-to-refresh, which nobody finds.
+            ...(input.canCheckAgain && !settling && !checkingNow ? { action: checkAgain } : {}),
+          });
 
   const heroStatus = askBank
     ? COPY.status.addBank
     : askCheck
       ? COPY.status.needsYou
       : detailsSent
-        ? COPY.status.checking
+        ? checkFailed
+          ? COPY.status.checkFailed
+          : COPY.status.checking
         : status === 'unfinished'
           ? COPY.status.finishDetails
           : COPY.status.addDetails;

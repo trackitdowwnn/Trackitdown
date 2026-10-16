@@ -42,6 +42,8 @@ export const COPY = {
     finishDetails: 'Finish your details to get paid',
     addBank: 'Add your bank account to get paid',
     checking: 'Your details are being checked',
+    // The check itself failed — never "being checked", which may be untrue.
+    checkFailed: 'We couldn’t check your details just now',
     needsYou: 'We need one more thing from you',
     review: 'A quick check before we send it',
     sending: 'Sending your reward',
@@ -64,6 +66,7 @@ export const COPY = {
     settling: 'Waiting for confirmation — usually a moment.',
     checkingNow: 'Checking with our payment partner now — usually a moment.',
     checking: 'Our payment partner is checking. Usually minutes, sometimes a day.',
+    checkFailed: 'We couldn’t reach our payment partner. Try again in a moment.',
     needsId: 'Our payment partner needs a quick photo ID — about two minutes.',
     review: 'A quick check before we send it. Nothing for you to do.',
     sending: 'We’re sending it now. Nothing for you to do.',
@@ -84,6 +87,7 @@ export const COPY = {
     startCheck: 'Start the check',
     updateBank: 'Update bank details',
     retry: 'Try again',
+    checkAgain: 'Check again',
   },
 
   // --- Status chips: adjectives, never verbs ---

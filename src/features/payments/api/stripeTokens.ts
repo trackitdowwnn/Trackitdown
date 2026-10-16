@@ -47,6 +47,10 @@ const STRIPE_VERSION = '2026-03-25.dahlia';
 
 const TOKEN_FAILURE = 'We couldn’t save your details. Please try again.';
 
+/** Busy, down or offline — never "your details are wrong". "Partner", as the
+ *  rest of the app says it. */
+const UNREACHABLE = 'We couldn’t reach our payment partner. Please try again.';
+
 /**
  * Mint the v2 account token carrying identity + ToS acceptance.
  *
@@ -63,6 +67,7 @@ export async function createIdentityToken(
 
   const [year, month, day] = details.dob.split('-').map(Number);
 
+  // Offline or a dropped connection: no answer at all, so never a refusal.
   const response = await fetch('https://api.stripe.com/v2/core/account_tokens', {
     method: 'POST',
     headers: {
@@ -97,6 +102,8 @@ export async function createIdentityToken(
         },
       },
     }),
+  }).catch(() => {
+    throw new PaymentError(UNREACHABLE, 'STRIPE_UNAVAILABLE');
   });
 
   if (!response.ok) {
@@ -108,10 +115,7 @@ export async function createIdentityToken(
     // "Continue with Stripe", which spends the prefill window for good. Those
     // get a retry instead; only Stripe actually answering "no" is a refusal.
     if (response.status === 429 || response.status >= 500) {
-      throw new PaymentError(
-        'We couldn’t reach our payment provider. Please try again.',
-        'STRIPE_UNAVAILABLE',
-      );
+      throw new PaymentError(UNREACHABLE, 'STRIPE_UNAVAILABLE');
     }
     throw new PaymentError(
       'Those details couldn’t be accepted. Please check them and try again.',
@@ -147,10 +151,7 @@ export async function createBankToken(details: BankTokenDetails): Promise<string
   try {
     await ensureStripeReady();
   } catch {
-    throw new PaymentError(
-      'We couldn’t reach our payment provider. Please try again.',
-      'STRIPE_UNAVAILABLE',
-    );
+    throw new PaymentError(UNREACHABLE, 'STRIPE_UNAVAILABLE');
   }
   const holderName =
     details.firstName && details.lastName
@@ -166,11 +167,33 @@ export async function createBankToken(details: BankTokenDetails): Promise<string
     accountNumber: details.accountNumber,
   });
 
-  if (error || !token?.id) {
+  if (token?.id && !error) {
+    return token.id;
+  }
+  // ⚠️ OFFLINE IS NOT A REFUSAL (2026-10-16) — the identity path's rule above,
+  // brought to the bank path, where every error used to be DETAILS_REJECTED.
+  // That leads to "Set up another way", which spends the prefill window for
+  // good: a spotter on a train would lose the in-app form over one dropped
+  // request. Only Stripe answering about the details themselves is a refusal.
+  if (isBankRefusal(error)) {
     throw new PaymentError(
       'That bank account couldn’t be accepted. Please check it and try again.',
       'DETAILS_REJECTED',
     );
   }
-  return token.id;
+  throw new PaymentError(UNREACHABLE, 'STRIPE_UNAVAILABLE');
+}
+
+/**
+ * True only when Stripe answered and the answer was "these details are wrong":
+ * an `invalid_request_error` or `card_error`, or a Stripe error code with no
+ * type. Network failures, Stripe being down or busy, a key problem on our side,
+ * and "no token, no error" are all something else — and all retryable.
+ */
+export function isBankRefusal(
+  error: { type?: string; stripeErrorCode?: string } | null | undefined,
+): boolean {
+  if (!error) return false;
+  if (error.type === 'invalid_request_error' || error.type === 'card_error') return true;
+  return !error.type && Boolean(error.stripeErrorCode);
 }

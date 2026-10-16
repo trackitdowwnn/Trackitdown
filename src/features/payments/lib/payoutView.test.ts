@@ -29,6 +29,8 @@ const base = (over: Partial<PayoutViewInput> = {}): PayoutViewInput => ({
   checkingNow: false,
   needsBank: false,
   needsAction: false,
+  checkFailed: false,
+  canCheckAgain: false,
   creditCheckFailed: false,
   credit: CREDIT,
   latestPayout: null,
@@ -181,6 +183,42 @@ describe('payoutView — not set up yet: the setup leads', () => {
   it('no reward waiting yet (verifying): the road without a figure', () => {
     const view = journey(payoutView(base({ status: 'verifying', credit: null }), NOW));
     expect(view.hero.amountPence).toBeNull();
+  });
+
+  // ⚠️ 2026-10-16: a failed check used to read as "nothing needed", so someone
+  // Stripe was waiting on was told "being checked" — and waited.
+  it('⚠️ the check itself failed: "couldn’t check", never "being checked", and Check again', () => {
+    const view = journey(payoutView(base({ status: 'verifying', checkFailed: true }), NOW));
+    expect(view.hero.status).toBe(COPY.status.checkFailed);
+    expect(view.steps[1]).toMatchObject({
+      state: 'current',
+      detail: COPY.detail.checkFailed,
+      action: { label: 'Check again', intent: 'recheck' },
+    });
+    expect(view.steps[1]?.working).toBeUndefined();
+  });
+
+  it('a failed check while a new one runs: the running one speaks, not the old failure', () => {
+    const view = journey(
+      payoutView(base({ status: 'verifying', checkFailed: true, checkingNow: true }), NOW),
+    );
+    expect(view.steps[1]).toMatchObject({ working: true, detail: COPY.detail.checkingNow });
+    expect(view.hero.status).toBe(COPY.status.checking);
+  });
+
+  it('the automatic checks have stopped: "Check again" beside "being checked"', () => {
+    const view = journey(payoutView(base({ status: 'verifying', canCheckAgain: true }), NOW));
+    expect(view.steps[1]).toMatchObject({
+      detail: COPY.detail.checking,
+      action: { label: 'Check again', intent: 'recheck' },
+    });
+  });
+
+  it('checks still running: no button — the marker already says it is asking', () => {
+    const view = journey(
+      payoutView(base({ status: 'verifying', checkingNow: true, canCheckAgain: false }), NOW),
+    );
+    expect(view.steps[1]?.action).toBeUndefined();
   });
 });
 
@@ -338,6 +376,8 @@ describe('the copy budget (owner: "too much text")', () => {
     payoutView(base({ status: 'verifying', settling: true }), NOW),
     payoutView(base({ status: 'verifying', needsAction: true }), NOW),
     payoutView(base({ status: 'verifying', needsBank: true }), NOW),
+    payoutView(base({ status: 'verifying', checkFailed: true }), NOW),
+    payoutView(base({ status: 'verifying', canCheckAgain: true }), NOW),
     payoutView(base({ status: 'ready' }), NOW),
     payoutView(base({ status: 'ready', credit: { ...CREDIT, underReview: true } }), NOW),
     ...(['pending', 'in_transit', 'paid', 'failed'] as const).flatMap((s) =>
