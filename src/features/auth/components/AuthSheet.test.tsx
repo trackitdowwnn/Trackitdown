@@ -465,12 +465,14 @@ describe('sign-in best-practice pass (2026-10-15)', () => {
   it('the no-typing ways come first: Google above the email field', async () => {
     const screen = await openSheet();
     const tree = JSON.stringify(screen.toJSON());
-    expect(tree.indexOf('Continue with Google')).toBeLessThan(tree.indexOf('digit code.'));
+    expect(tree.indexOf('"Email"')).toBeGreaterThan(-1);
+    expect(tree.indexOf('Continue with Google')).toBeLessThan(tree.indexOf('"Email"'));
   });
 
-  it('says what happens next, before they commit: "We’ll email you a 6-digit code."', async () => {
+  it('the email step is just the ways in — no explainer lines (owner, 2026-10-16)', async () => {
     const screen = await openSheet();
-    expect(screen.getByText('We’ll email you a 6-digit code.')).toBeTruthy();
+    expect(screen.queryByText(/No password needed/)).toBeNull();
+    expect(screen.queryByText(/digit code/)).toBeNull();
   });
 
   it('⚠️ a malformed address SAYS so (GOV.UK) — never just a greyed-out button', async () => {
@@ -491,11 +493,11 @@ describe('sign-in best-practice pass (2026-10-15)', () => {
     expect(screen.queryByText('Enter an email address like name@example.com')).toBeNull();
   });
 
-  it('shows where the code went, and that it’s checked automatically', async () => {
+  it('shows where the code went — and no "we’ll check it" line (owner, 2026-10-16)', async () => {
     const screen = await openSheet();
     await toCodeStep(screen);
     expect(screen.getByText('sam@example.com')).toBeTruthy();
-    expect(screen.getByText('We’ll check it as soon as it’s in.')).toBeTruthy();
+    expect(screen.queryByText(/as soon as it’s in/)).toBeNull();
     expect(screen.getByText(/check your spam folder/)).toBeTruthy();
   });
 
