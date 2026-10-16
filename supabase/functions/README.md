@@ -4,7 +4,7 @@
 
 | Function | Called by | Job |
 | --- | --- | --- |
-| `create-payment-intent` | the app (`supabase.functions.invoke`) | verify the caller owns the draft post, read the price **from the DB** — the bounty, or the £4.99 listing fee for a no-reward post (ADR-0014) — create a Stripe PaymentIntent (captured immediately), record the ledger row against the matching `kind`, return the client secret. On a **live** post (2026-10-05) it charges a reward CHANGE instead — the amount the owner set via `set_reward_renewal_amount` (which mints a fresh attempt id per choice), keyed `post-renew-<post>-<attempt>-<amount>`, recorded by `record_reward_renewal_intent` naming the reward it replaces; every other open reward intent on the post is then cancelled at Stripe, and only the current attempt can become the reward at capture; the webhook then refunds the old one |
+| `create-payment-intent` | the app (`supabase.functions.invoke`) | verify the caller owns the draft post, read the price **from the DB** — the bounty, or the £5 listing fee for a no-reward post (ADR-0014) — create a Stripe PaymentIntent (captured immediately), record the ledger row against the matching `kind`, return the client secret. On a **live** post (2026-10-05) it charges a reward CHANGE instead — the amount the owner set via `set_reward_renewal_amount` (which mints a fresh attempt id per choice), keyed `post-renew-<post>-<attempt>-<amount>`, recorded by `record_reward_renewal_intent` naming the reward it replaces; every other open reward intent on the post is then cancelled at Stripe, and only the current attempt can become the reward at capture; the webhook then refunds the old one |
 | `deactivate-post` | the app (`supabase.functions.invoke`) | verify the caller owns a **paid** post (`active`/`pending_verification`), then: **bounty post** → owner-denial gate, find the held escrow, refund **minus the fixed 1.5% + 20p card fee** (ADR-0021), flip `→ cancelled` (payment `held → refunded`); **no-reward post** → delist only (`cancel_fee_listing`), no refund, no hold, no dispute window |
 | `refund-recovery` | the app, after `claim_recovery` returns `refund` | the no-spotter ending: refund the bounty and close the post `→ recovered_no_spotter` |
 | `release-payout` | the app, after `claim_recovery` returns `payout` | the credited ending: transfer 95% to the spotter (ADR-0002 transfer math; one transfer per post, forever) and close the post `→ recovered`. Answers `awaiting_payee` — **not an error** — until they have onboarded |
@@ -102,7 +102,14 @@ In **Developers → Webhooks → Add endpoint**:
 - Events: `payment_intent.succeeded`, `payment_intent.payment_failed`,
   `charge.refunded` (the refund confirmation), and `charge.refund.updated`
   (so a refund the bank later bounces reaches the operator — the money is
-  back on the platform balance, where Stripe's 90-day limit still runs)
+  back on the platform balance, where Stripe's 90-day limit still runs),
+  `charge.dispute.created` and `charge.dispute.closed` (a chargeback, which
+  needs evidence before a deadline), and `transfer.reversed` (a spotter's
+  payout taken back). The last four only email the operator.
+- API version: any **dahlia** version. The SDK is pinned to
+  `2026-03-25.dahlia` (`_shared/clients.ts`), and monthly releases within one
+  named version only add fields. Use the same named version for every
+  destination (5, 5b, 5c).
 - Copy the endpoint's **Signing secret** (`whsec_...`) and set it:
 ```bash
 npx supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_...
@@ -189,7 +196,7 @@ charge onwards, and only one of them is exercised by habit:
   and lands on `held`. (In Stripe the PaymentIntent's metadata says
   `kind=reward_hold`: "escrow" is a restricted category at Stripe, so the word
   stays in our ledger and out of anything Stripe's reviewers read.)
-- *No reward, £4.99* → charges 499p; the row is `kind=listing_fee` and lands on
+- *No reward, £5* → charges 500p; the row is `kind=listing_fee` and lands on
   **`collected`**, never `held`. If you ever see a fee row at `held`, stop: that
   is refundable money that should not be.
 

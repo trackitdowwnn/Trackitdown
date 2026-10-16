@@ -11,7 +11,9 @@
  *        "Reward ended", 20261006130000), and a superseded payment (renewed,
  *        or a stray capture) never touches it. The
  *        exit functions and the sweep are authoritative; this reconciles them.
- *        charge.refund.updated with status failed emails the operator. v2 THIN
+ *        charge.refund.updated with status failed emails the operator, and so
+ *        do charge.dispute.created/closed and transfer.reversed (2026-10-16:
+ *        the platform takes a chargeback's loss, never a spotter). v2 THIN
  *        account events (their own destination and secret, 2026-10-14) re-read
  *        a spotter's payee account and pay them if it just became payable —
  *        see handleThinEvent at the bottom. payout.* (from the connected-
@@ -278,6 +280,67 @@ Deno.serve(async (request) => {
           'Contact the owner and return it another way, then note it on the payment. See docs/OPERATIONS.md (money deadlines).',
         ]);
       }
+    } else if (event.type === 'charge.dispute.created' || event.type === 'charge.dispute.closed') {
+      // A CHARGEBACK (2026-10-16). We are the merchant of record and carry the
+      // losses, so Stripe takes the disputed amount and fee from the platform
+      // balance, whether or not the reward has already been paid out. The owner's
+      // decision: the platform takes the loss and contests it with evidence, and
+      // NEVER claws money back from a spotter. So nothing moves here. A person
+      // must answer the dispute before its deadline, and Stripe only tells us
+      // through this event. Ids, state and dates only (sendOpsAlert's rule).
+      const dispute = event.data.object as Stripe.Dispute;
+      const intentId =
+        typeof dispute.payment_intent === 'string'
+          ? dispute.payment_intent
+          : dispute.payment_intent?.id ?? null;
+      let postId: string | null = null;
+      let kind: string | null = null;
+      if (intentId) {
+        try {
+          const intent = await stripe.paymentIntents.retrieve(intentId);
+          postId = intent.metadata?.post_id ?? null;
+          kind = intent.metadata?.kind ?? null;
+        } catch (err) {
+          // The alert matters more than the post id; the dispute id finds it.
+          console.warn('[payments] dispute intent lookup failed', (err as Error).message);
+        }
+      }
+      const dueBy = dispute.evidence_details?.due_by
+        ? new Date(dispute.evidence_details.due_by * 1000).toISOString().slice(0, 10)
+        : 'not given';
+      if (event.type === 'charge.dispute.created') {
+        await sendOpsAlert('A payment was disputed (chargeback)', [
+          `Dispute: ${dispute.id}`,
+          `PaymentIntent: ${intentId ?? 'unknown'}`,
+          `Post: ${postId ?? 'unknown'} (${kind ?? 'unknown kind'})`,
+          `Reason: ${dispute.reason}`,
+          `Evidence due by: ${dueBy}`,
+          '',
+          'Stripe has already taken the disputed amount from the platform balance. Do not reverse the spotter’s payout.',
+          'Submit evidence in the Stripe dashboard before the deadline. See docs/OPERATIONS.md §8, "A payment was disputed".',
+        ]);
+      } else {
+        await sendOpsAlert(`A dispute closed: ${dispute.status}`, [
+          `Dispute: ${dispute.id}`,
+          `PaymentIntent: ${intentId ?? 'unknown'}`,
+          `Post: ${postId ?? 'unknown'} (${kind ?? 'unknown kind'})`,
+          `Outcome: ${dispute.status}`,
+        ]);
+      }
+    } else if (event.type === 'transfer.reversed') {
+      // A spotter's payout was taken back. Nothing here reverses transfers,
+      // so this only happens by hand (OPERATIONS.md §8, "A lapse found a
+      // transfer") or by Stripe. Either way the ledger still says `recovered`
+      // and paid. A person must check that the two agree.
+      const transfer = event.data.object as Stripe.Transfer;
+      await sendOpsAlert('A spotter’s payout was reversed', [
+        `Transfer: ${transfer.id}`,
+        `Post: ${transfer.metadata?.post_id ?? 'unknown'}`,
+        `Sighting: ${transfer.metadata?.sighting_id ?? 'unknown'}`,
+        `Fully reversed: ${transfer.reversed ? 'yes' : 'no (partial)'}`,
+        '',
+        'The ledger still records this payout as sent. Check the post and the spotter, and settle it by hand.',
+      ]);
     } else if (event.type === 'account.updated') {
       // A SPOTTER'S payee account changed — almost always them finishing, or
       // abandoning, Stripe's hosted onboarding.
