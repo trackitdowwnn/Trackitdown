@@ -83,6 +83,7 @@ import {
 } from '../api/rewardChangeApi';
 import { syncPostPayment } from '../api/paymentsApi';
 import { useBountyPayment } from '../hooks/useBountyPayment';
+import { PAYMENT_CANCELLED_MESSAGE } from '../lib/paymentMessages';
 
 const log = createLogger('payments');
 
@@ -206,6 +207,8 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
       const secret = await createRewardChangeIntent(postId);
       const payment = await payBounty(secret);
       if (payment.outcome === 'cancelled') {
+        // Said, not silent (2026-10-16): the same calm line as Post a car.
+        setError(PAYMENT_CANCELLED_MESSAGE);
         return;
       }
       if (payment.outcome === 'failed') {

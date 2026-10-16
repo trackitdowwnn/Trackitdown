@@ -29,9 +29,18 @@ jest.mock('@/shared/lib/logger', () => ({
   createLogger: () => ({ info: jest.fn(), warn: jest.fn(), debug: jest.fn(), error: jest.fn() }),
 }));
 
+// The signed-in email prefills the sheet (2026-10-16), read from the session.
+const mockGetSession = jest.fn();
+jest.mock('@/shared/api', () => ({
+  supabase: { auth: { getSession: () => mockGetSession() } },
+}));
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockEnsureReady.mockResolvedValue(undefined);
+  mockGetSession.mockResolvedValue({
+    data: { session: { user: { email: 'owner@example.com' } } },
+  });
 });
 
 async function payBounty() {
@@ -101,5 +110,27 @@ describe('useBountyPayment', () => {
     const result = await (await payBounty())('secret');
     expect(result.outcome).toBe('failed');
     expect(mockPresent).not.toHaveBeenCalled();
+  });
+
+  // 2026-10-16: the sheet opened in the payment partner's default look.
+  it('opens the sheet in the app’s own colours, with the signed-in email filled in', async () => {
+    mockInit.mockResolvedValue({ error: undefined });
+    mockPresent.mockResolvedValue({ error: undefined });
+
+    await (await payBounty())('secret');
+    const options = mockInit.mock.calls[0][0];
+    expect(options.appearance.colors.light.primary).toBe('#1A1A1A');
+    expect(options.appearance.colors.dark.primary).toBe('#F2F2F2');
+    expect(options.defaultBillingDetails).toEqual({ email: 'owner@example.com' });
+  });
+
+  it('no session email: no prefill, and the payment still goes ahead', async () => {
+    mockGetSession.mockRejectedValue(new Error('storage unavailable'));
+    mockInit.mockResolvedValue({ error: undefined });
+    mockPresent.mockResolvedValue({ error: undefined });
+
+    const result = await (await payBounty())('secret');
+    expect(mockInit.mock.calls[0][0]).not.toHaveProperty('defaultBillingDetails');
+    expect(result.outcome).toBe('paid');
   });
 });
