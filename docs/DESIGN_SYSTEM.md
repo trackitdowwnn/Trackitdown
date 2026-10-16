@@ -340,6 +340,15 @@ are build output.
 
 ## Core components (live in `src/shared/ui/`)
 
+- **TextField** — radius `md`, `border` → `primary` on focus → `danger` on
+  error. The label **floats** by default (box 56 high): it rests in the box
+  and rises when focused or filled. `labelPlacement="above"` fixes it over a
+  52-high box in `label` ink instead, with `helperText` between them as a
+  `caption` hint (GOV.UK's order) and only an error below. Use `above` on a
+  form of several boxes filled in one go — the payout-setup wizard
+  (2026-10-16, owner: "labels all over the place"), where floating labels sat
+  at two sizes and heights at once. Never a placeholder in place of a label.
+
 - **Button** — variants: `primary` (near-black fill), `secondary` (outline),
   `ghost`, `danger`, `dangerOutline` (red outline, for an emergency action
   beside a primary: the safety sheet's "Call 999"), `subtle`. Height 52,

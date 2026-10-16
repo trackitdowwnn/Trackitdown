@@ -1,7 +1,8 @@
 /**
  * WHAT:  TextField — the app's controlled text-input primitive. A themed
  *        wrapper around the host-provided TextInput (plain React Native
- *        everywhere, sheet-aware inside a BottomSheet) with a FLOATING label,
+ *        everywhere, sheet-aware inside a BottomSheet) with a FLOATING label
+ *        (or, with labelPlacement="above", a fixed one over the box),
  *        helper/error text, focus states, and keyboard/format variants (text,
  *        multiline, email, plate).
  * WHY:   Forms are everywhere (posting stepper, auth, chat, bounty entry) and
@@ -11,8 +12,8 @@
  *        is an optional format hint shown only while focused. The component is
  *        presentational and form-library-agnostic (value/onChangeText/onBlur/
  *        error), so a react-hook-form <Controller> can drive it later. Styling
- *        is tokens-only (docs/DESIGN_SYSTEM.md): border on default, sage
- *        `primary` on focus, muted `danger` on error. The `plate` variant only
+ *        is tokens-only (docs/DESIGN_SYSTEM.md): `border` on default,
+ *        `primary` on focus, `danger` on error. The `plate` variant only
  *        *formats* input (uppercase + letter-spacing); plate validation lives at
  *        the form layer.
  * LINKS: docs/DESIGN_SYSTEM.md (Colour, Typography, Forms, Accessibility);
@@ -85,6 +86,18 @@ export interface TextFieldProps
    * count from `accessibilityHint` on the input, not from a floating number.
    */
   counter?: string;
+  /**
+   * Where the label sits. `floating` (default) rests inside the box and floats
+   * up. `above` is a fixed label over the box, with `helperText` between them
+   * as a hint (GOV.UK's order) and only an error below.
+   *
+   * ⚠️ WHY `above` EXISTS (owner, 2026-10-16: "input labels are all over the
+   * place"). On a form of mostly-empty boxes, floating labels sit at two
+   * sizes and two heights at once — big and centred in the empty boxes, small
+   * and high in the filled ones. A fixed label never moves. Opt-in for now:
+   * the payout-setup wizard uses it; the rest of the app is unchanged.
+   */
+  labelPlacement?: 'floating' | 'above';
   /** Keyboard + formatting preset. */
   variant?: TextFieldVariant;
   /** Disables input and mutes the field. */
@@ -121,6 +134,7 @@ export function TextField({
   error,
   helperText,
   counter,
+  labelPlacement = 'floating',
   variant = 'text',
   disabled = false,
   placeholder,
@@ -131,7 +145,8 @@ export function TextField({
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const [focused, setFocused] = useState(false);
-  const hasFloatingLabel = Boolean(label);
+  const labelAbove = Boolean(label) && labelPlacement === 'above';
+  const hasFloatingLabel = Boolean(label) && !labelAbove;
   const isMultiline = variant === 'multiline';
   // The label floats up whenever the field is focused or already holds a value.
   const floated = focused || value.length > 0;
@@ -154,6 +169,8 @@ export function TextField({
   useEffect(() => {
     if (lastFloated.current === floated) return;
     lastFloated.current = floated;
+    // A label above the box never floats: nothing to animate.
+    if (!hasFloatingLabel) return;
     const animation = Animated.timing(floatAnim, {
       toValue: floated ? 1 : 0,
       duration: 200,
@@ -162,7 +179,7 @@ export function TextField({
     });
     animation.start();
     return () => animation.stop();
-  }, [floated, floatAnim]);
+  }, [floated, floatAnim, hasFloatingLabel]);
 
   useEffect(() => {
     if (lastFocused.current === focused) return;
@@ -215,10 +232,28 @@ export function TextField({
         outputRange: [palette.textSecondary, palette.primary],
       });
 
-  const message = error ?? helperText;
+  // Above: the hint lives under the label, so only an error goes below.
+  const message = labelAbove ? error : (error ?? helperText);
 
   return (
     <View style={styles.root}>
+      {labelAbove ? (
+        // Hidden from the a11y tree, as the floating label is: the input
+        // carries the label as its name and the hint as its hint, so a screen
+        // reader hears both once, on the field, rather than three stops.
+        <View
+          style={styles.labelAboveGroup}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
+          <Text style={[styles.labelAbove, disabled && styles.labelAboveDisabled]}>{label}</Text>
+          {helperText ? (
+            <Text style={[styles.hintAbove, disabled && styles.labelAboveDisabled]}>
+              {helperText}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
       <Animated.View
         style={[
           styles.inputWrap,
@@ -285,6 +320,7 @@ export function TextField({
             variant === 'plate' && styles.inputPlate,
           ]}
           accessibilityLabel={label ? (error ? `${label}, error: ${error}` : label) : undefined}
+          accessibilityHint={labelAbove ? helperText : undefined}
           accessibilityState={{ disabled }}
           aria-invalid={error ? true : undefined}
           {...VARIANT_PROPS[variant]}
@@ -351,6 +387,22 @@ const makeStyles = (c: Palette) =>
     inputWrapDisabled: {
       backgroundColor: c.surfaceSubtle,
       opacity: opacity.disabled,
+    },
+    // labelPlacement="above": label, then its hint, close together; the
+    // root's gap then separates the pair from the box.
+    labelAboveGroup: {
+      gap: spacing.xs,
+    },
+    labelAbove: {
+      ...typography.label,
+      color: c.textPrimary,
+    },
+    labelAboveDisabled: {
+      opacity: opacity.disabled,
+    },
+    hintAbove: {
+      ...typography.caption,
+      color: c.textSecondary,
     },
     floatingLabel: {
       position: 'absolute',

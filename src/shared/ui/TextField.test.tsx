@@ -112,4 +112,79 @@ describe('TextField', () => {
     fireEvent(getByPlaceholderText('name'), 'blur');
     expect(onBlur).toHaveBeenCalled();
   });
+
+  describe('labelPlacement="above" (owner, 2026-10-16: "labels all over the place")', () => {
+    it('puts the label, then its hint, over the box — and never moves them', async () => {
+      const timing = jest.spyOn(Animated, 'timing');
+      try {
+        const view = await render(
+          <TextField
+            testID="sort-code"
+            labelPlacement="above"
+            label="Sort code"
+            helperText="6 digits"
+            placeholder="12-34-56"
+            value=""
+            onChangeText={jest.fn()}
+          />,
+        );
+        const tree = JSON.stringify(view.toJSON());
+        expect(tree.indexOf('"Sort code"')).toBeLessThan(tree.indexOf('"6 digits"'));
+        expect(tree.indexOf('"6 digits"')).toBeLessThan(tree.indexOf('"sort-code"'));
+        // A real placeholder, shown before focus: the label isn't in the box.
+        expect(view.getByTestId('sort-code').props.placeholder).toBe('12-34-56');
+
+        await act(async () => {
+          fireEvent(view.getByTestId('sort-code'), 'focus');
+        });
+        await act(async () => {
+          fireEvent.changeText(view.getByTestId('sort-code'), '1');
+        });
+        // Only the border tint animates; no label float.
+        expect(timing).toHaveBeenCalledTimes(1);
+        await act(async () => view.unmount());
+      } finally {
+        timing.mockRestore();
+      }
+    });
+
+    it('gives a screen reader the label as the name and the hint as the hint, once', async () => {
+      const view = await render(
+        <TextField
+          testID="sort-code"
+          labelPlacement="above"
+          label="Sort code"
+          helperText="6 digits"
+          value=""
+          onChangeText={jest.fn()}
+        />,
+      );
+      const input = view.getByTestId('sort-code');
+      expect(input.props.accessibilityLabel).toBe('Sort code');
+      expect(input.props.accessibilityHint).toBe('6 digits');
+      // The visible pair is hidden, so it isn't read twice.
+      expect(view.queryByText('Sort code')).toBeNull();
+      expect(view.getByText('Sort code', { includeHiddenElements: true })).toBeTruthy();
+    });
+
+    it('keeps the hint above and puts an error below the box', async () => {
+      const view = await render(
+        <TextField
+          testID="sort-code"
+          labelPlacement="above"
+          label="Sort code"
+          helperText="6 digits"
+          error="A sort code is 6 digits"
+          value="12"
+          onChangeText={jest.fn()}
+        />,
+      );
+      const tree = JSON.stringify(view.toJSON());
+      expect(tree.indexOf('"6 digits"')).toBeLessThan(tree.indexOf('"sort-code"'));
+      expect(tree.indexOf('"sort-code"')).toBeLessThan(tree.indexOf('"A sort code is 6 digits"'));
+      expect(view.getByTestId('sort-code').props.accessibilityLabel).toBe(
+        'Sort code, error: A sort code is 6 digits',
+      );
+    });
+  });
 });
