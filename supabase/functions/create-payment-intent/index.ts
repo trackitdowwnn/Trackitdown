@@ -73,6 +73,10 @@ Deno.serve(async (request) => {
     return errorResponse('NOT_AUTHENTICATED', 'You need to be signed in to pay.', 401);
   }
   const userId = userData.user.id;
+  // Stripe emails the receipt here (and a refund receipt later) when the
+  // Dashboard's customer-email settings are on. From the verified session, never
+  // the request body. Phone-only accounts have none and simply get no receipt.
+  const receiptEmail = userData.user.email || undefined;
 
   // --- Parse the request ------------------------------------------------------
   let postId: unknown;
@@ -107,7 +111,7 @@ Deno.serve(async (request) => {
   // first charge. Still no mode flag: the post's status decides, and the
   // amount comes from the row the owner wrote via set_reward_renewal_amount.
   if (post.status === 'active' || post.status === 'pending_verification') {
-    return chargeRewardChange(admin, postId, userId);
+    return chargeRewardChange(admin, postId, userId, receiptEmail);
   }
   if (post.status !== 'draft') {
     return errorResponse(
@@ -198,6 +202,7 @@ Deno.serve(async (request) => {
         // charging before the recipient is known, which is what it is. Charges
         // made before this change still carry the old label; nothing reads it.
         metadata: { post_id: postId, kind: isListingFee ? 'listing_fee' : 'reward_hold' },
+        receipt_email: receiptEmail,
       },
       // Idempotency key = kind + post_id + amount: a retry after a cancelled/
       // declined sheet returns the SAME PaymentIntent (never double-charged); a
@@ -289,6 +294,7 @@ async function chargeRewardChange(
   admin: ReturnType<typeof createServiceRoleClient>,
   postId: string,
   userId: string,
+  receiptEmail: string | undefined,
 ): Promise<Response> {
   const { data: ctx, error: ctxError } = await admin.rpc('reward_charge_context', {
     p_post_id: postId,
@@ -336,6 +342,7 @@ async function chargeRewardChange(
       kind: 'reward_hold',
       ...(context.currentPaymentIntentId ? { replaces: context.currentPaymentIntentId } : {}),
     },
+    receipt_email: receiptEmail,
   };
 
   let paymentIntent;
