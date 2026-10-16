@@ -32,7 +32,16 @@ import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { z } from 'zod';
 
 import { legalHref } from '@/shared/lib';
-import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
+import {
+  cardSurface,
+  opacity,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { TextField } from '@/shared/ui';
 import type { WizardStepProps } from '@/shared/wizard';
 
@@ -320,7 +329,8 @@ function SummaryRow({
   const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.summaryRow} testID={testID}>
-      <View style={styles.summaryText}>
+      {/* One stop for a screen reader, not two: "You: Ada Lovelace · …". */}
+      <View style={styles.summaryText} accessible accessibilityLabel={`${label}: ${value}`}>
         <Text style={styles.summaryLabel}>{label}</Text>
         <Text style={styles.summaryValue}>{value}</Text>
       </View>
@@ -332,10 +342,12 @@ function SummaryRow({
           accessibilityRole="button"
           accessibilityLabel={editLabel}
           accessibilityState={{ disabled: Boolean(disabled) }}
-          style={styles.summaryEdit}
+          style={({ pressed }) => [styles.summaryEdit, pressed ? styles.editPressed : null]}
           testID={`${testID}-edit`}
         >
-          <Text style={styles.link}>Edit</Text>
+          {/* The wizard ReviewStep's Edit, exactly: label size, and the
+              underline comes off while sending. */}
+          <Text style={[styles.editLink, disabled ? styles.editLinkDisabled : null]}>Edit</Text>
         </Pressable>
       ) : null}
     </View>
@@ -402,7 +414,7 @@ const makeStyles = (c: Palette) =>
     // A quiet panel: reads as a note about the form, not part of it.
     terms: {
       backgroundColor: c.surfaceSubtle,
-      borderRadius: radii.md,
+      borderRadius: radii.lg,
       padding: spacing.lg,
     },
     note: {
@@ -416,10 +428,8 @@ const makeStyles = (c: Palette) =>
     },
     // The folded-in review, as one card: its title, then two rows.
     summary: {
+      ...cardSurface(c),
       gap: spacing.md,
-      borderWidth: 1,
-      borderColor: c.border,
-      borderRadius: radii.lg,
       padding: spacing.lg,
     },
     summaryDivider: {
@@ -446,6 +456,18 @@ const makeStyles = (c: Palette) =>
     summaryValue: {
       ...typography.body,
       color: c.textPrimary,
+    },
+    editLink: {
+      ...typography.label,
+      color: c.primary,
+      textDecorationLine: 'underline',
+    },
+    editPressed: {
+      opacity: opacity.pressed,
+    },
+    editLinkDisabled: {
+      color: c.textSecondary,
+      textDecorationLine: 'none',
     },
     summaryEdit: {
       minHeight: sizes.touchTarget,

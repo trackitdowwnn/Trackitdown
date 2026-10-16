@@ -1,7 +1,8 @@
 /**
  * WHAT:  TextField — the app's controlled text-input primitive. A themed
  *        wrapper around the host-provided TextInput (plain React Native
- *        everywhere, sheet-aware inside a BottomSheet) with a FLOATING label,
+ *        everywhere, sheet-aware inside a BottomSheet) with a FLOATING label
+ *        (or, with labelPlacement="above", a fixed one over the box),
  *        helper/error text, focus states, and keyboard/format variants (text,
  *        multiline, email, plate).
  * WHY:   Forms are everywhere (posting stepper, auth, chat, bounty entry) and
@@ -11,8 +12,8 @@
  *        is an optional format hint shown only while focused. The component is
  *        presentational and form-library-agnostic (value/onChangeText/onBlur/
  *        error), so a react-hook-form <Controller> can drive it later. Styling
- *        is tokens-only (docs/DESIGN_SYSTEM.md): border on default, sage
- *        `primary` on focus, muted `danger` on error. The `plate` variant only
+ *        is tokens-only (docs/DESIGN_SYSTEM.md): `border` on default,
+ *        `primary` on focus, `danger` on error. The `plate` variant only
  *        *formats* input (uppercase + letter-spacing); plate validation lives at
  *        the form layer.
  * LINKS: docs/DESIGN_SYSTEM.md (Colour, Typography, Forms, Accessibility);
@@ -246,7 +247,11 @@ export function TextField({
           importantForAccessibility="no-hide-descendants"
         >
           <Text style={[styles.labelAbove, disabled && styles.labelAboveDisabled]}>{label}</Text>
-          {helperText ? <Text style={styles.hintAbove}>{helperText}</Text> : null}
+          {helperText ? (
+            <Text style={[styles.hintAbove, disabled && styles.labelAboveDisabled]}>
+              {helperText}
+            </Text>
+          ) : null}
         </View>
       ) : null}
       <Animated.View
