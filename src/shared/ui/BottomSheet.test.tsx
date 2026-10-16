@@ -90,7 +90,9 @@ jest.mock('@gorhom/bottom-sheet', () => {
   };
 });
 
-function renderSheet(props: { title?: string; onDismiss?: () => void } = {}) {
+function renderSheet(
+  props: { title?: string; onDismiss?: () => void; hideClose?: boolean } = {},
+) {
   const sheetRef = createRef<BottomSheetRef>();
   const view = render(
     <BottomSheet ref={sheetRef} {...props}>
@@ -145,6 +147,35 @@ describe('BottomSheet', () => {
 
     expect(queryByText('Sheet body')).toBeNull();
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('⚠️ a visible X closes the sheet — the same way close() does (2026-10-15, NN/g)', async () => {
+    const onDismiss = jest.fn();
+    const { sheetRef, view } = renderSheet({ title: 'Filters', onDismiss });
+    const { findByRole, queryByText } = await view;
+    await act(async () => sheetRef.current?.open());
+
+    const close = await findByRole('button', { name: 'Close' });
+    await act(async () => {
+      fireEvent.press(close);
+    });
+    expect(queryByText('Sheet body')).toBeNull();
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('the X is there even without a title', async () => {
+    const { sheetRef, view } = renderSheet();
+    const { findByRole } = await view;
+    await act(async () => sheetRef.current?.open());
+    expect(await findByRole('button', { name: 'Close' })).toBeTruthy();
+  });
+
+  it('hideClose leaves it out', async () => {
+    const { sheetRef, view } = renderSheet({ title: 'Filters', hideClose: true });
+    const { findByText, queryByRole } = await view;
+    await act(async () => sheetRef.current?.open());
+    expect(await findByText('Sheet body')).toBeTruthy();
+    expect(queryByRole('button', { name: 'Close' })).toBeNull();
   });
 
   it('⚠️ Android Back closes the sheet, and only the sheet', async () => {
