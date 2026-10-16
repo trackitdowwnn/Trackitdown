@@ -17,6 +17,20 @@ const renderForm = async (onSubmit = jest.fn(async (_details: unknown) => {})) =
 });
 
 describe('BankDetailsForm', () => {
+  it('puts every label above its box, as the setup wizard does', async () => {
+    const { view } = await renderForm();
+    const tree = JSON.stringify(view.toJSON());
+    // Label text comes before its input in the tree — over the box, not in it.
+    for (const [label, id] of [
+      ['Sort code', 'bank-sort-code'],
+      ['Account number', 'bank-account-number'],
+      ['Confirm account number', 'bank-confirm-account-number'],
+    ]) {
+      expect(tree.indexOf(`"${label}"`)).toBeGreaterThan(-1);
+      expect(tree.indexOf(`"${label}"`)).toBeLessThan(tree.indexOf(`"${id}"`));
+    }
+  });
+
   it('types the sort code’s dashes for them, as the wizard does', async () => {
     const { view } = await renderForm();
     await act(async () => {
