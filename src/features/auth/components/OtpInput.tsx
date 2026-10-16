@@ -1,5 +1,5 @@
 /**
- * WHAT:  OtpInput — the 8-digit code entry: a row of boxes driven by ONE hidden
+ * WHAT:  OtpInput — the 6-digit code entry: a row of boxes driven by ONE hidden
  *        TextInput. Auto-advances as you type, accepts a full pasted code, auto-
  *        submits on the last digit, and shakes (then the parent clears) on a
  *        wrong code.
@@ -36,8 +36,9 @@ import {
 import { HostTextInput } from '@/shared/ui';
 
 // Must match Supabase's `otp_length` (supabase/config.toml + the hosted
-// dashboard). Both are 8 — a code shorter than this never auto-submits.
-const DEFAULT_LENGTH = 8;
+// dashboard). Both are 6 since 2026-10-16 (were 8). A shorter code than
+// this never auto-submits — AuthSheet's Verify button covers that.
+const DEFAULT_LENGTH = 6;
 const SHAKE_MS = 60;
 // A brief left-right nudge — RN's Animated (not reanimated) keeps this one-off
 // dependency-light and jest-friendly, and it needs no shared values. Not gated

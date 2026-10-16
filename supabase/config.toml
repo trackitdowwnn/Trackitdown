@@ -228,10 +228,13 @@ enable_confirmations = false
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
 max_frequency = "1s"
-# Number of characters used in the email OTP.
-otp_length = 8
-# Number of seconds before the email OTP expires (defaults to 1 hour).
-otp_expiry = 3600
+# Number of characters used in the email OTP. 6 since 2026-10-16 (was 8) —
+# must match the app's CODE_LENGTH (features/auth/components/AuthSheet.tsx)
+# and the hosted dashboard.
+otp_length = 6
+# Number of seconds before the email OTP expires: 15 minutes (was 1 hour) —
+# NIST asks for a short life; the email template says "15 minutes".
+otp_expiry = 900
 
 # Use a production-ready SMTP server
 # [auth.email.smtp]

@@ -263,10 +263,19 @@ re-auth, alert radius (→ notifications), account deletion (→ profile).
 ## Config (NOT code — set these before the flow works end-to-end)
 
 **Email OTP (works today with the defaults)** — `supabase/config.toml` already
-provisions it: `otp_length = 8`, `otp_expiry = 3600`, `enable_confirmations =
+provisions it: `otp_length = 6`, `otp_expiry = 900`, `enable_confirmations =
 false`. Local dev uses **Inbucket** (no real email). Production needs **custom
 SMTP** — a Phase 5 task; Supabase's default sender is fine for dev/beta.
 Dashboard (hosted): set the email OTP template + confirm the OTP length/expiry.
+
+> **6 digits / 15 minutes since 2026-10-16** (were 8 / 60 — the sign-in
+> best-practice pass: NIST asks for ≥ 6 digits and a short life). The hosted
+> values live in **Dashboard → Authentication → Sign In / Providers → Email**:
+> **Email OTP Length = 6**, **Email OTP Expiration = 900** seconds.
+> ⚠️ **Order matters:** change the dashboard FIRST, then ship the app. An app
+> with 6 boxes against a server still sending 8 digits cuts every code to 6
+> and no one can sign in; an app with 8 boxes against 6-digit codes still
+> works, because its Verify button accepts 6 (OTA 98618fd7).
 
 ### Email OTP template (manual dashboard step)
 
@@ -274,7 +283,8 @@ Dashboard (hosted): set the email OTP template + confirm the OTP length/expiry.
 > API (`PATCH /v1/projects/{ref}/config/auth`, fields
 > `mailer_templates_magic_link_content` + `mailer_subjects_magic_link`) —
 > the Magic Link slot now holds this template with `{{ .Token }}` and the
-> subject below; hosted `mailer_otp_length = 8` / expiry 3600 confirmed.
+> subject below; hosted `mailer_otp_length = 8` / expiry 3600 confirmed
+> (now 6 / 900 — see the note above; the template copy says 15 minutes).
 > The **"Confirm signup" slot also carries the same template** (originally a
 > wrong-slot paste, kept deliberately as the step-5 belt-and-braces).
 > Gotcha that prompted this: pasting into "Confirm signup" INSTEAD of
@@ -288,7 +298,7 @@ from `docs/DESIGN_SYSTEM.md` with a token→hex map in the file header). It is
 
 1. **Dashboard → Authentication → Email Templates → "Magic Link".**
    Email OTP shares its implementation with Magic Links: `signInWithOtp` sends
-   using the **Magic Link** template, so this is the slot our 8-digit code goes
+   using the **Magic Link** template, so this is the slot our 6-digit code goes
    in ([Supabase docs](https://supabase.com/docs/guides/auth/passwordless-login/auth-email-otp):
    "To send an OTP instead of a Magic Link, alter the Magic Link email template").
 2. **Replace the entire template body** with the contents of
@@ -300,7 +310,7 @@ from `docs/DESIGN_SYSTEM.md` with a token→hex map in the file header). It is
    "Your login code is inside." so the inbox preview still reads cleanly.
 4. **The OTP variable is `{{ .Token }}`** — Supabase substitutes the numeric code
    at send time. (Not `{{ .ConfirmationURL }}`; there is no magic link in this
-   template. The 60-minute expiry copy matches `otp_expiry = 3600`.)
+   template. The 15-minute expiry copy matches `otp_expiry = 900`.)
 5. **Belt-and-braces (verify, not doc-confirmed):** our call uses
    `signInWithOtp({ shouldCreateUser: true })`, so a **brand-new** user's first
    code may be sent via the **"Confirm signup"** template instead of Magic Link.
@@ -310,7 +320,7 @@ from `docs/DESIGN_SYSTEM.md` with a token→hex map in the file header). It is
 
 **After pasting, manually verify three things:**
 1. **Send yourself a real OTP** (trigger a login from the app or Auth → Users) and
-   confirm the email shows the 8-digit code in the hero block, from the right
+   confirm the email shows the 6-digit code in the hero block, from the right
    sender, with intact layout.
 2. **Open it in iPhone Mail:** check iOS offers the code as a one-tap suggestion
    above the keyboard. That autofill keys off wording — the email must contain the

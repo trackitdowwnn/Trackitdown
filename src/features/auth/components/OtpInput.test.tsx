@@ -45,17 +45,17 @@ describe('OtpInput', () => {
     expect(onChangeText).toHaveBeenLastCalledWith('1234');
     expect(onComplete).not.toHaveBeenCalled();
 
-    await type('12345678');
-    expect(onComplete).toHaveBeenCalledWith('12345678');
+    await type('123456');
+    expect(onComplete).toHaveBeenCalledWith('123456');
   });
 
   it('accepts a full pasted code and strips non-digits', async () => {
     const { onChangeText, onComplete } = await renderOtp();
 
-    // A pasted "1 2-3.4 5 6 7 8" arrives as one change event.
-    await type('1 2-3.4 5 6 7 8');
-    expect(onChangeText).toHaveBeenLastCalledWith('12345678');
-    expect(onComplete).toHaveBeenCalledWith('12345678');
+    // A pasted "1 2-3.4 5 6" arrives as one change event.
+    await type('1 2-3.4 5 6');
+    expect(onChangeText).toHaveBeenLastCalledWith('123456');
+    expect(onComplete).toHaveBeenCalledWith('123456');
   });
 
   it('⚠️ has NO native maxLength — it cut "1234 5678" to 7 digits before the strip', async () => {
@@ -68,31 +68,31 @@ describe('OtpInput', () => {
     expect(screen.getByTestId('otp-hidden-input').props.maxLength).toBeUndefined();
   });
 
-  it.each(['1234 5678', '1234-5678'])('a code pasted as %j submits whole', async (pasted) => {
+  it.each(['123 456', '123-456'])('a code pasted as %j submits whole', async (pasted) => {
     const { onComplete } = await renderOtp();
     await type(pasted);
-    expect(onComplete).toHaveBeenCalledWith('12345678');
+    expect(onComplete).toHaveBeenCalledWith('123456');
   });
 
-  it('splits the boxes into halves — 4 + 4 — as a code is read aloud', async () => {
-    await renderOtp({ value: '12345678' });
+  it('splits the boxes into halves — 3 + 3 — as a code is read aloud', async () => {
+    await renderOtp({ value: '123456' });
     const box = (i: number) =>
       StyleSheet.flatten(
         screen.getByTestId(`otp-box-${i}`, { includeHiddenElements: true }).props.style,
       );
-    // The fifth box starts the second group; the others sit at the usual gap.
-    expect(box(4).marginLeft).toBeGreaterThan(0);
-    expect(box(3).marginLeft ?? 0).toBe(0);
+    // The fourth box starts the second group; the others sit at the usual gap.
+    expect(box(3).marginLeft).toBeGreaterThan(0);
+    expect(box(2).marginLeft ?? 0).toBe(0);
   });
 
-  it('⚠️ screen readers get ONE labelled code field — never eight boxes', async () => {
+  it('⚠️ screen readers get ONE labelled code field — never six boxes', async () => {
     await renderOtp({ value: '1234' });
     expect(screen.queryByText('1')).toBeNull(); // the box digits are hidden
-    expect(screen.getByLabelText('8-digit verification code')).toBeTruthy();
+    expect(screen.getByLabelText('6-digit verification code')).toBeTruthy();
   });
 
   it('says it is busy while the code is checked', async () => {
-    await renderOtp({ value: '12345678', submitting: true });
+    await renderOtp({ value: '123456', submitting: true });
     expect(screen.getByTestId('otp-hidden-input').props.accessibilityState).toMatchObject({
       busy: true,
     });
@@ -100,8 +100,8 @@ describe('OtpInput', () => {
 
   it('caps input at the code length', async () => {
     const { onComplete } = await renderOtp();
-    await type('123456789');
-    expect(onComplete).toHaveBeenCalledWith('12345678');
+    await type('1234567');
+    expect(onComplete).toHaveBeenCalledWith('123456');
   });
 
   it('is not editable while submitting', async () => {

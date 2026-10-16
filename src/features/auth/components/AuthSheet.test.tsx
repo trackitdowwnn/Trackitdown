@@ -152,7 +152,7 @@ async function enterEmailAndCode(screen: Awaited<ReturnType<typeof render>>) {
   });
   await waitFor(() => expect(screen.getByText(/Enter the code we emailed/)).toBeTruthy());
   await act(async () => {
-    fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '12345678');
+    fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '123456');
   });
 }
 
@@ -187,7 +187,7 @@ describe('AuthSheet', () => {
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
 
     await enterEmailAndCode(screen);
-    expect(mockVerifyEmailOtp).toHaveBeenCalledWith('sam@example.com', '12345678');
+    expect(mockVerifyEmailOtp).toHaveBeenCalledWith('sam@example.com', '123456');
 
     // The session flips; the profile check finds a row → member.
     await act(async () => {
@@ -468,9 +468,9 @@ describe('sign-in best-practice pass (2026-10-15)', () => {
     expect(tree.indexOf('Continue with Google')).toBeLessThan(tree.indexOf('digit code.'));
   });
 
-  it('says what happens next, before they commit: "We’ll email you an 8-digit code."', async () => {
+  it('says what happens next, before they commit: "We’ll email you a 6-digit code."', async () => {
     const screen = await openSheet();
-    expect(screen.getByText('We’ll email you an 8-digit code.')).toBeTruthy();
+    expect(screen.getByText('We’ll email you a 6-digit code.')).toBeTruthy();
   });
 
   it('⚠️ a malformed address SAYS so (GOV.UK) — never just a greyed-out button', async () => {
@@ -499,16 +499,20 @@ describe('sign-in best-practice pass (2026-10-15)', () => {
     expect(screen.getByText(/check your spam folder/)).toBeTruthy();
   });
 
-  it('⚠️ Verify submits a shorter code by hand — the 8 → 6 switch can never strand anyone', async () => {
+  it('Verify never sends a part-code; the sixth digit sends it, once', async () => {
     const screen = await openSheet();
     await toCodeStep(screen);
     await act(async () => {
-      fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '123456');
+      fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '12345');
     });
-    expect(mockVerifyEmailOtp).not.toHaveBeenCalled(); // not complete, so not automatic
     await act(async () => {
       fireEvent.press(screen.getByText('Verify'));
     });
+    expect(mockVerifyEmailOtp).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '123456');
+    });
+    expect(mockVerifyEmailOtp).toHaveBeenCalledTimes(1);
     expect(mockVerifyEmailOtp).toHaveBeenCalledWith('sam@example.com', '123456');
   });
 
@@ -521,7 +525,7 @@ describe('sign-in best-practice pass (2026-10-15)', () => {
     const screen = await openSheet();
     await toCodeStep(screen);
     await act(async () => {
-      fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '12345678');
+      fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '123456');
     });
     await waitFor(() => expect(screen.getByText(/Something went wrong|didn’t match/)).toBeTruthy());
 
@@ -547,7 +551,7 @@ describe('sign-in best-practice pass (2026-10-15)', () => {
     const screen = await openSheet();
     await toCodeStep(screen);
     await act(async () => {
-      fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '12345678');
+      fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '123456');
     });
     await act(async () => {
       setMockStanding('incomplete');
