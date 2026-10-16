@@ -190,6 +190,8 @@ describe('payoutView — not set up yet: the setup leads', () => {
   it('⚠️ the check itself failed: "couldn’t check", never "being checked", and Check again', () => {
     const view = journey(payoutView(base({ status: 'verifying', checkFailed: true }), NOW));
     expect(view.hero.status).toBe(COPY.status.checkFailed);
+    // The chip agrees with the line beside it.
+    expect(view.chip).toEqual({ label: 'Not checked', tone: 'neutral' });
     expect(view.steps[1]).toMatchObject({
       state: 'current',
       detail: COPY.detail.checkFailed,

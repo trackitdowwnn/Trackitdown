@@ -173,8 +173,8 @@ describe('createIdentityToken', () => {
     expect(body.identity.individual.address).not.toHaveProperty('line2');
   });
 
-  it.each([429, 500, 503])(
-    '⚠️ a %i is Stripe busy or down, not a refusal — a retry, never the irreversible path',
+  it.each([401, 403, 429, 500, 503])(
+    '⚠️ a %i is our key, or Stripe busy or down, not a refusal — a retry, never the irreversible path',
     async (status) => {
       // DETAILS_REJECTED leads to "Set up another way", which spends the
       // prefill window for good; nothing about the details was judged here.
@@ -281,106 +281,89 @@ describe('createIdentityToken', () => {
 });
 
 describe('createBankToken', () => {
-  // 2026-10-07: Stripe is initialised after the screen's transition, not on
-  // mount — so minting a token must wait for it, and a failed init must say so.
-  it('initialises Stripe before minting the token', async () => {
-    mockCreateToken.mockResolvedValue({ token: { id: 'btok_123' }, error: null });
-    await createBankToken(details);
-    expect(mockInitStripe).toHaveBeenCalledWith(
-      expect.objectContaining({ publishableKey: 'pk_test_fake' }),
-    );
-    expect(mockInitStripe.mock.invocationCallOrder[0]).toBeLessThan(
-      mockCreateToken.mock.invocationCallOrder[0],
-    );
-  });
-
-  it('a failed Stripe init is a retryable error, and no token is attempted', async () => {
-    mockInitStripe.mockRejectedValue(new Error('native init failed'));
-    await expect(createBankToken(details)).rejects.toMatchObject({ code: 'STRIPE_UNAVAILABLE' });
-    expect(mockCreateToken).not.toHaveBeenCalled();
-  });
-
-  it('maps a UK sort code to routingNumber and pins country/currency', async () => {
-    mockCreateToken.mockResolvedValue({ token: { id: 'btok_123' }, error: null });
+  // ⚠️ 2026-10-16: a plain request, not the SDK. The Android SDK (0.81) drops
+  // every error's type, so "offline" and "wrong numbers" were the same answer —
+  // and that answer led to "Set up another way", which can't be undone.
+  it('posts a form-encoded bank token with the publishable key', async () => {
+    const fetchMock = mockFetch({ ok: true, body: { id: 'btok_123' } });
 
     await expect(createBankToken(details)).resolves.toBe('btok_123');
 
-    // ⚠️ sortCode → routingNumber is the one field name that is not obvious,
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://api.stripe.com/v1/tokens');
+    expect(init.method).toBe('POST');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer pk_test_fake');
+    const form = new URLSearchParams(init.body as string);
+    // ⚠️ sortCode → routing_number is the one field name that is not obvious,
     // and getting it wrong produces a token Stripe accepts and cannot pay.
-    expect(mockCreateToken).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'BankAccount',
-        country: 'GB',
-        currency: 'gbp',
-        accountHolderType: 'Individual',
-        routingNumber: '108800',
-        accountNumber: '00012345',
-        accountHolderName: 'Alex Mercer',
-      }),
-    );
+    expect(Object.fromEntries(form)).toEqual({
+      'bank_account[country]': 'GB',
+      'bank_account[currency]': 'gbp',
+      'bank_account[account_holder_type]': 'individual',
+      'bank_account[routing_number]': '108800',
+      'bank_account[account_number]': '00012345',
+      'bank_account[account_holder_name]': 'Alex Mercer',
+    });
   });
 
   it('omits the holder name when only the numbers are supplied', async () => {
-    mockCreateToken.mockResolvedValue({ token: { id: 'btok_123' }, error: null });
+    const fetchMock = mockFetch({ ok: true, body: { id: 'btok_123' } });
 
     // The bank-only replacement form: the name is already on the account at
     // Stripe, and re-asking it to change a sort code would be theatre.
     await createBankToken({ sortCode: '108800', accountNumber: '00012345' });
 
-    expect(mockCreateToken).toHaveBeenCalledWith(
-      expect.objectContaining({ accountHolderName: undefined }),
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new URLSearchParams(init.body as string).has('bank_account[account_holder_name]')).toBe(
+      false,
     );
   });
 
-  it('no token and no error is no answer — a retry, not a refusal', async () => {
-    mockCreateToken.mockResolvedValue({ token: null, error: null });
+  it('⚠️ offline (no answer at all) is a retry, never the irreversible path', async () => {
+    globalThis.fetch = jest.fn(async () => {
+      throw new TypeError('Network request failed');
+    }) as unknown as typeof fetch;
+
+    const error = await createBankToken(details).catch((err: unknown) => err);
+
+    expect((error as PaymentError).code).toBe('STRIPE_UNAVAILABLE');
+    expect((error as PaymentError).message).toBe(
+      'We couldn’t reach our payment partner. Please try again.',
+    );
+  });
+
+  it.each([401, 403, 404, 429, 500, 503])(
+    '⚠️ a %i says nothing about the numbers — a retry, never the irreversible path',
+    async (status) => {
+      mockFetch({ ok: false, status });
+
+      const error = await createBankToken(details).catch((err: unknown) => err);
+
+      expect((error as PaymentError).code).toBe('STRIPE_UNAVAILABLE');
+    },
+  );
+
+  it.each([400, 402])('a %i is Stripe judging the numbers — a refusal', async (status) => {
+    mockFetch({ ok: false, status });
+
+    const error = await createBankToken(details).catch((err: unknown) => err);
+
+    expect((error as PaymentError).code).toBe('DETAILS_REJECTED');
+  });
+
+  it('an answer with no token id is no answer — a retry, not a refusal', async () => {
+    mockFetch({ ok: true, body: { object: 'token' } });
 
     const error = await createBankToken(details).catch((err: unknown) => err);
 
     expect((error as PaymentError).code).toBe('STRIPE_UNAVAILABLE');
   });
 
-  // ⚠️ 2026-10-16: every SDK error used to be DETAILS_REJECTED, and that leads
-  // to "Set up another way", which spends the prefill window for good — so a
-  // spotter who lost signal on the bank step lost the in-app form with it.
-  it.each([
-    ['offline', { code: 'Failed', message: 'The Internet connection appears to be offline.', type: 'api_connection_error' }],
-    ['Stripe down', { code: 'Failed', message: 'Server error', type: 'api_error' }],
-    ['Stripe busy', { code: 'Failed', message: 'Too many requests', type: 'rate_limit_error' }],
-    ['our key', { code: 'Failed', message: 'Invalid API key', type: 'authentication_error' }],
-    ['no type, no Stripe code', { code: 'Failed', message: 'Something went wrong' }],
-  ])('⚠️ %s is a retry, never the irreversible path', async (_label, error) => {
-    mockCreateToken.mockResolvedValue({ token: null, error });
-
-    const thrown = await createBankToken(details).catch((err: unknown) => err);
-
-    expect((thrown as PaymentError).code).toBe('STRIPE_UNAVAILABLE');
-    expect((thrown as PaymentError).message).toBe(
-      'We couldn’t reach our payment partner. Please try again.',
-    );
-  });
-
-  it.each([
-    ['an invalid request', { code: 'Failed', message: 'x', type: 'invalid_request_error', stripeErrorCode: 'account_number_invalid' }],
-    ['a card error', { code: 'Failed', message: 'x', type: 'card_error' }],
-    ['a Stripe code with no type', { code: 'Failed', message: 'x', stripeErrorCode: 'routing_number_invalid' }],
-  ])('%s is Stripe answering about the details — a refusal', async (_label, error) => {
-    mockCreateToken.mockResolvedValue({ token: null, error });
-
-    const thrown = await createBankToken(details).catch((err: unknown) => err);
-
-    expect((thrown as PaymentError).code).toBe('DETAILS_REJECTED');
-  });
-
-  it('⚠️ never leaks the account number through the SDK error', async () => {
-    mockCreateToken.mockResolvedValue({
-      token: null,
-      error: {
-        message: 'Invalid account_number: 00012345',
-        code: 'Failed',
-        type: 'invalid_request_error',
-        stripeErrorCode: 'account_number_invalid',
-      },
+  it('⚠️ never leaks the account number through the rejection body', async () => {
+    mockFetch({
+      ok: false,
+      status: 400,
+      body: { error: { type: 'invalid_request_error', message: 'Invalid account_number: 00012345' } },
     });
 
     const error = await createBankToken(details).catch((err: unknown) => err);
@@ -390,5 +373,12 @@ describe('createBankToken', () => {
     );
     expect((error as PaymentError).message).not.toContain('00012345');
     expect(everythingLogged()).not.toContain('00012345');
+  });
+
+  it('never touches the SDK: no native call can blur the answer again', async () => {
+    mockFetch({ ok: true, body: { id: 'btok_123' } });
+    await createBankToken(details);
+    expect(mockCreateToken).not.toHaveBeenCalled();
+    expect(mockInitStripe).not.toHaveBeenCalled();
   });
 });

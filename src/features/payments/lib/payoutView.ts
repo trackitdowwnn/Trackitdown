@@ -214,7 +214,10 @@ function setupView(input: PayoutViewInput): PayoutView {
     askBank || askCheck || (status === 'unfinished' && !detailsSent)
       ? { label: COPY.chip.actionNeeded, tone: 'warning' as const }
       : detailsSent
-        ? { label: COPY.chip.beingChecked, tone: 'neutral' as const }
+        ? {
+            label: checkFailed ? COPY.chip.notChecked : COPY.chip.beingChecked,
+            tone: 'neutral' as const,
+          }
         : { label: COPY.chip.notSetUp, tone: 'neutral' as const };
 
   return {

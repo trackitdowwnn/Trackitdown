@@ -108,6 +108,7 @@ import {
   syncMyPayoutAccount,
   startConnectOnboarding,
   submitPayoutTokens,
+  type PayoutSyncResult,
 } from '../api/payoutsApi';
 import { createBankToken } from '../api/stripeTokens';
 import { BankDetailsForm } from '../components/BankDetailsForm';
@@ -258,13 +259,19 @@ export function PayoutsScreen() {
   const [checkFailed, setCheckFailed] = useState(false);
   // A check the spotter asked for by hand, once the automatic ones stopped.
   const [recheckingByHand, setRecheckingByHand] = useState(false);
-  const checkWithStripe = useCallback(async () => {
-    const result = await syncMyPayoutAccount();
-    setNeedsBank(result.needsBank);
-    setNeedsAction(result.needsAction);
+  // A failed check changes ONLY checkFailed: what an earlier check found (a
+  // bank, a photo ID) stays on screen rather than turning into "checking".
+  const applyCheck = useCallback((result: PayoutSyncResult) => {
     setCheckFailed(result.failed);
+    if (!result.failed) {
+      setNeedsBank(result.needsBank);
+      setNeedsAction(result.needsAction);
+    }
+  }, []);
+  const checkWithStripe = useCallback(async () => {
+    applyCheck(await syncMyPayoutAccount());
     refresh();
-  }, [refresh]);
+  }, [applyCheck, refresh]);
   const checkedThisVisit = useRef(false);
   const statusNow = useRef(status);
   useEffect(() => {
@@ -287,12 +294,10 @@ export function PayoutsScreen() {
     if (status !== 'verifying' && status !== 'unfinished') return;
     checkedThisVisit.current = true;
     void syncMyPayoutAccount().then((result) => {
-      setNeedsBank(result.needsBank);
-      setNeedsAction(result.needsAction);
-      setCheckFailed(result.failed);
+      applyCheck(result);
       refresh();
     });
-  }, [status, refresh]);
+  }, [status, refresh, applyCheck]);
 
   // KEEP ASKING WHILE IT SAYS "BEING CHECKED" (2026-10-14). One check on
   // arrival came seconds too early for a test-mode check that finishes in

@@ -333,6 +333,15 @@ export async function fetchMyPendingCredit(): Promise<{
 }
 
 /**
+ * What a check with Stripe found — or that it found nothing. A failure carries
+ * NO flags, so it can never pass for "nothing needed" and wipe a prompt the
+ * spotter already has (code review, 2026-10-16).
+ */
+export type PayoutSyncResult =
+  | { failed: true }
+  | { failed: false; needsBank: boolean; needsAction: boolean };
+
+/**
  * Ask the server to check the caller's payee account with Stripe and record
  * what it finds (sync-payout-account) — so "being checked" moves on even when
  * the account.updated webhook never arrives (2026-10-13). Read-only at Stripe:
@@ -340,27 +349,23 @@ export async function fetchMyPendingCredit(): Promise<{
  * ⚠️ A failed check says `failed` (2026-10-16) — it used to read as "nothing
  * needed", so someone Stripe was waiting on was told "being checked".
  */
-export async function syncMyPayoutAccount(): Promise<{
-  needsBank: boolean;
-  needsAction: boolean;
-  failed: boolean;
-}> {
+export async function syncMyPayoutAccount(): Promise<PayoutSyncResult> {
   const { data, error } = await supabase.functions.invoke<{
     needsBank?: boolean;
     needsAction?: boolean;
   }>('sync-payout-account', { body: {} });
   if (error) {
     log.warn('sync-payout-account failed');
-    return { needsBank: false, needsAction: false, failed: true };
+    return { failed: true };
   }
   // Stripe holds payouts until a bank is attached (2026-10-13): the app then
   // asks for one in its own form, never Stripe's screen. `needsAction`
   // (2026-10-14): Stripe is waiting on THEM for something only its own screen
   // collects — the screen says so rather than "being checked".
   return {
+    failed: false,
     needsBank: data?.needsBank === true,
     needsAction: data?.needsAction === true,
-    failed: false,
   };
 }
 

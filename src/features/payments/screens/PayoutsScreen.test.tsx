@@ -1086,7 +1086,7 @@ describe('⚠️ a check that failed is said as one, with a way to ask again (20
 
   it('the check failed: "couldn’t check", never "being checked" — and Check again asks again', async () => {
     mockPollSpent = true;
-    mockSyncAccount.mockResolvedValue({ needsBank: false, needsAction: false, failed: true } as never);
+    mockSyncAccount.mockResolvedValue({ failed: true } as never);
     mockAccountState = { status: 'verifying', settling: false };
     const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
 
@@ -1111,6 +1111,22 @@ describe('⚠️ a check that failed is said as one, with a way to ask again (20
 
     expect(getByText('Your details are being checked')).toBeTruthy();
     expect(getByText('Check again')).toBeTruthy();
+  });
+
+  it('⚠️ a later check that fails keeps the photo-ID prompt an earlier one found', async () => {
+    // Code review, 2026-10-16: a failure used to arrive as needsAction:false and
+    // turned "We need one more thing from you" back into "checking".
+    mockSyncAccount.mockResolvedValue({ failed: false, needsBank: false, needsAction: true } as never);
+    mockAccountState = { status: 'verifying', settling: false };
+    const { getByText } = await act(async () => render(<PayoutsScreen />));
+    expect(getByText('We need one more thing from you')).toBeTruthy();
+
+    mockSyncAccount.mockResolvedValue({ failed: true } as never);
+    await refocus();
+
+    expect(mockSyncAccount).toHaveBeenLastCalledWith();
+    expect(getByText('We need one more thing from you')).toBeTruthy();
+    expect(getByText('Start the check')).toBeTruthy();
   });
 
   it('while the automatic checks run: no button — the screen is already asking', async () => {

@@ -8,14 +8,13 @@
  *        Stripe's API and hands our server two opaque ids. Our threat model
  *        loses the data entirely.
  *
- *        TWO TOKENS, TWO MECHANISMS, because Stripe splits them this way:
+ *        TWO TOKENS, ONE MECHANISM — the PUBLISHABLE key over plain fetch:
  *        - Identity (name, DOB, address, ToS acceptance) → a v2 ACCOUNT TOKEN,
- *          minted with the PUBLISHABLE key over plain fetch. There is no RN
- *          SDK wrapper and none is needed — it is a JSON REST endpoint. The
- *          `Stripe-Version` header is MANDATORY on every /v2 call.
- *        - Bank details → the RN SDK's own `createToken({type:'BankAccount'})`
- *          (a `btok_`), which needs the SDK initialised — awaited via
- *          ensureStripeReady (lib/stripeReady.ts).
+ *          a JSON REST endpoint with no RN SDK wrapper. The `Stripe-Version`
+ *          header is MANDATORY on every /v2 call.
+ *        - Bank details → a v1 bank token (a `btok_`), form-encoded. Not the
+ *          SDK's createToken since 2026-10-16: its Android side drops the
+ *          error type, so "offline" and "wrong numbers" looked the same.
  *
  *        ToS RIDES THE TOKEN, deliberately: Stripe infers acceptance date/IP
  *        from the client call that carries `shown_and_accepted`. Moving
@@ -33,11 +32,8 @@
  *        BountyPaymentProvider.tsx (why the publishable key is bundle-safe).
  */
 
-import { createToken } from '@stripe/stripe-react-native';
-
 import { PaymentError } from '@/shared/lib/functionError';
 
-import { ensureStripeReady } from '../lib/stripeReady';
 import type { PayoutDetails } from './payoutsApi';
 
 const publishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';
@@ -113,8 +109,9 @@ export async function createIdentityToken(
     // ⚠️ BUSY OR DOWN IS NOT A REFUSAL (security review, 2026-10-13). A 429 or
     // a 5xx says nothing about the details, and DETAILS_REJECTED leads to
     // "Continue with Stripe", which spends the prefill window for good. Those
-    // get a retry instead; only Stripe actually answering "no" is a refusal.
-    if (response.status === 429 || response.status >= 500) {
+    // get a retry instead; only Stripe actually answering "no" is a refusal
+    // (isRefusalStatus — a key problem on our side, 401/403, is not theirs).
+    if (!isRefusalStatus(response.status)) {
       throw new PaymentError(UNREACHABLE, 'STRIPE_UNAVAILABLE');
     }
     throw new PaymentError(
@@ -144,56 +141,73 @@ export interface BankTokenDetails {
 }
 
 /**
- * Mint the bank token via the SDK. Needs an initialised SDK — awaited here
- * (ensureStripeReady); PayoutsScreen's BountyPaymentProvider warms it.
+ * Mint the bank token (a `btok_`) STRAIGHT from the phone to Stripe's
+ * /v1/tokens with the publishable key, the identity path's mechanism.
+ *
+ * ⚠️ NOT THE SDK'S createToken ANY MORE (2026-10-16). Every error used to be
+ * DETAILS_REJECTED, and that leads to "Set up another way", which spends the
+ * prefill window for good — a spotter who lost signal lost the in-app form.
+ * Telling "offline" from "wrong numbers" needs the error's type, and the
+ * Android SDK (0.81) drops it: every failure arrives as `Failed` with a
+ * message and nothing else. A plain request gives an HTTP status on both
+ * platforms, read the same way as the identity token's.
+ *
+ * @throws PaymentError DETAILS_REJECTED when Stripe refuses the numbers (400 or
+ *   402); STRIPE_UNAVAILABLE when there was no answer, or one that says nothing
+ *   about the details (offline, 401/403, 429, 5xx).
  */
 export async function createBankToken(details: BankTokenDetails): Promise<string> {
-  try {
-    await ensureStripeReady();
-  } catch {
-    throw new PaymentError(UNREACHABLE, 'STRIPE_UNAVAILABLE');
+  if (!publishableKey) {
+    throw new PaymentError(TOKEN_FAILURE, 'NO_PUBLISHABLE_KEY');
   }
-  const holderName =
-    details.firstName && details.lastName
-      ? `${details.firstName} ${details.lastName}`
-      : undefined;
-  const { token, error } = await createToken({
-    type: 'BankAccount',
-    country: 'GB',
-    currency: 'gbp',
-    accountHolderName: holderName,
-    accountHolderType: 'Individual',
-    routingNumber: details.sortCode,
-    accountNumber: details.accountNumber,
+  const form = new URLSearchParams({
+    'bank_account[country]': 'GB',
+    'bank_account[currency]': 'gbp',
+    'bank_account[account_holder_type]': 'individual',
+    // ⚠️ The sort code goes in routing_number — the one name that isn't
+    // obvious, and getting it wrong makes a token Stripe accepts and can't pay.
+    'bank_account[routing_number]': details.sortCode,
+    'bank_account[account_number]': details.accountNumber,
+  });
+  if (details.firstName && details.lastName) {
+    form.append('bank_account[account_holder_name]', `${details.firstName} ${details.lastName}`);
+  }
+
+  const response = await fetch('https://api.stripe.com/v1/tokens', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${publishableKey}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: form.toString(),
+  }).catch(() => {
+    throw new PaymentError(UNREACHABLE, 'STRIPE_UNAVAILABLE');
   });
 
-  if (token?.id && !error) {
-    return token.id;
-  }
-  // ⚠️ OFFLINE IS NOT A REFUSAL (2026-10-16) — the identity path's rule above,
-  // brought to the bank path, where every error used to be DETAILS_REJECTED.
-  // That leads to "Set up another way", which spends the prefill window for
-  // good: a spotter on a train would lose the in-app form over one dropped
-  // request. Only Stripe answering about the details themselves is a refusal.
-  if (isBankRefusal(error)) {
+  if (!response.ok) {
+    // The body can echo the numbers — never read. The status is enough.
+    if (!isRefusalStatus(response.status)) {
+      throw new PaymentError(UNREACHABLE, 'STRIPE_UNAVAILABLE');
+    }
     throw new PaymentError(
       'That bank account couldn’t be accepted. Please check it and try again.',
       'DETAILS_REJECTED',
     );
   }
-  throw new PaymentError(UNREACHABLE, 'STRIPE_UNAVAILABLE');
+
+  const body = (await response.json()) as { id?: string };
+  if (!body.id) {
+    throw new PaymentError(UNREACHABLE, 'STRIPE_UNAVAILABLE');
+  }
+  return body.id;
 }
 
 /**
- * True only when Stripe answered and the answer was "these details are wrong":
- * an `invalid_request_error` or `card_error`, or a Stripe error code with no
- * type. Network failures, Stripe being down or busy, a key problem on our side,
- * and "no token, no error" are all something else — and all retryable.
+ * Stripe actually judged the details: 400 (invalid_request_error) or 402
+ * (card_error). Everything else — our key (401/403), busy (429), down (5xx) —
+ * says nothing about what they typed, and must never lead to the path that
+ * can't be undone.
  */
-export function isBankRefusal(
-  error: { type?: string; stripeErrorCode?: string } | null | undefined,
-): boolean {
-  if (!error) return false;
-  if (error.type === 'invalid_request_error' || error.type === 'card_error') return true;
-  return !error.type && Boolean(error.stripeErrorCode);
+function isRefusalStatus(status: number): boolean {
+  return status === 400 || status === 402;
 }

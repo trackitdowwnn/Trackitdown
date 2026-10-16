@@ -95,6 +95,8 @@ export const COPY = {
     notSetUp: 'Not set up',
     actionNeeded: 'Action needed',
     beingChecked: 'Being checked',
+    // The check itself couldn't run — beside "We couldn't check…" (2026-10-16).
+    notChecked: 'Not checked',
     onItsWay: 'On its way',
     paid: 'Paid',
     ready: 'Ready',
