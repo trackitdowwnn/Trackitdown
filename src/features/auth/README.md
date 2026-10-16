@@ -200,13 +200,14 @@ only under Reduce Motion, keyboard-aware, dynamic height). Each step change is
 announced to screen readers.
 
 1. **Email.** The social buttons come FIRST (Apple, then Google), then "or",
-   then the email field. Its hint says what happens next, a malformed address
-   gets GOV.UK's inline message, and Continue is enabled once anything is
-   typed.
+   then the email field. A malformed address gets GOV.UK's inline message,
+   and Continue is enabled once anything is typed. No intro line and no field
+   hint: the owner cut "Sign up and log in are the same…" and "We'll email
+   you a 6-digit code" on 2026-10-16.
 2. **`OtpInput`.** `CODE_LENGTH` boxes, grouped in halves.
    - Pasting "1234 5678" works (no native maxLength).
-   - It auto-submits, with the notice "We'll check it as soon as it's in" and
-     a **Verify** button too (WCAG F36).
+   - It auto-submits, and there's a **Verify** button too (WCAG F36). The
+     "We'll check it as soon as it's in" notice was cut on 2026-10-16 (owner).
    - A wrong code shakes the boxes, and the error clears as they retype.
    - A 60s resend shows "New code sent to …" afterwards.
    - A spam and expiry hint.

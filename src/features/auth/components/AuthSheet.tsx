@@ -81,8 +81,6 @@ const STEP_ANNOUNCEMENTS: Partial<Record<Step, string>> = {
   otp: 'Enter the code we emailed you.',
   profile: 'What should we call you?',
 };
-/** "an 8-digit code", "a 6-digit code" — the article follows the number's sound. */
-const codeArticle = (n: number) => (/^(8|11|18|8\d)$/.test(String(n)) ? 'an' : 'a');
 /** The sheet's title once they're signed in — "Log in to …" would be stale. */
 const WELCOME_TITLE = 'Welcome to Trackitdown';
 /** Longest a completed gate waits for the sheet to report it has closed
@@ -352,7 +350,6 @@ function EmailStep({
 
   return (
     <View style={styles.step}>
-      <Text style={styles.body}>Sign up and log in are the same. No password needed.</Text>
       {/* THE NO-TYPING WAYS FIRST (owner, 2026-10-15): Apple and Google,
           then "or", then email. Each brand's rules ask its button to be at
           least as prominent as any other way in. */}
@@ -390,8 +387,6 @@ function EmailStep({
         }}
         onSubmitEditing={submitEmail}
         returnKeyType="go"
-        // What happens next, before they commit to it.
-        helperText={`We’ll email you ${codeArticle(CODE_LENGTH)} ${CODE_LENGTH}-digit code.`}
         error={emailError ?? undefined}
         disabled={busy}
       />
@@ -489,11 +484,7 @@ function OtpStep({
         <Text style={styles.error} accessibilityLiveRegion="polite">
           {errorText}
         </Text>
-      ) : (
-        // ⚠️ SAID BEFORE IT HAPPENS (WCAG F36): the code is checked the moment
-        // it's complete — and Verify below does the same by hand.
-        <Text style={styles.hint}>We’ll check it as soon as it’s in.</Text>
-      )}
+      ) : null}
 
       {/* ⚠️ A BUTTON AS WELL AS AUTO-SUBMIT (2026-10-15). Auto-submit with no
           button is WCAG failure F36, and a code SHORTER than the boxes (the
