@@ -56,7 +56,7 @@ import { createServiceRoleClient, createStripeClient } from '../_shared/clients.
 import { errorResponse, jsonResponse } from '../_shared/http.ts';
 import { refundPayment } from '../_shared/refundEscrow.ts';
 import { sendOpsAlert } from '../_shared/opsAlert.ts';
-import { releasePayoutForPost } from '../_shared/releasePayout.ts';
+import { payoutTransferGroups, releasePayoutForPost } from '../_shared/releasePayout.ts';
 import { notifyUsers } from '../_shared/push.ts';
 import { announcePayoutSent, announceRecoveryToWatchers } from '../_shared/recoveryAnnounce.ts';
 
@@ -718,12 +718,27 @@ Deno.serve(async (request) => {
             }
             const lapse = claim as { payment_intent_id: string };
 
-            // (3) Has any payout reached Stripe for this post?
-            const transfers = await stripe.transfers.list({ transfer_group: postId, limit: 1 });
-            if (transfers.data.length > 0) {
+            // (3) Has any payout reached Stripe for this post? Asked under every
+            // group a payout can carry (payoutTransferGroups) — a payout tied
+            // to its charge is grouped with the charge, not by post id. A
+            // failed read throws to this item's catch: never a refund.
+            const intent = await stripe.paymentIntents.retrieve(lapse.payment_intent_id, {
+              expand: ['latest_charge'],
+            });
+            const charge = intent.latest_charge;
+            const chargeGroup = charge && typeof charge !== 'string' ? (charge.transfer_group ?? null) : null;
+            let found: string | null = null;
+            for (const group of payoutTransferGroups(postId, lapse.payment_intent_id, chargeGroup)) {
+              const transfers = await stripe.transfers.list({ transfer_group: group, limit: 1 });
+              if (transfers.data.length > 0) {
+                found = transfers.data[0].id;
+                break;
+              }
+            }
+            if (found) {
               const sent = await sendOpsAlert('A credited reward past its payout deadline already has a Stripe transfer', [
                 `Post ${postId}: payout_deadline claimed the reward, but Stripe already has a transfer`,
-                `(${transfers.data[0].id}) in its group. Nothing was refunded, and nothing will be.`,
+                `(${found}) in its group. Nothing was refunded, and nothing will be.`,
                 'Settle it by hand: docs/OPERATIONS.md §8, "A lapse found a transfer".',
               ]);
               // Parked only once a person has been told; until then every run
