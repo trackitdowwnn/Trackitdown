@@ -57,6 +57,38 @@ export function splitBounty(bountyPence: number): { transferPence: number; feePe
   return { transferPence, feePence: bountyPence - transferPence };
 }
 
+/**
+ * The charge a payout is drawn from, or null when the reward has no settled
+ * charge to draw on. MONEY: a payout carries `source_transaction` (2026-10-16)
+ * so it can never outrun the funds it pays out. Without it a transfer draws on
+ * the platform's AVAILABLE balance, and a new UK account's captures sit pending
+ * for days — a recovery inside that window failed with balance_insufficient.
+ * The sandbox's large test balance hid that; live would not have.
+ */
+export function payoutSourceCharge(latestCharge: string | Stripe.Charge | null): string | null {
+  if (!latestCharge || typeof latestCharge === 'string') return null;
+  if (latestCharge.status !== 'succeeded' || latestCharge.refunded) return null;
+  return latestCharge.id;
+}
+
+/**
+ * Every transfer_group a payout for this post can carry — the payout deadline
+ * asks Stripe under ALL of them before it refunds anything. Payouts before
+ * 2026-10-16 were grouped by post id. A payout tied to its charge takes the
+ * charge's group, which Stripe GENERATES as `group_<payment intent>` when the
+ * charge had none. Searching by post id alone would miss those, and the
+ * deadline would refund a reward that was already paid.
+ */
+export function payoutTransferGroups(
+  postId: string,
+  paymentIntentId: string,
+  chargeTransferGroup: string | null,
+): string[] {
+  const groups = [postId, `group_${paymentIntentId}`];
+  if (chargeTransferGroup) groups.push(chargeTransferGroup);
+  return [...new Set(groups)];
+}
+
 export type ReleaseOutcome =
   | { status: 'paid'; transferPence: number; feePence: number }
   | { status: 'awaiting_payee' }
@@ -203,6 +235,26 @@ export async function releasePayoutForPost(
     return { status: 'error', code: 'SPLIT_ERROR' };
   }
 
+  // --- The charge it is paid from ----------------------------------------------
+  // Read BEFORE the lock below, so a Stripe hiccup here never stamps
+  // payout_started_at for a payout that was never attempted.
+  let sourceChargeId: string | null;
+  try {
+    const intent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ['latest_charge'],
+    });
+    sourceChargeId = payoutSourceCharge(intent.latest_charge);
+  } catch (err) {
+    console.error('[payments] reward charge lookup failed', (err as Error).message);
+    return { status: 'error', code: 'STRIPE_ERROR' };
+  }
+  if (!sourceChargeId) {
+    // A `held` ledger row whose charge is not a clean success is a ledger/Stripe
+    // disagreement — a person must look, never a transfer from other funds.
+    console.error('[payments] held reward has no succeeded charge', { postId, paymentIntentId });
+    return { status: 'error', code: 'STRIPE_ERROR' };
+  }
+
   // --- Claim the payout under the post lock (20261007100000) -----------------
   // The payout deadline returns a credited reward to its owner when the
   // spotter never onboards. Both paths take the SAME post lock: once the
@@ -232,12 +284,14 @@ export async function releasePayoutForPost(
         amount: transferPence,
         currency: 'gbp',
         destination: connect.stripe_account_id as string,
-        // No `source_transaction`: that ties a transfer to one charge's funds
-        // and waits for them to settle. Under separate charges and transfers
-        // (ADR-0002) the bounty is already on the platform balance, and the
-        // dispute-reversal protection comes from the connected account's
-        // `losses_collector: "application"`, not from linking the charge.
-        transfer_group: postId,
+        // Paid FROM the reward's own charge (see payoutSourceCharge): Stripe
+        // accepts it while that charge is still pending and releases the money
+        // to the spotter when it settles, instead of failing on balance. Once
+        // settled it draws on the available balance like any transfer, which
+        // is why the platform's own payouts are MANUAL (functions README).
+        source_transaction: sourceChargeId,
+        // No transfer_group of our own: Stripe gives a linked transfer its
+        // charge's group. payoutTransferGroups is how the deadline finds it.
         metadata: { post_id: postId, sighting_id: credited.id },
       },
       // ONE payout per post, forever. A retry after a dropped response — or the

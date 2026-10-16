@@ -29,6 +29,16 @@ spotter can finish onboarding and never become payable, `release-payout` answers
 bank details they have already given. Nothing errors; the money simply never
 moves.
 
+⚠️ **The platform's own payouts must be MANUAL** (Dashboard → Settings →
+Payouts). Rewards wait on the platform balance for up to 60 days. On Stripe's
+default daily automatic schedule, that balance is swept to our bank every day,
+so a later payout to a spotter fails and a refund is left `pending` until
+money is added back. Withdraw only the fees we've earned, and do it by hand.
+Payouts to spotters are tied to the reward's own charge (`source_transaction`,
+2026-10-16). One made before the charge settles succeeds anyway, and the money
+reaches the spotter when the charge settles. One made after the charge settles
+draws on the available balance, and manual payouts keep that money there.
+
 ## Notifications
 
 | Function | Called by | Job |
