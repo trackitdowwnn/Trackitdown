@@ -514,16 +514,19 @@ commenting standards.
   Stripe's own flows (PaymentSheet for escrow, the embedded
   `ConnectAccountOnboarding` component for spotters) and, since 2026-08-03,
   collects payout details in a native form of our own — see below.
-- ⚠️ **We transit raw bank details.** `submit-payout-details` receives a sort
-  code and account number from our form and forwards them to Stripe's Accounts
-  API. Stripe permits this only until an Account Link or Session exists for
-  that account, which is why the session mint is gated on
-  `details_submitted_at`. They are **never stored** — no column holds them —
-  and **never logged**, not even masked; a partial account number in a log is
-  still an account number in a log. Tokenising instead is not available: a
-  `btok_` may only be attached where `controller.requirement_collection` is
-  `application`, and ours are Express. **This is financial PII in transit and
-  must appear in the privacy policy and the Art. 30 record.**
+- **Raw bank and identity details go from the phone STRAIGHT to Stripe — our
+  servers never see them** (current accounts, Accounts v2 recipients, where
+  the platform collects requirements). `src/features/payments/api/
+  stripeTokens.ts` mints two single-use tokens with the PUBLISHABLE key — a v2
+  account token (identity) and a v1 `btok_` (bank, by plain request since
+  2026-10-16, not the SDK) — and `create-payout-account` receives only the two
+  token ids. This is the ONE place client code calls Stripe directly, and it
+  is publishable-key tokenisation only: no secret, nothing that moves money,
+  and a token is useless until our server attaches it with the secret key.
+  The values are **never stored** and **never logged**, not even masked.
+  The older generation (`submit-payout-details`, Express accounts, where a
+  `btok_` can't be attached) still forwards raw numbers through our function
+  in transit; it is legacy and serves accounts made before Accounts v2.
 - **The one bank detail we DO hold (2026-10-15, PR7): the last four digits**
   of the account Stripe pays into — `stripe_connected_accounts.bank_last4` —
   so the tracker can say "Paid into account ending 5678". Stripe's own
