@@ -498,7 +498,7 @@ describe('sign-in best-practice pass (2026-10-15)', () => {
     await toCodeStep(screen);
     expect(screen.getByText('sam@example.com')).toBeTruthy();
     expect(screen.queryByText(/as soon as it’s in/)).toBeNull();
-    expect(screen.getByText(/check your spam folder/)).toBeTruthy();
+    expect(screen.queryByText(/spam folder|take a minute to arrive/)).toBeNull();
   });
 
   it('Verify never sends a part-code; the sixth digit sends it, once', async () => {

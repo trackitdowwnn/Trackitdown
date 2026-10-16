@@ -66,12 +66,12 @@ const GENERIC_ERROR = 'Something went wrong. Please try again.';
 // GOV.UK's wording for a malformed address — with an example of a good one.
 const INVALID_EMAIL = 'Enter an email address like name@example.com';
 const RESEND_SECONDS = 60;
-// Must match Supabase's `otp_length` and `otp_expiry` (supabase/config.toml
-// + the hosted dashboard) and the email template's "expires in" line.
-// 6 digits, 15 minutes since 2026-10-16 (was 8 / 60): NIST asks for at least
-// 6 digits and a short life, and no source recommends 8 (best-practice pass).
+// Must match Supabase's `otp_length` (supabase/config.toml + the hosted
+// dashboard). 6 digits since 2026-10-16 (was 8): NIST asks for at least 6, and
+// no source recommends 8 (best-practice pass). The 15-minute expiry
+// (`otp_expiry = 900`) is stated only in the email now — the sheet's
+// spam/expiry hint was cut on 2026-10-16 (owner).
 const CODE_LENGTH = 6;
-const CODE_EXPIRY_MINUTES = 15;
 // The shortest code Verify accepts — so a change of length on the server
 // never strands anyone (the 8 → 6 switch, 2026-10-15).
 const MIN_CODE_LENGTH = 6;
@@ -512,11 +512,6 @@ function OtpStep({
           New code sent to {email.trim()}.
         </Text>
       ) : null}
-      {/* Codes get filtered (NN/g), and when they expire is theirs to know. */}
-      <Text style={styles.hint}>
-        Codes can take a minute to arrive — check your spam folder. Each code works for{' '}
-        {CODE_EXPIRY_MINUTES} minutes.
-      </Text>
     </View>
   );
 }
