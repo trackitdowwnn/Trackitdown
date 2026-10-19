@@ -47,6 +47,13 @@ jest.mock('../api/notificationsApi', () => ({
 
 const POST_ID = '11111111-2222-3333-4444-555555555555';
 
+/** Local NOON `days` from today — not `Date.now() - n days`, which lands on
+ *  the wrong day around a clock change (Jest runs in Europe/London). */
+const localNoon = (days: number) => {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, 12).toISOString();
+};
+
 const rowFixture = (overrides: Record<string, unknown> = {}) => ({
   id: 'n-1',
   kind: 'alert' as const,
@@ -75,14 +82,33 @@ describe('states', () => {
     expect(getByText(/alerts, sightings and payout updates/i)).toBeTruthy();
   });
 
-  // ⚠️ WAS 'renders rows under day headers'. The list went flat on 2026-09-04
-  // alongside the Messages face — each row's own stamp carries the day now, so
-  // there is no "Today" heading to find. Both faces dropped grouping together,
-  // which is how "one tab, one vocabulary" survives the change.
-  it('renders rows with no day heading, unread dot showing', async () => {
-    const { queryByText, getByTestId } = await act(async () => render(<NotificationCenterScreen />));
-    expect(queryByText('Today')).toBeNull();
+  // ⚠️ FLIPPED TWICE: day headers until 2026-09-04, flat until 2026-10-19,
+  // grouped again now (owner's pick — the feed read as one undifferentiated
+  // stack). Messages stays flat; see the screen's note.
+  it('renders rows under a Today heading, unread dot showing', async () => {
+    const { getByTestId } = await act(async () => render(<NotificationCenterScreen />));
+    expect(getByTestId('day-header-Today')).toHaveTextContent('Today');
     expect(getByTestId('unread-n-1')).toBeTruthy();
+  });
+
+  it('groups older rows under Yesterday and Earlier, in that order', async () => {
+    mockFetch.mockResolvedValue([
+      rowFixture({ id: 'n-today' }),
+      rowFixture({ id: 'n-yday', createdAt: localNoon(-1) }),
+      rowFixture({ id: 'n-old', createdAt: localNoon(-9) }),
+    ]);
+    const { getAllByText, queryAllByTestId } = await act(async () =>
+      render(<NotificationCenterScreen />),
+    );
+
+    // Headers are the screen-reader headings; "Yesterday" is also the row's
+    // own stamp, so read the headings, not the text.
+    const headings = getAllByText(/^(Today|Yesterday|Earlier)$/)
+      .filter((node) => node.props.accessibilityRole === 'header')
+      .map((node) => node.props.children);
+    expect(headings).toEqual(['Today', 'Yesterday', 'Earlier']);
+    // One row per group: every row starts its group, so no divider at all.
+    expect(queryAllByTestId('inbox-row-divider')).toHaveLength(0);
   });
 
   it('shows the errand on unread needs-attention kinds only', async () => {
@@ -191,6 +217,18 @@ describe('dividers', () => {
     const { queryAllByTestId } = await act(async () => render(<NotificationCenterScreen />));
 
     expect(queryAllByTestId('inbox-row-divider')).toHaveLength(0);
+  });
+
+  it('divides rows WITHIN a day, never across a header', async () => {
+    mockFetch.mockResolvedValue([
+      rowFixture({ id: 'n-1' }),
+      rowFixture({ id: 'n-2' }),
+      rowFixture({ id: 'n-yday', createdAt: localNoon(-1) }),
+    ]);
+    const { getAllByTestId } = await act(async () => render(<NotificationCenterScreen />));
+
+    // Between the two Today rows only; the Yesterday header separates the rest.
+    expect(getAllByTestId('inbox-row-divider')).toHaveLength(1);
   });
 });
 

@@ -1,12 +1,14 @@
 /**
  * WHAT:  DayHeader — the quiet label that divides a list into groups, plus
  *        DayHeaderSkeleton, the box it occupies while the list loads. Born as
- *        a calendar label ("Today", "23 July"); since 2026-10-09 its one
- *        consumer, My sightings, labels status sections with it ("Still
- *        open", "Answered", "Taken back").
+ *        a calendar label ("Today", "23 July"); since 2026-10-09 My sightings
+ *        labels status sections with it ("Still open", "Answered", "Taken
+ *        back"), and since 2026-10-19 the notification center groups its feed
+ *        under it again (Today / Yesterday / Earlier).
  * WHY:   Three lists once grouped by day (the inbox's two faces and My
  *        reports) and each had hand-rolled the same five style properties.
- *        The inbox stopped grouping on 2026-09-04 and My sightings moved to
+ *        The inbox stopped grouping on 2026-09-04 (Notifications grouped again
+ *        on 2026-10-19; Messages stays flat) and My sightings moved to
  *        sections; the quiet-label rule below is why it is still this
  *        component rather than a section title.
  *
@@ -29,7 +31,9 @@
  *        post's history — it aligns to the rail, not to a list gutter, and it
  *        divides events within one story rather than grouping rows of a feed.
  *        Left alone deliberately.
- * LINKS: src/features/sightings/screens/MySightingsScreen.tsx (the consumer);
+ * LINKS: src/features/sightings/screens/MySightingsScreen.tsx and
+ *        src/features/notifications/screens/NotificationCenterScreen.tsx (the
+ *        consumers);
  *        docs/DESIGN_SYSTEM.md (the carve-out).
  */
 
