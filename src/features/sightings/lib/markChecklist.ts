@@ -15,7 +15,9 @@
  *        `offeredFeatureIds` (recorded server-side since 2026-10-19, mark ids
  *        kept stable across edits since the same migration). Without both —
  *        the listing not read yet, or an older report — it is the seen marks
- *        alone, and `complete` is false, so the page claims no total.
+ *        alone, and `complete` is false, so the page claims no total. Each is
+ *        still the LISTING's copy when the listing has been read: the
+ *        sighting's own carries no photo.
  *
  *        A seen mark missing from the listing read (the two reads disagreeing
  *        — e.g. a mark removed between them) still shows, ticked, last: it is
@@ -53,7 +55,15 @@ export function markChecklist(
   offeredIds: readonly string[] | null | undefined,
 ): MarkChecklist {
   if (listingMarks === null || offeredIds == null) {
-    return { checks: seenMarks.map((mark) => ({ mark, seen: true })), complete: false };
+    // The seen marks alone — but each as the LISTING's copy when there is
+    // one: the sighting's own carries no photo (get_post_sightings keeps it
+    // lean), and an older report showed its marks as bare text (owner,
+    // 2026-10-19: "the image is not showing").
+    const fromListing = new Map((listingMarks ?? []).map((mark) => [mark.id, mark]));
+    return {
+      checks: seenMarks.map((mark) => ({ mark: fromListing.get(mark.id) ?? mark, seen: true })),
+      complete: false,
+    };
   }
   const seenIds = new Set(seenMarks.map((mark) => mark.id));
   const offered = new Set(offeredIds);

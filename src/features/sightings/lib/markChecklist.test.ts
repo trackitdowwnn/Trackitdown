@@ -53,6 +53,19 @@ it.each([
   expect(list.complete).toBe(false);
 });
 
+it('⚠️ an older report’s seen marks still carry the listing’s photo', () => {
+  // The sighting's own copy has no photo; the listing's does (owner,
+  // 2026-10-19: "the image is not showing").
+  const withPhoto = { ...dent, photoUrl: 'https://x/m1.jpg' };
+  const list = markChecklist([withPhoto, roofBox], [dent], null);
+  expect(list.checks).toEqual([{ mark: withPhoto, seen: true }]);
+  expect(list.complete).toBe(false);
+});
+
+it('an older report keeps a seen mark the listing lacks — as the sighting’s own copy', () => {
+  expect(markChecklist([roofBox], [dent], null).checks).toEqual([{ mark: dent, seen: true }]);
+});
+
 it('keeps a seen mark the listing read doesn’t have, ticked, last', () => {
   expect(read(markChecklist([roofBox], [dent], ['m1', 'm2']))).toEqual(['m2:not', 'm1:seen']);
 });

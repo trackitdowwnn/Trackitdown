@@ -105,7 +105,7 @@ const { SightingVerdictError } = jest.requireMock('../api/sightingApi') as {
 // here (tested in useSightingPost.test): the owner's marks and the "Got your
 // car back?" door. Both null = the listing not read (yet, or at all).
 let mockDoor: { noReward: boolean; bounty: string } | null = null;
-let mockListingMarks: { id: string; description: string }[] | null = null;
+let mockListingMarks: { id: string; description: string; photoUrl?: string }[] | null = null;
 const mockListingCall = jest.fn();
 jest.mock('../hooks/useSightingPost', () => ({
   useSightingPost: (postId: string, enabled: boolean) => {
@@ -577,6 +577,15 @@ describe('the evidence', () => {
     expect(view.getByLabelText('Dent on the rear door, seen')).toBeTruthy();
     expect(view.queryByLabelText('Roof box, not seen')).toBeNull();
     expect(view.queryByText(/^Seen \d+ of/)).toBeNull();
+  });
+
+  it('⚠️ shows the owner’s photo of each mark — on an older report too', async () => {
+    mockListingMarks = [
+      { id: 'm1', description: 'Dent on the rear door', photoUrl: 'https://x/m1.jpg' },
+    ];
+    ready(sighting({ offeredFeatureIds: null })); // older report: seen marks only
+    const view = await renderScreen();
+    expect(view.getByTestId('seen-mark-m1-photo')).toBeTruthy();
   });
 
   it('marks a library photo ON the photo — ADR-0003', async () => {
