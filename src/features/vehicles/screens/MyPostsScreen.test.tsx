@@ -139,7 +139,6 @@ jest.mock('../components/PostOwnerActions', () => {
       mockOwnerProps = props;
       React.useImperativeHandle(ref, () => ({
         openManage: mockOpenManage,
-        requestDeactivate: jest.fn(),
         edit: jest.fn(),
         isBusy: mockIsBusy,
       }));

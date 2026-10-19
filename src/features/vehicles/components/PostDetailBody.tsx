@@ -10,10 +10,11 @@
  *        "Car details" (the FULL fact list in-page, gaps struck through),
  *        "Distinctive features" (the owner's photographed marks as cards —
  *        photo inset beside the description, truncated past three behind a
- *        grey "Show all N" block button), the owner card (OwnerCard — one
- *        quiet row), the (dormant) sighting-activity line, the SafetyNotice,
- *        a subtle "Report this listing" button, and the "More cars nearby" compact-card
- *        rail (the reference's "More stays nearby" shelf; useSimilarPosts).
+ *        grey "Show all N" block button), and — for SPOTTERS — the owner card
+ *        (OwnerCard — one quiet row), sighting activity (PostSightingsSection),
+ *        the SafetyNotice, a subtle "Report this listing" button and the "More
+ *        cars nearby" compact-card rail (the reference's "More stays nearby"
+ *        shelf; useSimilarPosts). The OWNER's order differs: see WHY below.
  * WHY:   Splits the section rendering out of the screen so the screen file
  *        stays about orchestration (load → header → states). Section order is
  *        the domain-reordered composition from the redesign session: location
@@ -23,9 +24,13 @@
  *        descriptions) never render an empty shell; the legacy owner's note
  *        only shows when there are no guided descriptions.
  *        A null bounty is a £5 fee listing OR a reward that ended (ADR-0020,
- *        post.rewardEnded): the stat, the ⓘ dialog and the deactivate copy
- *        each say which. The owner's reward-term date arrives as one quiet
- *        line (`rewardTermLine`) under the stat band.
+ *        post.rewardEnded): the stat and the ⓘ dialog each say which. The
+ *        owner's reward-term date arrives as one quiet line (`rewardTermLine`)
+ *        under the stat band.
+ *        THE OWNER'S FACE (2026-10-16): sightings first, then "Got your car
+ *        back?", then the listing as spotters see it — without the owner
+ *        card, safety notice, report button or "more cars" rail, which are
+ *        for spotters. Deactivating is the Manage listing sheet's alone.
  * LINKS: src/features/vehicles/screens/PostDetailScreen.tsx;
  *        src/shared/ui (Button, ConfirmDialog, PlateChip, StatusBadge,
  *        SafetyNotice, VehicleCard, SkeletonVehicleCard);
@@ -52,7 +57,7 @@ import { WatchToggle } from '@/features/watchlist';
 import type { PostSummary } from '@/shared/types';
 
 import { useTimeAgo } from '@/shared/hooks';
-import { cardFeePence, formatPounds, refundPence } from '@/shared/lib';
+import { formatPounds } from '@/shared/lib';
 import { REWARD_TERM_DAYS } from '@/shared/lib/bountyBounds';
 import {
   radii,
@@ -130,15 +135,10 @@ export interface PostDetailBodyProps {
   onEditDescription?: () => void;
   onEditTheftContext?: () => void;
   onEditDistinctiveFeatures?: () => void;
-  /** OWNER + PAID (active / pending_verification) only: REQUEST deactivation.
-   *  Presence = the deactivate control shows. The parent owns the confirm step
-   *  (shared with the "Manage post" sheet's row, so there is exactly one
-   *  confirm) and then runs the refund + toast. */
-  onDeactivate?: () => void;
   /** OWNER + ACTIVE only: open the recovery flow. Presence = the control shows.
-   *  Rendered ABOVE deactivate deliberately — getting the car back is the
-   *  ending this product exists for; taking the listing down is giving up on
-   *  it, and the good news should not be the harder one to find. */
+   *  The ONE owner action left on the page (owner, 2026-10-16): getting the
+   *  car back is the ending this product exists for. Deactivating lives only
+   *  in the Manage listing sheet now — it used to be here too, twice over. */
   onRecovered?: () => void;
   /** OWNER only: the reward's term as one quiet line under the stat band
    *  ("Your £200 reward runs until 4 December.") — passed only while the
@@ -173,7 +173,6 @@ export function PostDetailBody({
   onEditDescription,
   onEditTheftContext,
   onEditDistinctiveFeatures,
-  onDeactivate,
   onRecovered,
   rewardTermLine,
   rewardOutcome = null,
@@ -211,29 +210,46 @@ export function PostDetailBody({
   const bountyInfoRef = useRef<ConfirmDialogRef>(null);
 
   // A no-reward listing (ADR-0014) was paid for with the fixed platform fee
-  // instead of a bounty. Derived once here because it changes THREE things on
-  // this screen — the stat band, the explainer behind the ⓘ, and the deactivate
-  // copy — and they must never disagree about which kind of listing this is.
+  // instead of a bounty. Derived once here because it changes the stat band,
+  // the explainer behind the ⓘ and the recovery copy, and they must never
+  // disagree about which kind of listing this is.
   // ⚠️ Since ADR-0020 a null bounty can also be a reward that ENDED (its term
   // ran out unrenewed and it went back to the owner). That is not a fee
   // listing, and none of the "flat listing fee" sentences may reach it.
   const noReward = post.bountyPence === null;
   const rewardEnded = noReward && post.rewardEnded;
 
-  // The refund quoted in the deactivate section is EXACT (ADR-0021): the reward
-  // minus the fixed card fee, which is precisely what the server refunds. The
-  // confirm dialog itself lives on the screen — the "Manage post" sheet opens
-  // the same one, so the destructive copy exists exactly once.
-  //
-  // NULL for a no-reward listing: there is nothing to refund, so there is no
-  // figure to quote. refundPence is never called with a null — it would
-  // compute a nonsense figure for money that was never escrowed. Narrowed on
-  // the field itself rather than via `noReward`, so the compiler can see the
-  // null is gone.
-  const refundQuote =
-    post.bountyPence === null
-      ? null
-      : { backPence: refundPence(post.bountyPence), feePence: cardFeePence(post.bountyPence) };
+  // 8 — Sighting activity: the timeline, two faces from one mount point
+  // (PostSightingsSection). The owner gets the rich preview + warm empty; the
+  // public gets the restrained {time, locality} timeline or NOTHING — the
+  // section owns its divider/title so the public-empty case vanishes entirely.
+  // SAFETY: the face split and its fences live in the sightings feature
+  // (ADR-0008, SECURITY_AND_TRUST §6).
+  // Built once, placed by viewer (owner, 2026-10-16): FIRST for the owner —
+  // "has anyone seen my car?" is why they open this page, and it sat 14th of
+  // 17, under their own car's description — and where it always was for the
+  // public, whose page is unchanged.
+  const sightings = (
+    <PostSightingsSection
+      postId={post.id}
+      isOwner={post.isOwner}
+      // Anchor data for the timeline's arc ends — this page's own payload,
+      // already coarsened for the viewer's face (adds nothing, ADR-0008).
+      anchors={{
+        status: post.status,
+        lastSeenAt: post.lastSeenAt,
+        lastSeenArea: post.lastSeenArea,
+        createdAt: post.createdAt,
+      }}
+      // The theft point this page already maps ("Last seen here") roots the
+      // trail; sighting points come from each face's own payload (ADR-0009).
+      origin={
+        post.lat !== undefined && post.lng !== undefined
+          ? { lat: post.lat, lng: post.lng }
+          : undefined
+      }
+    />
+  );
 
   return (
     <View style={styles.body}>
@@ -374,6 +390,35 @@ export function PostDetailBody({
 
       </View>
 
+      {/* THE OWNER'S PAGE STARTS WITH WHAT HAPPENED (owner, 2026-10-16):
+          their sightings, then the happy ending's one button. Everything
+          below is the listing as spotters see it, which they can edit. */}
+      {post.isOwner ? sightings : null}
+
+      {/* 7a2 — Got it back — OWNER + ACTIVE only. The recovery flow: credit the
+          sighting that led to it, or say you found it another way. Straight
+          under the sightings it follows from. */}
+      {onRecovered ? (
+        <>
+          <Divider />
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Got your car back?</Text>
+            <Text style={styles.recoverBody}>
+              {noReward
+                ? // Both halves of the bounty sentence are false here: there is
+                  // nothing to send and nothing to get back. What IS true is the
+                  // credit, which on a no-reward listing is the spotter's whole
+                  // reward (ADR-0014) — so it leads.
+                  'Close the listing and credit the spotter who found it. There’s no cash reward to send, but the recovery goes on their spotter record.'
+                : 'Close the listing and either send the reward to the spotter who found it, or get it back if you found it another way.'}
+            </Text>
+            <View style={styles.recoverAction} testID="mark-recovered">
+              <Button label="I got it back" fullWidth={false} onPress={onRecovered} />
+            </View>
+          </View>
+        </>
+      ) : null}
+
       {/* 3 — Last seen here (promoted: spotters act on WHERE first). The
           place + time ride beside the title as a chip (same chrome as the
           identity chips — one badge grammar across the page). */}
@@ -382,7 +427,7 @@ export function PostDetailBody({
           <Divider />
           <View style={styles.section}>
             <View style={styles.sectionTitleRow}>
-              <Text style={styles.sectionTitle}>Last seen here</Text>
+              <Text style={styles.sectionTitle} accessibilityRole="header">Last seen here</Text>
               {onEditLastSeen ? (
                 <SectionEditButton onPress={onEditLastSeen} label="Edit last seen" testID="edit-last-seen" />
               ) : null}
@@ -421,7 +466,7 @@ export function PostDetailBody({
       <Divider />
       <View style={styles.section}>
         <View style={styles.sectionTitleRow}>
-          <Text style={styles.sectionTitle}>About this car</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">About this car</Text>
           {onEditDescription ? (
             <SectionEditButton
               onPress={onEditDescription}
@@ -455,7 +500,7 @@ export function PostDetailBody({
       <Divider />
       <View style={styles.section}>
         <View style={styles.sectionTitleRow}>
-          <Text style={styles.sectionTitle}>Car details</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">Car details</Text>
           {onEditCarDetails ? (
             <SectionEditButton
               onPress={onEditCarDetails}
@@ -494,7 +539,7 @@ export function PostDetailBody({
           <Divider />
           <View style={styles.section}>
             <View style={styles.sectionTitleRow}>
-              <Text style={styles.sectionTitle}>How it was taken</Text>
+              <Text style={styles.sectionTitle} accessibilityRole="header">How it was taken</Text>
               {onEditTheftContext ? (
                 <SectionEditButton
                   onPress={onEditTheftContext}
@@ -539,7 +584,7 @@ export function PostDetailBody({
           <Divider />
           <View style={styles.section}>
             <View style={styles.sectionTitleRow}>
-              <Text style={styles.sectionTitle}>Distinctive features</Text>
+              <Text style={styles.sectionTitle} accessibilityRole="header">Distinctive features</Text>
               {onEditDistinctiveFeatures ? (
                 <SectionEditButton
                   onPress={onEditDistinctiveFeatures}
@@ -558,151 +603,74 @@ export function PostDetailBody({
       ) : null}
 
       {/* 7 — Owner (low on the page, the final reassurance). Calm register: "Owner", never "Meet
-          the owner". */}
-      <Divider />
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Owner</Text>
-        <OwnerCard owner={post.owner} sightingCount={post.sightingCount} />
-
-        {/* The spotter's next step — SPOTTER side only (the owner reaches
-            spotters through their sightings list). It always offers what the
-            sticky bar does NOT, so the page never shows one action twice:
-              · not reported yet: the bar says "I've seen this car"; here,
-                the reason to — reporting is what opens a private chat
-                (DOMAIN Chat: no cold DMs, so this is honest about the gate).
-              · reported: the bar has become "Message the owner"
-                (2026-09-24); here, reporting AGAIN — a fresher sighting is
-                worth more than the first, and nothing else on the page
-                offers it once the bar has moved on.
-            Subtle buttons in both states: encouraged, never competing with
-            the bar's primary. */}
-        {!post.isOwner && onMessageOwner ? (
-          <View style={styles.messageOwner}>
-            <Text style={styles.messageOwnerText}>
-              {post.viewerHasSighting
-                ? 'Seen it again? A new sighting shows the owner where it is now.'
-                : 'Seen this car? Report a sighting to start a private chat with the owner.'}
-            </Text>
-            {post.viewerHasSighting ? (
-              onReportSighting ? (
-                <Button
-                  label="Report another sighting"
-                  variant="subtle"
-                  fullWidth={false}
-                  onPress={onReportSighting}
-                />
-              ) : null
-            ) : (
-              <Button
-                label="Report a sighting"
-                variant="subtle"
-                fullWidth={false}
-                onPress={onMessageOwner}
-              />
-            )}
-          </View>
-        ) : null}
-      </View>
-
-      {/* 7a2 — Got it back — OWNER + ACTIVE only. The recovery flow: credit the
-          sighting that led to it, or say you found it another way. Above
-          deactivate on purpose (see the prop's comment). */}
-      {onRecovered ? (
+          the owner". SPOTTERS only (owner, 2026-10-16): on their own listing
+          it was a card about themselves. */}
+      {!post.isOwner ? (
         <>
           <Divider />
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Got your car back?</Text>
-            <Text style={styles.deactivateBody}>
-              {noReward
-                ? // Both halves of the bounty sentence are false here: there is
-                  // nothing to send and nothing to get back. What IS true is the
-                  // credit, which on a no-reward listing is the spotter's whole
-                  // reward (ADR-0014) — so it leads.
-                  'Close the listing and credit the spotter who found it. There’s no cash reward to send, but the recovery goes on their spotter record.'
-                : 'Close the listing and either send the reward to the spotter who found it, or get it back if you found it another way.'}
-            </Text>
-            <View style={styles.deactivateAction} testID="mark-recovered">
-              <Button
-                label="I got it back"
-                fullWidth={false}
-                onPress={onRecovered}
-              />
-            </View>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Owner</Text>
+            <OwnerCard owner={post.owner} sightingCount={post.sightingCount} />
+
+            {/* The spotter's next step — SPOTTER side only (the owner reaches
+                spotters through their sightings list). It always offers what the
+                sticky bar does NOT, so the page never shows one action twice:
+                  · not reported yet: the bar says "I've seen this car"; here,
+                    the reason to — reporting is what opens a private chat
+                    (DOMAIN Chat: no cold DMs, so this is honest about the gate).
+                  · reported: the bar has become "Message the owner"
+                    (2026-09-24); here, reporting AGAIN — a fresher sighting is
+                    worth more than the first, and nothing else on the page
+                    offers it once the bar has moved on.
+                Subtle buttons in both states: encouraged, never competing with
+                the bar's primary. */}
+            {onMessageOwner ? (
+              <View style={styles.messageOwner}>
+                <Text style={styles.messageOwnerText}>
+                  {post.viewerHasSighting
+                    ? 'Seen it again? A new sighting shows the owner where it is now.'
+                    : 'Seen this car? Report a sighting to start a private chat with the owner.'}
+                </Text>
+                {post.viewerHasSighting ? (
+                  onReportSighting ? (
+                    <Button
+                      label="Report another sighting"
+                      variant="subtle"
+                      fullWidth={false}
+                      onPress={onReportSighting}
+                    />
+                  ) : null
+                ) : (
+                  <Button
+                    label="Report a sighting"
+                    variant="subtle"
+                    fullWidth={false}
+                    onPress={onMessageOwner}
+                  />
+                )}
+              </View>
+            ) : null}
           </View>
         </>
       ) : null}
 
-      {/* 7b — Deactivate listing — OWNER + PAID only. Takes the post down and
-          refunds the bounty minus the fixed card fee (ADR-0021). Server-
-          enforced; the button is convenience. The figure quoted here is the
-          exact refund; the parent runs it and toasts the server's figure. */}
-      {onDeactivate ? (
-        <>
-          <Divider />
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Deactivate listing</Text>
-            <Text style={styles.deactivateBody}>
-              {refundQuote === null
-                ? // No bounty means no refund, and the listing fee is not
-                  // refundable (ADR-0014). Said before the tap, not after —
-                  // this is the owner's last chance to learn it, though the
-                  // pricing step disclosed it before they ever paid. A reward
-                  // that ENDED has already gone back, and that listing may
-                  // never have paid a fee — so it says only what is true.
-                  {
-                    ended: 'Take this listing down. Your reward already went back to your card when it ended.',
-                    fee: 'Take this listing down. Your listing fee isn’t refunded — it covered putting the car in front of spotters.',
-                    unknown: 'Take this listing down. There’s no reward held on it to refund.',
-                  }[noRewardKind(post)]
-                : `Take this listing down and get your reward back: ${formatPounds(refundQuote.backPence)} goes back to your card. Only the ${formatPounds(
-                    refundQuote.feePence,
-                  )} card fee is kept.`}
-            </Text>
-            <View style={styles.deactivateAction} testID="deactivate-listing">
-              <Button
-                label={refundQuote === null ? 'Deactivate listing' : 'Deactivate & refund'}
-                variant="secondary"
-                fullWidth={false}
-                onPress={onDeactivate}
-              />
-            </View>
-          </View>
-        </>
-      ) : null}
-
-      {/* 8 — Sighting activity: the timeline, two faces from one mount
-          point (PostSightingsSection). The owner gets the rich preview +
-          warm empty; the public gets the restrained {time, locality}
-          timeline or NOTHING — the section owns its divider/title so the
-          public-empty case vanishes entirely. SAFETY: the old aggregate
-          line is superseded; the face split and its fences live in the
-          sightings feature (ADR-0008, SECURITY_AND_TRUST §6). */}
-      <PostSightingsSection
-        postId={post.id}
-        isOwner={post.isOwner}
-        // Anchor data for the timeline's arc ends — this page's own payload,
-        // already coarsened for the viewer's face (adds nothing, ADR-0008).
-        anchors={{
-          status: post.status,
-          lastSeenAt: post.lastSeenAt,
-          lastSeenArea: post.lastSeenArea,
-          createdAt: post.createdAt,
-        }}
-        // The theft point this page already maps ("Last seen here") roots the
-        // trail; sighting points come from each face's own payload (ADR-0009).
-        origin={
-          post.lat !== undefined && post.lng !== undefined
-            ? { lat: post.lat, lng: post.lng }
-            : undefined
-        }
-      />
+      {/* 8 — Sighting activity, where it always was for the PUBLIC (built
+          once above as `sightings`; the owner’s copy leads their page). */}
+      {!post.isOwner ? sightings : null}
 
       {/* 9 — Safety. Deliberately NOT the reference's quiet "things to know"
-          rows — the banner form stays unmissable (emotional translation). */}
-      <Divider />
-      <View style={styles.section}>
-        <SafetyNotice />
-      </View>
+          rows — the banner form stays unmissable (emotional translation).
+          SPOTTERS only (owner, 2026-10-16): it tells the person looking for
+          the car not to approach it, which the owner doesn't need on their
+          own listing. */}
+      {!post.isOwner ? (
+        <>
+          <Divider />
+          <View style={styles.section}>
+            <SafetyNotice />
+          </View>
+        </>
+      ) : null}
 
       {/* The bounty explainer popup — the promise that makes the number an
           act of help, not a price (emotional translation). */}
@@ -740,23 +708,34 @@ export function PostDetailBody({
       {/* 10 — Report, at the page's end. A subtle button since 2026-09-24
           (owner's call — it was an underlined link with a flag): the same
           grey treatment as "Report a sighting" above, never `danger` —
-          reporting a listing is not destructive, and red would alarm. */}
-      <Divider />
-      <View style={styles.section}>
-        <Button label="Report this listing" variant="subtle" fullWidth={false} onPress={onReport} />
-      </View>
+          reporting a listing is not destructive, and red would alarm.
+          SPOTTERS only (owner, 2026-10-16): no one reports their own listing. */}
+      {!post.isOwner ? (
+        <>
+          <Divider />
+          <View style={styles.section}>
+            <Button
+              label="Report this listing"
+              variant="subtle"
+              fullWidth={false}
+              onPress={onReport}
+            />
+          </View>
+        </>
+      ) : null}
 
       {/* 11 — More cars nearby (the reference's "More stays nearby" shelf,
           page's end): compact-card rail from the public feed centred on this
           car's last-seen point. The whole app is stolen cars, so the title
           doesn't repeat "stolen". Quietly absent when there's nothing to
           show. Full-bleed: the rail escapes the page gutter and carries the
-          feed's own 16px one. */}
-      {similarLoading || similarPosts.length > 0 ? (
+          feed's own 16px one. SPOTTERS only (owner, 2026-10-16): an owner
+          looking at their own stolen car isn't browsing for others. */}
+      {!post.isOwner && (similarLoading || similarPosts.length > 0) ? (
         <>
           <Divider />
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
+            <Text style={styles.sectionTitle} accessibilityRole="header">
               {hasCoords ? 'More cars nearby' : 'More cars'}
             </Text>
             {similarLoading ? (
@@ -1020,13 +999,13 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     // compound to an off-rhythm 24px below the owner block).
     gap: spacing.md,
   },
-  deactivateBody: {
+  recoverBody: {
     // Instructional copy introducing a money action = body, not caption/meta
     // (mirrors messageOwnerText).
     ...typography.body,
     color: c.textSecondary,
   },
-  deactivateAction: {
+  recoverAction: {
     // Sit the button under the explainer at the section's rhythm.
     marginTop: spacing.md,
   },
