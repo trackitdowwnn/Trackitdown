@@ -5,7 +5,7 @@ a spotter photographs a sighted car in-app (photo + GPS + timestamp captured
 atomically as evidence), optionally adds context, and sends the report —
 reportable in under 60 seconds; plus the sighting TIMELINE on the post: the
 owner's rich chronology (entries → per-sighting detail with message /
-mark-helpful) and the restrained public face (time + locality only, ADR-0008).
+confirm) and the restrained public face (time + locality only, ADR-0008).
 
 **Entered from** "I've seen this car" — the post detail bottom bar and the
 search-map peek card — through the auth gate (`report_sighting` context) with
@@ -119,25 +119,31 @@ car today — the owner has them.").
   day-grouped, movement hint), tap → the sighting detail.
 - `SightingDetailScreen` (route `src/app/sighting/[sightingId].tsx`,
   `?postId=…`) — one sighting examined, laid out like the post page
-  (redesigned 2026-10-08, "hard to read and understand"):
+  (redesigned 2026-10-08, "hard to read and understand"; again 2026-10-19,
+  evidence first and calm once answered). `sightingVerdictView`
+  (`lib/sightingVerdict.ts`) is the page's one reading of the status:
   - **Hero:** the photos full-bleed and swipeable (`PhotoPager`; a library
     photo is badged ON the photo), with a floating back header.
-  - **Title:** "Seen near …", when it was seen, and the owner's decision so
-    far ("Confirmed" / "Credited" / "Not your car", "You decided …";
-    `lib/sightingVerdict.ts`, shared with the timeline).
+  - **Title:** "Seen near …" and when — or, with no area, "Seen 2h ago" and
+    the date. Then the owner's answer once given ("Confirmed" / "Credited" /
+    "Not your car", "You decided …"), with **Change** beside "Not your car"
+    (through the same confirm as Yes). Under "Confirmed", **Got your car
+    back?** → /recover-post, only while the listing can be recovered
+    (`useRecoveryDoor`: one deferred post fetch, `canMarkRecovered`, the
+    `bounty` param) — "Yes" itself pays no one.
+  - **What they saw:** the owner's marks they could see (ticks) FIRST, then
+    the spotter's answers as labelled rows, in the same words they checked
+    (`sightingDetailRows`), then their note.
   - **Where:** the map, "Approximate — within about N m", the safety notice
     beside the point, then Open in Maps (behind the safety confirm).
-  - **What they saw:** the spotter's answers as labelled rows, in the same
-    words they checked (`sightingDetailRows`), their note, and the owner's
-    marks they could see.
-  - **Spotted by:** their record, and View profile (fed from the narrow
-    payload; no uid exists client-side). "Message" stays here while
-    undecided.
-  - **Pinned decision bar:** "Is this your car?"
+  - **Spotted by:** one card — first name, one record line ("12 sightings ·
+    4 confirmed by owners · since July 2026") and **Message** (by sighting
+    id), in every state. No "View profile": its sheet only repeated the card.
+  - **Pinned decision bar, ONLY while undecided:** "Is this your car?"
     - **Yes** credits the spotter and can't be undone, so it is confirmed
       first.
-    - **Not my car** is reversible ("Actually, it is").
-    - After the decision, the bar is Message (by sighting id).
+    - **Not my car** is reversible (Change, above).
+    - Once answered there is no bar.
 
   A "new sighting" push opens this page (`pushRoute`; notify-sighting sends
   the sighting's id since 2026-10-09 — older notifications still open the
@@ -156,8 +162,9 @@ car today — the owner has them.").
   one place a `not_mine` verdict is ever shown, and only to the spotter
   themselves; the summary never counts one.
 - `PostSightingsSection` — the detail page's "Sighting activity" section,
-  BOTH faces from one mount: owner preview (a summary line — "4 sightings ·
-  1 needs your answer", counted over all of them — then the 3 newest + warm
+  BOTH faces from one mount: owner preview (a summary line — "1 needs your
+  answer" / "Nothing waiting on you", counted over all of them, no total
+  since 2026-10-16 — then the 3 newest + warm
   empty + "View all"; while loading, a pause then "Checking for sightings…",
   never sighting-shaped placeholders) vs `PublicSightingTimeline` — or
   nothing at all (public sees no section while it's empty; absence is

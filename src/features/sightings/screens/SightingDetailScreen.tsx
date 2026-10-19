@@ -3,13 +3,23 @@
  *        full, laid out like the post page:
  *        - the spotter's photos full-bleed and swipeable, the back button
  *          floating over them;
- *        - a content sheet with: where and when it was seen, and the owner's
- *          decision so far; "Where" (the map, how exact it is, the safety
- *          notice, Open in Maps); "What they saw" (their answers as labelled
- *          rows, their note, the owner's marks they could see); "Spotted by"
- *          (their record);
- *        - pinned to the bottom, the decision: "Is this your car?".
- * WHY:   Redesigned 2026-10-08 — the owner found the old page "hard to read
+ *        - a content sheet, EVIDENCE FIRST (owner's pick, 2026-10-19):
+ *          where and when it was seen, and the owner's answer so far (with
+ *          "Change" for "Not my car", and "Got your car back?" under a
+ *          confirmation); "What they saw" (the owner's marks they could see,
+ *          their answers as labelled rows, their note); "Where" (the map, how
+ *          exact it is, the safety notice, Open in Maps); "Spotted by" (their
+ *          record, and Message — always there);
+ *        - pinned to the bottom, ONLY while undecided: "Is this your car?".
+ * WHY:   Redesigned 2026-10-19 (owner: evidence first, a calm page once
+ *        answered). The 2026-10-08 page said the answer twice (a pill under
+ *        the title AND the bar's "You said this isn't your car."), moved
+ *        Message from the spotter card to the bar once answered, and after
+ *        "Yes" offered nothing — though "Yes" pays no one; the reward moves
+ *        only through the recovery. `sightingVerdictView` is now the page's
+ *        one reading of the status.
+ *
+ *        Redesigned before that, 2026-10-08 — the owner found the old page "hard to read
  *        and understand": no way back, the photos stacked one under another,
  *        an unlabelled line of answers and an unlabelled note, and the actual
  *        decision two quiet buttons at the bottom of it all. It also labelled
@@ -46,17 +56,24 @@
  */
 
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
-import { Linking, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Linking, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { z } from 'zod';
 
-import type { PublicProfileSheetProps } from '@/features/profile';
 import { useNow, useTimeAgo } from '@/shared/hooks';
 import { formatDateTimeLabel, mapPinUrl, spokenAgo } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
-import { radii, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
+import {
+  opacity,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import {
   AppHeader,
   ConfirmDialog,
@@ -66,7 +83,6 @@ import {
   SAFETY_NOTICE_BODY,
   StatusPill,
   useToast,
-  type BottomSheetRef,
   type ConfirmDialogRef,
 } from '@/shared/ui';
 
@@ -78,6 +94,7 @@ import { hasSeenDetails, SightingSeenSection } from '../components/SightingSeenS
 import { SightingSpotterCard } from '../components/SightingSpotterCard';
 import { SightingWhereSection } from '../components/SightingWhereSection';
 import { usePostSightings } from '../hooks/usePostSightings';
+import { useRecoveryDoor, type RecoveryDoor } from '../hooks/useRecoveryDoor';
 import {
   isGoneSighting,
   sightingSeenAt,
@@ -146,9 +163,11 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
   const localApplies = local !== null && sighting !== null && sighting.status === local.from;
   const effectiveStatus = localApplies ? local.status : (sighting?.status ?? 'unverified');
   const reviewedAt = localApplies ? local.reviewedAt : (sighting?.reviewedAt ?? null);
-  // The page's one reading of the status — the decision line and the Message
-  // gate read it here (the bar still takes the raw status for now).
+  // The page's one reading of the status — the answer under the title, the
+  // pinned bar and the "Got your car back?" door all read it here.
   const verdict = sightingVerdictView(effectiveStatus);
+  // Under a confirmation only, and only if the listing can still be recovered.
+  const recoveryDoor = useRecoveryDoor(postId, idsValid && verdict.offerRecovery);
 
   // Which answer is on its way — so the spinner sits on THAT button.
   const [pending, setPending] = useState<'yes' | 'not_mine' | null>(null);
@@ -158,12 +177,6 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
   const inFlight = useRef(false);
   const [opening, setOpening] = useState(false);
 
-  // Peer profile sheet — component deferred-loaded (profile ↔ sightings graphs
-  // stay apart in tests; same pattern as ChatThreadScreen). The DATA is
-  // already here: the sighting's narrow spotter passport.
-  const [PeerSheet, setPeerSheet] = useState<ComponentType<PublicProfileSheetProps> | null>(null);
-  const [peerProfile, setPeerProfile] = useState<PublicProfileSheetProps['profile']>(null);
-  const peerSheetRef = useRef<BottomSheetRef>(null);
   const mapsConfirmRef = useRef<ConfirmDialogRef>(null);
   const yesConfirmRef = useRef<ConfirmDialogRef>(null);
 
@@ -174,30 +187,14 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
     else router.replace('/');
   };
 
-  const openSpotterProfile = async () => {
-    if (!sighting) return;
-    try {
-      const profileFeature = await import('@/features/profile');
-      setPeerSheet(() => profileFeature.PublicProfileSheet);
-      // The narrow passport, shaped to PublicProfile — nothing beyond what
-      // the sighting payload already carries (first name + counters + since).
-      setPeerProfile({
-        firstName: sighting.spotter.firstName,
-        avatarUrl: null,
-        createdAt: sighting.spotter.memberSince,
-        counters: {
-          sightingsReported: sighting.spotter.sightingsReported,
-          sightingsHelpful: sighting.spotter.sightingsHelpful,
-          recoveriesCredited: sighting.spotter.recoveriesCredited,
-        },
-      });
-    } catch {
-      toast.show('We couldn’t open their profile just now.', 'error');
-    }
+  // "Got your car back?" — the post page's own route and params
+  // (PostDetailScreen.onRecovered). No dialog first: the recovery screen IS
+  // the confirmation, and it asks which sighting led to it. Nothing moves
+  // money here.
+  const openRecovery = (door: RecoveryDoor) => {
+    log.info('sighting_recovery_opened', { postId, sightingId });
+    router.push({ pathname: '/recover-post', params: { postId, bounty: door.bounty } });
   };
-  useEffect(() => {
-    if (PeerSheet && peerProfile) peerSheetRef.current?.open();
-  }, [PeerSheet, peerProfile]);
 
   const messageSpotter = async () => {
     if (!sighting || opening) return;
@@ -351,7 +348,26 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
             {/* The content sheet: rounded top riding up over the hero's foot,
                 as on the post page. */}
             <View style={styles.sheet}>
-              <SightingTitle sighting={sighting} verdict={verdict} reviewedAt={reviewedAt} />
+              <SightingTitle
+                sighting={sighting}
+                verdict={verdict}
+                reviewedAt={reviewedAt}
+                // "Change" is "Actually, it is": the same confirm as the bar's
+                // "Yes" — the answer it changes TO cannot be undone.
+                onChange={() => yesConfirmRef.current?.open()}
+                changing={pending !== null}
+                recoveryDoor={recoveryDoor}
+                onRecovery={openRecovery}
+              />
+
+              {/* EVIDENCE FIRST (owner, 2026-10-19): what tells the owner
+                  whether it IS their car — their own marks above all — before
+                  where it was, which matters once it is. */}
+              {hasSeenDetails(sighting) ? (
+                <Section title="What they saw">
+                  <SightingSeenSection sighting={sighting} />
+                </Section>
+              ) : null}
 
               {/* The safety notice lives here, beside the exact point and
                   above Open in Maps (SightingWhereSection). */}
@@ -371,19 +387,11 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
                 />
               </Section>
 
-              {hasSeenDetails(sighting) ? (
-                <Section title="What they saw">
-                  <SightingSeenSection sighting={sighting} />
-                </Section>
-              ) : null}
-
+              {/* Message lives here in EVERY state — never moved to the bar. */}
               <Section title="Spotted by">
                 <SightingSpotterCard
                   spotter={sighting.spotter}
-                  onViewProfile={() => void openSpotterProfile()}
-                  // Before the decision, to ask a question first; after it,
-                  // Message is the pinned bar's.
-                  onMessage={verdict.decide ? () => void messageSpotter() : undefined}
+                  onMessage={() => void messageSpotter()}
                   messaging={opening}
                 />
               </Section>
@@ -392,15 +400,14 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
         )}
       </Animated.ScrollView>
 
-      {sighting && !loading && !failed ? (
+      {/* Only while the sighting is the owner's to answer — once answered,
+          the page is calm (owner, 2026-10-19). A flex child, so the scroll
+          view shrinks to fit it and grows back when it goes. */}
+      {sighting && !loading && !failed && verdict.decide ? (
         <SightingDecisionBar
-          status={effectiveStatus}
-          spotterName={sighting.spotter.firstName}
           onYes={() => yesConfirmRef.current?.open()}
           onNotMine={() => void markNotMine()}
-          onMessage={() => void messageSpotter()}
           pending={pending}
-          messaging={opening}
         />
       ) : null}
 
@@ -435,14 +442,6 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
         confirmLabel="Open in Maps"
         onConfirm={() => void openInMaps()}
       />
-
-      {PeerSheet ? (
-        <PeerSheet
-          ref={peerSheetRef}
-          profile={peerProfile}
-          onDismiss={() => setPeerProfile(null)}
-        />
-      ) : null}
     </View>
   );
 }
@@ -463,15 +462,24 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** "Seen near Deansgate", when, and the owner's decision so far. */
+/** "Seen near Deansgate", when, and the owner's answer so far — with what
+ *  they can do about it next. */
 function SightingTitle({
   sighting,
   verdict,
   reviewedAt,
+  onChange,
+  changing,
+  recoveryDoor,
+  onRecovery,
 }: {
   sighting: OwnerSighting;
   verdict: SightingVerdictView;
   reviewedAt: string | null;
+  onChange: () => void;
+  changing: boolean;
+  recoveryDoor: RecoveryDoor | null;
+  onRecovery: (door: RecoveryDoor) => void;
 }) {
   const styles = useThemedStyles(makeStyles);
   // When it was SEEN — the same rule as the timeline card (ADR-0003).
@@ -487,20 +495,103 @@ function SightingTitle({
     // An unparseable timestamp costs the date, never the page.
   }
 
+  // With no area, the title says WHEN instead — "Sighting" only repeated the
+  // header above it — and the line under it keeps just the date.
+  const area = sighting.locationUnavailable ? null : sighting.areaLabel;
   return (
     <View style={styles.titleBlock}>
-      <Text style={styles.title} accessibilityRole="header">
-        {sighting.locationUnavailable || !sighting.areaLabel
-          ? 'Sighting'
-          : `Seen near ${sighting.areaLabel}`}
+      {area ? (
+        <>
+          <Text style={styles.title} accessibilityRole="header">
+            Seen near {area}
+          </Text>
+          <Text
+            style={styles.meta}
+            accessibilityLabel={`Seen ${spokenAgo(ago)}${date ? `, ${date}` : ''}`}
+          >
+            {date ? `${ago} · ${date}` : ago}
+          </Text>
+        </>
+      ) : (
+        <>
+          {/* The date is its own line below — spoken there, not twice. */}
+          <Text
+            style={styles.title}
+            accessibilityRole="header"
+            accessibilityLabel={`Seen ${spokenAgo(ago)}`}
+          >
+            Seen {ago}
+          </Text>
+          {date ? <Text style={styles.meta}>{date}</Text> : null}
+        </>
+      )}
+      <DecisionLine
+        verdict={verdict}
+        reviewedAt={reviewedAt}
+        onChange={onChange}
+        changing={changing}
+      />
+      {recoveryDoor ? (
+        <RecoveryRow door={recoveryDoor} onPress={() => onRecovery(recoveryDoor)} />
+      ) : null}
+    </View>
+  );
+}
+
+/** A text action with a real 44pt box — the page's one link style (Open in
+ *  Maps uses the same). */
+function TextLink({
+  label,
+  accessibilityLabel,
+  accessibilityHint,
+  busy = false,
+  onPress,
+  testID,
+}: {
+  label: string;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+  /** Its action is on the way: inert and dimmed, and says so. */
+  busy?: boolean;
+  onPress: () => void;
+  testID?: string;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={busy}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ busy, disabled: busy }}
+      style={({ pressed }) => [styles.link, (pressed || busy) && styles.pressed]}
+      testID={testID}
+    >
+      <Text style={styles.linkLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/** "Got your car back?" under a confirmation — the way to the reward, which
+ *  "Yes, it's my car" does not move. Words from the post page's own section
+ *  (PostDetailBody): send the reward, or on a no-reward listing, credit. */
+function RecoveryRow({ door, onPress }: { door: RecoveryDoor; onPress: () => void }) {
+  const styles = useThemedStyles(makeStyles);
+  const action = door.noReward ? 'Credit the spotter' : 'Send the reward';
+  return (
+    <View style={styles.recoveryRow} testID="sighting-recovery">
+      {/* Silent to a screen reader: the link's own label carries the question,
+          so it is one stop, not the question read twice. */}
+      <Text style={styles.recoveryTitle} accessibilityElementsHidden importantForAccessibility="no">
+        Got your car back?
       </Text>
-      <Text
-        style={styles.meta}
-        accessibilityLabel={`Seen ${spokenAgo(ago)}${date ? `, ${date}` : ''}`}
-      >
-        {date ? `${ago} · ${date}` : ago}
-      </Text>
-      <DecisionLine verdict={verdict} reviewedAt={reviewedAt} />
+      <TextLink
+        label={action}
+        accessibilityLabel={`Got your car back? ${action}`}
+        onPress={onPress}
+        testID="sighting-recovery-link"
+      />
     </View>
   );
 }
@@ -514,16 +605,39 @@ function SightingTitle({
 function DecisionLine({
   verdict,
   reviewedAt,
+  onChange,
+  changing,
 }: {
   verdict: SightingVerdictView;
   reviewedAt: string | null;
+  onChange: () => void;
+  /** The changed answer is on its way. The bar that used to show a spinner
+   *  for it is gone once answered, so "Change" itself says so. */
+  changing: boolean;
 }) {
+  const styles = useThemedStyles(makeStyles);
   if (verdict.label === null) return null;
   const { label, tone } = verdict;
-  return reviewedAt ? (
-    <DecidedLine label={label} tone={tone} reviewedAt={reviewedAt} />
-  ) : (
-    <DecisionRow label={label} tone={tone} accessibilityLabel={`Your answer: ${label}`} />
+  return (
+    // The answer is one accessible element; "Change" stays a separate,
+    // focusable button beside it (an accessible parent would swallow it).
+    <View style={styles.answerLine}>
+      {reviewedAt ? (
+        <DecidedLine label={label} tone={tone} reviewedAt={reviewedAt} />
+      ) : (
+        <DecisionRow label={label} tone={tone} accessibilityLabel={`Your answer: ${label}`} />
+      )}
+      {verdict.canChange ? (
+        <TextLink
+          label={changing ? 'Saving…' : 'Change'}
+          accessibilityLabel={changing ? 'Saving your answer' : 'Change your answer'}
+          accessibilityHint="Asks you to confirm it’s your car"
+          busy={changing}
+          onPress={onChange}
+          testID="sighting-change-answer"
+        />
+      ) : null}
+    </View>
   );
 }
 
@@ -620,12 +734,52 @@ const makeStyles = (c: Palette) =>
       ...typography.caption,
       color: c.textSecondary,
     },
+    // The answer, then "Change" on the same line when there is one; wraps
+    // under at large text rather than squeezing the pill.
+    answerLine: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      columnGap: spacing.lg,
+      marginTop: spacing.sm,
+    },
+    // Shrinks inside the wrapping line, so "You decided 3 days ago" wraps at
+    // large text instead of running off the edge.
     decisionRow: {
       flexDirection: 'row',
       alignItems: 'center',
       flexWrap: 'wrap',
+      flexShrink: 1,
       gap: spacing.sm,
-      marginTop: spacing.sm,
+    },
+    // "Got your car back?" — a quiet question with its link on ONE line (the
+    // answer line's form), under the answer it follows from: stacked, the
+    // link's 44pt box left an uneven gap above the divider. Not a button: the
+    // page's primary moment was the answer; this is the next step, offered.
+    recoveryRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      columnGap: spacing.sm,
+    },
+    recoveryTitle: {
+      ...typography.label,
+      color: c.textPrimary,
+    },
+    // A text link with a real 44pt box (SightingWhereSection's form).
+    link: {
+      alignSelf: 'flex-start',
+      justifyContent: 'center',
+      minHeight: sizes.touchTarget,
+      minWidth: sizes.touchTarget,
+    },
+    pressed: {
+      opacity: opacity.pressed,
+    },
+    linkLabel: {
+      ...typography.label,
+      color: c.textPrimary,
+      textDecorationLine: 'underline',
     },
     divider: {
       height: StyleSheet.hairlineWidth,

@@ -863,7 +863,8 @@ export async function markSightingNotMine(
     log.warn('mark_sighting_not_mine failed', { code: error.code });
     if (error.message?.includes('ALREADY_COUNTED')) {
       throw new SightingVerdictError(
-        'You’ve already marked this one helpful, and that credit can’t be taken back.',
+        // The page's word is "Confirmed" — never "helpful" (2026-10-19).
+        'You’ve already confirmed this one, and that can’t be taken back.',
         'ALREADY_COUNTED',
       );
     }
