@@ -53,7 +53,15 @@ export function markChecklist(
   offeredIds: readonly string[] | null | undefined,
 ): MarkChecklist {
   if (listingMarks === null || offeredIds == null) {
-    return { checks: seenMarks.map((mark) => ({ mark, seen: true })), complete: false };
+    // The seen marks alone — but each as the LISTING's copy when there is
+    // one: the sighting's own carries no photo (get_post_sightings keeps it
+    // lean), and an older report showed its marks as bare text (owner,
+    // 2026-10-19: "the image is not showing").
+    const fromListing = new Map((listingMarks ?? []).map((mark) => [mark.id, mark]));
+    return {
+      checks: seenMarks.map((mark) => ({ mark: fromListing.get(mark.id) ?? mark, seen: true })),
+      complete: false,
+    };
   }
   const seenIds = new Set(seenMarks.map((mark) => mark.id));
   const offered = new Set(offeredIds);
