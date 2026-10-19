@@ -129,11 +129,13 @@ car today — the owner has them.").
     "Not your car", "You decided …"), with **Change** beside "Not your car"
     (through the same confirm as Yes). Under "Confirmed", **Got your car
     back?** → /recover-post, only while the listing can be recovered
-    (`useRecoveryDoor`: one deferred post fetch, `canMarkRecovered`, the
-    `bounty` param) — "Yes" itself pays no one.
-  - **What they saw:** the owner's marks they could see (ticks) FIRST, then
-    the spotter's answers as labelled rows, in the same words they checked
-    (`sightingDetailRows`), then their note.
+    (`useSightingPost`: one deferred listing read per focus,
+    `canMarkRecovered`, the `bounty` param) — "Yes" itself pays no one.
+  - **What they saw:** FIRST, ALL the owner's marks ("Seen 1 of 3"), the ones the spotter could see ticked — the wizard's own
+    "Could you see any of these?" list read back in the same rows
+    (`MarkTile`, read-only; `markChecklist`; the full list is the listing's,
+    via `useSightingPost`). Then the spotter's answers as labelled rows, in
+    the same words they checked (`sightingDetailRows`), then their note.
   - **Where:** the map, "Approximate — within about N m", the safety notice
     beside the point, then Open in Maps (behind the safety confirm).
   - **Spotted by:** one card — first name, one record line ("12 sightings ·

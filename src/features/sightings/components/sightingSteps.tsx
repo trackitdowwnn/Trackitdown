@@ -23,7 +23,8 @@
  *        src/features/sightings/components/CompassPicker.tsx;
  *        src/features/sightings/lib/contextLabels.ts (the shared vocabulary);
  *        src/shared/ui (CameraCapture, PermissionPrimer, ChoiceChips,
- *        ChoiceChipsMulti, TextField, AppImage);
+ *        ChoiceChipsMulti, TextField); ./MarkTile.tsx (the owner's marks —
+ *        the same rows the owner's sighting page reads back);
  *        src/features/sightings/components/ReportSafetySheet.tsx (the gate);
  *        docs/DOMAIN.md (Sighting rules — structured context);
  *        docs/decisions/ADR-0003-gallery-supplementary-evidence.md.
@@ -49,7 +50,6 @@ import {
   type Palette,
 } from '@/shared/theme';
 import {
-  AppImage,
   CameraCapture,
   ChoiceChips,
   ChoiceChipsMulti,
@@ -85,6 +85,7 @@ import {
   type VehicleStateFlag,
 } from '../types';
 import { CompassPicker } from './CompassPicker';
+import { MarkTile } from './MarkTile';
 
 const log = createLogger('sightings');
 
@@ -320,58 +321,6 @@ function QuestionHead({ title, hint }: { title: string; hint?: string }) {
       </Text>
       {hint ? <Text style={styles.questionHint}>{hint}</Text> : null}
     </View>
-  );
-}
-
-/** One of the owner's marks: their photo, the description, and a check. */
-function MarkTile({
-  description,
-  photoUrl,
-  selected,
-  onPress,
-  testID,
-}: {
-  description: string;
-  photoUrl?: string;
-  selected: boolean;
-  onPress: () => void;
-  testID: string;
-}) {
-  const styles = useThemedStyles(makeStyles);
-  const palette = usePalette();
-  return (
-    <Pressable
-      accessibilityRole="checkbox"
-      accessibilityLabel={description}
-      accessibilityState={{ checked: selected }}
-      onPress={onPress}
-      testID={testID}
-      style={({ pressed }) => [
-        styles.markTile,
-        selected && styles.markTileSelected,
-        pressed && styles.markTilePressed,
-      ]}
-    >
-      {photoUrl ? (
-        <AppImage uri={photoUrl} style={styles.markThumb} testID={`${testID}-photo`} />
-      ) : (
-        // No photo: an empty thumb keeps every row's text on the same line.
-        <View
-          style={[styles.markThumb, styles.markThumbEmpty]}
-          importantForAccessibility="no"
-          accessibilityElementsHidden
-        >
-          <Feather name="image" size={sizes.iconSm} color={palette.textSecondary} />
-        </View>
-      )}
-      <Text style={styles.markLabel}>{description}</Text>
-      <Feather
-        name={selected ? 'check-circle' : 'circle'}
-        size={sizes.icon}
-        // textSecondary, not borderStrong (~2.6:1): a control's state needs 3:1.
-        color={selected ? palette.primary : palette.textSecondary}
-      />
-    </Pressable>
   );
 }
 
@@ -654,12 +603,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   revealBlock: {
     marginTop: spacing.md,
   },
-  // flex: 1 takes the row's spare room, so the check always sits trailing.
-  markLabel: {
-    ...typography.body,
-    color: c.textPrimary,
-    flex: 1,
-  },
   // Safety copy is the one place we are firm and unmissable — never the
   // quietest style on the screen: question weight, ink (never `danger`), with
   // SafetyNotice's rule glyph.
@@ -734,37 +677,7 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     ...typography.label,
     color: c.textSecondary,
   },
-  // The owner's marks: a bordered row each (CardSelect's border and check
-  // cue, at the compact `md` radius of the SelectScreen tiles), the owner's
-  // photo on the left so the spotter knows what to look for.
-  markTile: {
-    minHeight: sizes.control,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.sm,
-    paddingRight: spacing.lg,
-    borderRadius: radii.md,
-    borderWidth: sizes.selectBorder,
-    borderColor: c.border,
-    backgroundColor: c.surface,
-  },
-  markTileSelected: {
-    borderColor: c.primary,
-  },
-  markTilePressed: {
-    backgroundColor: c.surfaceSubtle,
-  },
-  markThumb: {
-    width: sizes.markThumb,
-    height: sizes.markThumb,
-    borderRadius: radii.sm,
-    backgroundColor: c.surfaceSubtle,
-  },
-  markThumbEmpty: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  // The owner's marks (MarkTile — the same rows the owner reads back).
   markTiles: {
     gap: spacing.sm,
   },

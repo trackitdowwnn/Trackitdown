@@ -178,6 +178,23 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
     expect(skipped.p_confirmed_feature_ids).toBeNull();
   });
 
+  it('sends the IDS of the marks the wizard showed — [] when none, null when unknown', () => {
+    const base = { photos: [located], contextFlags: [], note: '', confirmedFeatureIds: [] };
+    const shown = 'dddddddd-0000-0000-0000-000000000001';
+    // From the parsed answers (submitSighting's test below pins that the
+    // parse strips each mark's words and photo, leaving the id).
+    const viaSchema = (confirmableFeatures: unknown) =>
+      buildCreateSightingParams(
+        POST_ID,
+        { ...base, confirmableFeatures } as Parameters<typeof buildCreateSightingParams>[1],
+        ['p/1.jpg'],
+      ).p_offered_feature_ids;
+
+    expect(viaSchema([{ id: shown }])).toEqual([shown]);
+    expect(viaSchema([])).toEqual([]);
+    expect(viaSchema(undefined)).toBeNull();
+  });
+
   it('never sends the UI-only "Not sure" marks (contextUnsure)', () => {
     // The wizard bag carries contextUnsure for the chips' selected look; it
     // is not a fact and has no RPC param. Explicit mapping keeps it out.
@@ -303,6 +320,39 @@ describe('submitSighting', () => {
     );
   });
 
+  it('sends the shown marks as IDS ONLY — never their words or photos', async () => {
+    mockRpc.mockResolvedValue({
+      data: { sighting_id: 'bbbbbbbb-0000-0000-0000-000000000002' },
+      error: null,
+    });
+    const shown = 'dddddddd-0000-0000-0000-000000000001';
+    await submitSighting(POST_ID, {
+      photos: [located],
+      contextFlags: [],
+      note: '',
+      confirmableFeatures: [
+        { id: shown, description: 'Bee sticker', photoUrl: 'https://x/bee.jpg' },
+      ],
+    });
+    const params = mockRpc.mock.calls[0][1];
+    expect(params.p_offered_feature_ids).toEqual([shown]);
+    expect(JSON.stringify(params)).not.toMatch(/Bee sticker|bee\.jpg/);
+  });
+
+  it('a malformed seed costs the "asked about" record, never the report', async () => {
+    mockRpc.mockResolvedValue({
+      data: { sighting_id: 'bbbbbbbb-0000-0000-0000-000000000002' },
+      error: null,
+    });
+    await submitSighting(POST_ID, {
+      photos: [located],
+      contextFlags: [],
+      note: '',
+      confirmableFeatures: [{ id: 'not-an-id', description: 'Bee sticker' }],
+    });
+    expect(mockRpc.mock.calls[0][1].p_offered_feature_ids).toBeNull();
+  });
+
   // Stub migration: the sightings feature's notify-owner-of-sighting push now
   // goes through the shared notifications door, not any sightings-local code.
   it('dispatches an owner notification carrying only the sighting id', async () => {
@@ -418,6 +468,22 @@ describe('fetchPostSightings (PRIVACY strictness)', () => {
     expect(rows[0].confirmedFeatures).toEqual([
       { id: 'dddddddd-0000-0000-0000-000000000001', description: 'Cracked wing mirror' },
     ]);
+  });
+
+  // 2026-10-19: which marks the spotter was asked about. Absent from a server
+  // before that migration and null on older reports — both must still parse.
+  it('reads the marks they were asked about — absent and null still parse', async () => {
+    const offered = ['dddddddd-0000-0000-0000-000000000001'];
+    mockRpc.mockResolvedValue({
+      data: [
+        { ...baseRow, offered_feature_ids: offered },
+        { ...baseRow, offered_feature_ids: null },
+        baseRow,
+      ],
+      error: null,
+    });
+    const rows = await fetchPostSightings(POST_ID);
+    expect(rows.map((row) => row.offeredFeatureIds)).toEqual([offered, null, null]);
   });
 
   it('REJECTS a payload whose spotter block carries an extra field (e.g. spotter_id)', async () => {

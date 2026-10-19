@@ -6,8 +6,9 @@
  *        - a content sheet, EVIDENCE FIRST (owner's pick, 2026-10-19):
  *          where and when it was seen, and the owner's answer so far (with
  *          "Change" for "Not my car", and "Got your car back?" under a
- *          confirmation); "What they saw" (the owner's marks they could see,
- *          their answers as labelled rows, their note); "Where" (the map, how
+ *          confirmation); "What they saw" (ALL the owner's marks, the ones the
+ *          spotter could see ticked — the wizard's list read back; their
+ *          answers as labelled rows; their note); "Where" (the map, how
  *          exact it is, the safety notice, Open in Maps); "Spotted by" (their
  *          record, and Message — always there);
  *        - pinned to the bottom, ONLY while undecided: "Is this your car?".
@@ -94,7 +95,8 @@ import { hasSeenDetails, SightingSeenSection } from '../components/SightingSeenS
 import { SightingSpotterCard } from '../components/SightingSpotterCard';
 import { SightingWhereSection } from '../components/SightingWhereSection';
 import { usePostSightings } from '../hooks/usePostSightings';
-import { useRecoveryDoor, type RecoveryDoor } from '../hooks/useRecoveryDoor';
+import { useSightingPost, type RecoveryDoor } from '../hooks/useSightingPost';
+import { markChecklist } from '../lib/markChecklist';
 import {
   isGoneSighting,
   sightingSeenAt,
@@ -166,8 +168,16 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
   // The page's one reading of the status — the answer under the title, the
   // pinned bar and the "Got your car back?" door all read it here.
   const verdict = sightingVerdictView(effectiveStatus);
-  // Under a confirmation only, and only if the listing can still be recovered.
-  const recoveryDoor = useRecoveryDoor(postId, idsValid && verdict.offerRecovery);
+  // What the page needs from the LISTING: all the owner's marks (so the
+  // unseen ones list too) and whether it can still be recovered.
+  const listing = useSightingPost(postId, idsValid);
+  // "Got your car back?" under a confirmation only.
+  const recoveryDoor = verdict.offerRecovery ? (listing?.recovery ?? null) : null;
+  // The marks the spotter was asked about, theirs ticked; until both the
+  // listing and the "asked about" record are known, the ticked ones alone.
+  const marks = sighting
+    ? markChecklist(listing?.marks ?? null, sighting.confirmedFeatures, sighting.offeredFeatureIds)
+    : { checks: [], complete: false };
 
   // Which answer is on its way — so the spinner sits on THAT button.
   const [pending, setPending] = useState<'yes' | 'not_mine' | null>(null);
@@ -363,9 +373,9 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
               {/* EVIDENCE FIRST (owner, 2026-10-19): what tells the owner
                   whether it IS their car — their own marks above all — before
                   where it was, which matters once it is. */}
-              {hasSeenDetails(sighting) ? (
+              {hasSeenDetails(sighting, marks) ? (
                 <Section title="What they saw">
-                  <SightingSeenSection sighting={sighting} />
+                  <SightingSeenSection sighting={sighting} marks={marks} />
                 </Section>
               ) : null}
 

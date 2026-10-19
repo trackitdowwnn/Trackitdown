@@ -131,10 +131,20 @@ const submitAnswersSchema = z.object({
   direction: z.enum(DRIVING_DIRECTIONS).optional(),
   peoplePresence: z.enum(PEOPLE_PRESENCE).optional(),
   // Mirrors the RPC's cap (≤ 8 marks per post); ids are validated server-side
-  // against the post's registered marks. The wizard's read-only seeds
-  // (`confirmableFeatures`, `reportedCar`) and UI-only `contextUnsure` are
-  // deliberately NOT here — unknown keys strip on parse.
+  // against the post's registered marks. The wizard's read-only seed
+  // `reportedCar` and UI-only `contextUnsure` are deliberately NOT here —
+  // unknown keys strip on parse.
   confirmedFeatureIds: z.array(z.guid()).max(8).default([]),
+  // The marks the wizard SHOWED (the read-only seed) — parsed down to their
+  // ids alone (z.object strips the words and photos), so the owner's page can
+  // say "not seen" only of a mark this spotter was asked about (2026-10-19).
+  // `.catch(undefined)`: a malformed seed costs the "asked about" record
+  // (sent as null = unknown), never the report.
+  confirmableFeatures: z
+    .array(z.object({ id: z.guid() }))
+    .max(8)
+    .optional()
+    .catch(undefined),
 });
 
 const createSightingResultSchema = z.object({ sighting_id: z.guid() });
@@ -172,6 +182,10 @@ export function buildCreateSightingParams(
     p_people_presence: answers.peoplePresence ?? null,
     p_confirmed_feature_ids:
       answers.confirmedFeatureIds.length > 0 ? answers.confirmedFeatureIds : null,
+    // [] is meaningful ("asked, nothing to show"); null is "never loaded".
+    p_offered_feature_ids: answers.confirmableFeatures
+      ? answers.confirmableFeatures.map((feature) => feature.id)
+      : null,
   };
 }
 
@@ -355,6 +369,9 @@ const ownerSightingSchema = z.object({
   confirmed_features: z.array(
     z.object({ id: z.guid(), description: z.string() }).strict(),
   ),
+  // The marks this spotter was asked about (2026-10-19). Optional AND nullable:
+  // absent from a server before that migration, null for older reports.
+  offered_feature_ids: z.array(z.guid()).nullable().optional(),
   photos: z.array(
     z.object({
       path: z.string(),
@@ -452,6 +469,7 @@ export async function fetchPostSightings(postId: string): Promise<OwnerSighting[
     direction: row.direction,
     peoplePresence: row.people_presence,
     confirmedFeatures: row.confirmed_features,
+    offeredFeatureIds: row.offered_feature_ids ?? null,
     photos: row.photos.map((photo) => ({
       path: photo.path,
       lat: photo.lat,
