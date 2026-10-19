@@ -63,12 +63,18 @@ describe('contextLine', () => {
 });
 
 describe('carLine', () => {
-  it("owner: '<car> · your car'", () => {
-    expect(carLine(thread())).toBe('Blue BMW 3 Series · your car');
+  it("owner: '<colour model> · your car' — short, so the role survives", () => {
+    expect(carLine(thread())).toBe('Blue 3 Series · your car');
   });
 
-  it("spotter: '<car> · your sighting'", () => {
-    expect(carLine(thread({ role: 'spotter' }))).toBe('Blue BMW 3 Series · your sighting');
+  it("spotter: '<colour model> · your sighting'", () => {
+    expect(carLine(thread({ role: 'spotter' }))).toBe('Blue 3 Series · your sighting');
+  });
+
+  it('falls back to the make when there is no model', () => {
+    const t = thread();
+    t.post = { ...t.post, model: '' };
+    expect(carLine(t)).toBe('Blue BMW · your car');
   });
 
   it('PRIVACY: never draws the plate, even the owner’s own', () => {

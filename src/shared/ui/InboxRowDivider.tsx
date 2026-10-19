@@ -20,8 +20,12 @@ import { sizes, spacing, useThemedStyles, type Palette } from '@/shared/theme';
  * the row's 12pt gap. ⚠️ Derived from the same tokens the rows use, so moving
  * any of them moves the divider with it.
  */
-export const INBOX_DIVIDER_INSET = spacing.xl + sizes.inboxRowTile + spacing.md;
+const INBOX_DIVIDER_INSET = spacing.xl + sizes.inboxRowTile + spacing.md;
 
+/** A hairline inset to the rows' text column — the gap between two inbox rows
+ *  on both faces. Render it INSIDE the row's entrance wrapper (index > 0), not
+ *  as FlashList's ItemSeparatorComponent, or the lines appear before the rows
+ *  they divide have slid in. */
 export function InboxRowDivider() {
   const styles = useThemedStyles(makeStyles);
   return <View style={styles.divider} testID="inbox-row-divider" />;

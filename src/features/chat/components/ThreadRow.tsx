@@ -20,8 +20,9 @@
  *
  *        No peer photo is possible and none is missing: the other party's
  *        avatar path embeds their uid, so the API never returns it (types.ts).
- *        PRIVACY: the plate renders ONLY on owner rows (their own plate;
- *        inboxModel pins the rule); the photo is the POST's public cover —
+ *        PRIVACY: the plate is never DRAWN; it is spoken only, and only on
+ *        owner rows (their own plate; inboxModel pins the rule). The drawn
+ *        car line is colour + model only. The photo is the POST's public cover —
  *        already visible to both parties — never anything of the other
  *        person's.
  *
@@ -39,7 +40,7 @@
  * LINKS: src/features/chat/lib/inboxModel.ts (context/unread maths);
  *        src/features/notifications/components/NotificationRowItem.tsx (the
  *          silhouette twin);
- *        src/shared/ui (CarColourTile, PlateChip, AppImage, UnreadBadge);
+ *        src/shared/ui (CarColourTile, AppImage, UnreadBadge, spellPlate);
  *        docs/DESIGN_SYSTEM.md.
  */
 
@@ -201,9 +202,9 @@ export function ThreadRow({ thread, onPress }: ThreadRowProps) {
  * The row's shape while the inbox loads — shares `makeStyles` with the real
  * row, so the two cannot drift.
  *
- * The screen's old hand-copied skeleton had a 48pt circle where the row has a
- * 48pt one and two bars where the row has three lines, so the list visibly
- * resettled the moment threads arrived.
+ * The screen's old hand-copied skeleton had a 48pt circle where the row then
+ * had a 64pt tile, and two bars where the row had three lines, so the list
+ * visibly resettled the moment threads arrived.
  */
 export function ThreadRowSkeleton() {
   const styles = useThemedStyles(makeStyles);
@@ -265,14 +266,13 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     // three lines, and the inset dividers between rows need air either side.
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.xl,
-    // Inert while the 48pt tile sets a 72pt floor, and kept anyway so the two
-    // inbox rows declare the same box — see the silhouette note in the header.
+    // Inert — the text column (and the 48pt tile) sit well above it — and kept
+    // anyway so the two inbox rows declare the same box; see the header.
     minHeight: sizes.touchTarget,
   },
-  // ⚠️ surfaceSubtlePressed, NOT surfaceSubtle — which is PlateChip's own fill.
-  // Pressing an owner's row used to repaint it in the chip's colour, so the
-  // plate stopped looking like a plate for the duration of the touch, and the
-  // design system calls that fill "the identifying treatment on a page".
+  // ⚠️ surfaceSubtlePressed, NOT surfaceSubtle — which is the lead tile's own
+  // resting fill (and PlateChip's, back when the row drew a plate). Pressing in
+  // the same colour erases the tile's edge for the duration of the touch.
   rowPressed: {
     backgroundColor: c.surfaceSubtlePressed,
   },
@@ -316,6 +316,9 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     alignItems: 'flex-end',
     gap: spacing.xs,
     flexShrink: 0,
+    // TOP-aligned since 2026-10-19: with three lines of text, a centred column
+    // put the time level with the car line instead of the name.
+    alignSelf: 'flex-start',
   },
   // The stamp's large-type home: the last line of the text column, where it has
   // the full column width instead of taking ~120pt of it away.
@@ -357,8 +360,7 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     backgroundColor: c.surfaceSubtle,
   },
   skeletonName: {
-    flex: 1,
-    maxWidth: '45%',
+    width: '45%',
   },
   skeletonTime: {
     width: sizes.skeletonTimeBar,

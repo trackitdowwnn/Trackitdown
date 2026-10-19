@@ -161,13 +161,13 @@ export function ChatInboxScreen() {
             ThreadRow, so there is one type and nothing to tell FlashList
             apart. Restore it the moment anything else enters this list.
 
-            The separator is NOT a cell — FlashList draws it between cells —
-            so it doesn't change that. Inset hairlines since 2026-10-19 (see
-            InboxRowDivider). */
+            Inset hairlines since 2026-10-19, drawn ABOVE every row but the
+            first and INSIDE its entrance wrapper — FlashList's own
+            ItemSeparatorComponent renders inside the cell but outside
+            renderItem, so its lines stood in place before the rows slid in. */
         <FlashList
           data={items}
           keyExtractor={(item) => item.threadId}
-          ItemSeparatorComponent={InboxRowDivider}
           renderItem={({ item, index }) => (
             <Animated.View
               entering={
@@ -178,6 +178,7 @@ export function ChatInboxScreen() {
                   : undefined
               }
             >
+              {index > 0 ? <InboxRowDivider /> : null}
               <ThreadRow
                 thread={item}
                 onPress={(thread) => router.push(`/chat/${thread.threadId}`)}

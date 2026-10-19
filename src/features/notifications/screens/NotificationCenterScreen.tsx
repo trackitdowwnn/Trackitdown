@@ -170,11 +170,11 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
 
           `getItemType` went with the headers: it was mandatory while ~38pt
           headers recycled into ~106pt rows, and there is one cell type now.
-          The separator is drawn between cells, not as one (InboxRowDivider). */}
+          The divider rides inside each row's entrance wrapper — see the
+          Messages face for why not ItemSeparatorComponent. */}
       <FlashList
         data={rows}
         keyExtractor={(item) => item.id}
-        ItemSeparatorComponent={InboxRowDivider}
         renderItem={({ item, index }) => (
           <Animated.View
             entering={
@@ -185,6 +185,7 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
                 : undefined
             }
           >
+            {index > 0 ? <InboxRowDivider /> : null}
             <NotificationRowItem row={item} onPress={onRowPress} />
           </Animated.View>
         )}

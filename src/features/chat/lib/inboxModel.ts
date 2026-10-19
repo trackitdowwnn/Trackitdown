@@ -7,8 +7,9 @@
  *        My cars · My sightings) with its per-filter empty-state copy.
  * WHY:   The context line is what anchors a conversation to a CAR (Airbnb
  *        anchors to a listing); its wording and the privacy split — the
- *        plate renders ONLY on the owner's own rows (their own plate),
- *        never on a spotter's — are product decisions worth pinning in
+ *        plate is SPOKEN only, and only on the owner's own rows (their own
+ *        plate); it is never drawn, and never on a spotter's — are product
+ *        decisions worth pinning in
  *        tests without rendering. The filters are Airbnb's inbox chips
  *        translated: their categories become our owner-side/spotter-side
  *        split, with Unread as the workhorse. Filtering is CLIENT-side
@@ -45,8 +46,9 @@ export type InboxFilter = 'all' | 'unread' | 'my_cars' | 'my_sightings';
 
 export const INBOX_FILTERS: InboxFilter[] = ['all', 'unread', 'my_cars', 'my_sightings'];
 
-/** The thread row's anchoring line. `plate` non-null means "render a
- *  PlateChip after the prefix" — only ever the OWNER'S OWN plate. */
+/** The thread row's SPOKEN context (its accessibility label). `plate`
+ *  non-null means "speak the plate after the prefix" — only ever the OWNER'S
+ *  OWN plate. Nothing draws it (the row draws `carLine`). */
 export interface ContextLine {
   prefix: string;
   plate: string | null;
@@ -68,8 +70,8 @@ export function contextLine(thread: InboxThread): ContextLine {
 }
 
 /**
- * The row's DRAWN car line (2026-10-19, owner's call): "Blue BMW · your car" /
- * "Red Golf · your sighting". The context had been spoken only since
+ * The row's DRAWN car line (2026-10-19, owner's call): "Blue 3 Series · your
+ * car" / "Red Golf · your sighting". The context had been spoken only since
  * 2026-09-24, and a 48pt photo alone didn't say which car or which side you
  * were on. Car first, because that is what you scan for.
  *
@@ -78,7 +80,11 @@ export function contextLine(thread: InboxThread): ContextLine {
  */
 export function carLine(thread: InboxThread): string {
   const role = thread.role === 'owner' ? 'your car' : 'your sighting';
-  const car = carLabel(thread.post);
+  // SHORT on purpose — colour + model ("Red Golf"), make only without a model.
+  // The full "Silver Volkswagen Golf" filled a 13pt line by itself, and the
+  // truncation ate "your car", the half that says which side you're on.
+  const { colour, make, model } = thread.post;
+  const car = [colour, model || make].filter(Boolean).join(' ');
   return car ? `${car} · ${role}` : role.charAt(0).toUpperCase() + role.slice(1);
 }
 

@@ -8,9 +8,9 @@
  *        (money waiting, a contest window, "is it still missing?") show their
  *        ERRAND in the preview's place until read. Minimal pass (owner's call,
  *        2026-09-24): the preview went from two lines to one (back to two on
- *        2026-10-19), and the amber
- *        bar + ring went — the errand's words stayed. The whole row is one pressable ≥ touch-target height;
- *        the tap's destination comes from the row's stored payload through the
+ *        2026-10-19), and the amber bar + ring went — the errand's words
+ *        stayed. The whole row is one pressable ≥ touch-target height; the
+ *        tap's destination comes from the row's stored payload through the
  *        same routing pushes use, so a row can never go somewhere its push
  *        wouldn't have.
  *
@@ -109,7 +109,7 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
   const stacked = (fontScale ?? 1) > listRowStackFontScale;
   const loud = unread && meta.needsAttention;
 
-  // The badge, the weight and the bar are visual; the LABEL is where a screen-
+  // The badge and the weight are visual; the LABEL is where a screen-
   // reader user learns the same facts (ThreadRow's precedent).
   // ⚠️ THE SAME WORDS THE ROW SHOWS. This used to append "Needs your
   // attention." — a sentence no sighted user ever saw, describing a stripe
@@ -247,6 +247,15 @@ export function NotificationRowSkeleton() {
             { height: typography.body.lineHeight * scale },
           ]}
         />
+        {/* The body's second line (two since 2026-10-19) — most bodies wrap
+            at ~30 characters, so a loaded row is three lines, not two. */}
+        <View
+          style={[
+            styles.skeletonBar,
+            styles.skeletonBodyTail,
+            { height: typography.body.lineHeight * scale },
+          ]}
+        />
       </View>
       {/* The same trailing column a real row keeps — a time bar over the
           badge's reserved slot — so nothing shifts sideways when it loads. */}
@@ -317,6 +326,9 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     alignItems: 'flex-end',
     gap: spacing.xs,
     flexShrink: 0,
+    // TOP-aligned since 2026-10-19, matching ThreadRow: centred, the time
+    // zig-zagged between one- and two-line bodies down the list.
+    alignSelf: 'flex-start',
   },
   // ⚠️ `body`, matching ThreadRow's name — NOT `label`. The two faces shared a
   // box but not a type ramp, so switching segments changed every text size on
@@ -369,5 +381,8 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   skeletonBody: {
     width: '85%',
+  },
+  skeletonBodyTail: {
+    width: '50%',
   },
 });

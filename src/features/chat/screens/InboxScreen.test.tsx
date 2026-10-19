@@ -116,6 +116,25 @@ describe('states', () => {
   });
 });
 
+// 2026-10-19 (owner: "squashed"): an inset hairline BETWEEN rows — never above
+// the first, never doubled.
+describe('dividers', () => {
+  it('draws one fewer divider than there are rows', async () => {
+    mockUseInbox.mockReturnValue(
+      ready([thread({ threadId: 'a' }), thread({ threadId: 'b' }), thread({ threadId: 'c' })]),
+    );
+    const { getAllByTestId } = await act(async () => render(<ChatInboxScreen />));
+
+    expect(getAllByTestId('inbox-row-divider')).toHaveLength(2);
+  });
+
+  it('draws none under a single row', async () => {
+    const { queryAllByTestId } = await act(async () => render(<ChatInboxScreen />));
+
+    expect(queryAllByTestId('inbox-row-divider')).toHaveLength(0);
+  });
+});
+
 // ⚠️ THIS BLOCK USED TO BE "grouped by day" AND ASSERTED THE OPPOSITE. The
 // list was headed by `DayHeader`s until 2026-09-04; the owner asked for the
 // messaging-app structure, where a flat recency-ordered list is the point and

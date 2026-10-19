@@ -139,8 +139,8 @@ describe('the row shape the inbox pass settled on', () => {
 // 2026-09-24) — short, car first, and never the plate.
 describe('the drawn car line', () => {
   it.each([
-    ['owner', 'Blue BMW 3 Series · your car'],
-    ['spotter', 'Blue BMW 3 Series · your sighting'],
+    ['owner', 'Blue 3 Series · your car'],
+    ['spotter', 'Blue 3 Series · your sighting'],
   ] as const)('says which car and whose side (%s)', async (role, line) => {
     const { getByTestId, queryByText } = await render(
       <ThreadRow thread={thread({ role })} onPress={jest.fn()} />,
@@ -151,12 +151,14 @@ describe('the drawn car line', () => {
     expect(queryByText(/AB12/)).toBeNull();
   });
 
-  it('is not read twice — the row speaks its own label, once', async () => {
+  it('is not read twice — the row is ONE accessible element with its own label', async () => {
+    // A screen reader stops on the row and speaks its label; it never reaches
+    // the children, so the drawn car line can't be read a second time.
     const { getByTestId } = await render(<ThreadRow thread={thread()} onPress={jest.fn()} />);
-    const label: string = getByTestId('thread-row-t1').props.accessibilityLabel;
+    const row = getByTestId('thread-row-t1');
 
-    expect(label).toContain('About your Blue BMW 3 Series');
-    expect(label).not.toContain('· your car');
+    expect(row.props.accessible).toBe(true);
+    expect(row.props.accessibilityLabel).toContain('About your Blue BMW 3 Series');
   });
 
   it('opens the conversation on a tap', async () => {

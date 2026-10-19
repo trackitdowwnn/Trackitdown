@@ -178,6 +178,22 @@ describe('states', () => {
   });
 });
 
+// 2026-10-19: the same inset hairline the Messages face draws, between rows only.
+describe('dividers', () => {
+  it('draws one fewer divider than there are rows', async () => {
+    mockFetch.mockResolvedValue([rowFixture(), rowFixture({ id: 'n-2' }), rowFixture({ id: 'n-3' })]);
+    const { getAllByTestId } = await act(async () => render(<NotificationCenterScreen />));
+
+    expect(getAllByTestId('inbox-row-divider')).toHaveLength(2);
+  });
+
+  it('draws none under a single row', async () => {
+    const { queryAllByTestId } = await act(async () => render(<NotificationCenterScreen />));
+
+    expect(queryAllByTestId('inbox-row-divider')).toHaveLength(0);
+  });
+});
+
 describe('read-state transitions', () => {
   it('opening the segment does NOT auto-mark anything read', async () => {
     await act(async () => render(<NotificationCenterScreen />));

@@ -45,13 +45,14 @@ Both routes call the same `open_thread` and land in `/chat/[threadId]`.
    "Yesterday" yesterday, a date before that. The a11y label keeps day AND
    time at every age, because a screen-reader user cannot glance at the rows
    above to place this one),
-   then a grey car line ("Blue BMW · your car" / "Red Golf · your sighting",
-   `inboxModel.carLine`, never the plate) and the one-line preview. The car
+   then a grey car line ("Blue 3 Series · your car" / "Red Golf · your
+   sighting" — colour + model, `inboxModel.carLine`, never the plate) and the one-line preview. The car
    line was dropped on 2026-09-24 and DRAWN AGAIN on 2026-10-19 (owner: the
    tab read as "squashed and hard to read" — a 48pt photo alone didn't say
    which car or which side you're on). The fuller context ("About your Blue
-   BMW" + the owner's plate) stays in the spoken label. Rows pad 16pt. Trailing: `UnreadBadge` — a dot at one unread, a count above,
-   an empty reserved slot when read so the text column never changes width.
+   BMW" + the owner's plate) stays in the spoken label. Rows pad 16pt.
+   Trailing: `UnreadBadge` — a dot at one unread, a count above, an empty
+   reserved slot when read so the text column never changes width.
    Unread also bolds the name (family swap, so the row height cannot jump).
    — ⚠️ Until 2026-08-28 the row led with an initial-letter Avatar wearing the
    car as a 24pt corner badge. The photo took the leading slot because you
