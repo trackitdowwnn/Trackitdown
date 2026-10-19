@@ -15,7 +15,9 @@
  *        `offeredFeatureIds` (recorded server-side since 2026-10-19, mark ids
  *        kept stable across edits since the same migration). Without both —
  *        the listing not read yet, or an older report — it is the seen marks
- *        alone, and `complete` is false, so the page claims no total.
+ *        alone, and `complete` is false, so the page claims no total. Each is
+ *        still the LISTING's copy when the listing has been read: the
+ *        sighting's own carries no photo.
  *
  *        A seen mark missing from the listing read (the two reads disagreeing
  *        — e.g. a mark removed between them) still shows, ticked, last: it is

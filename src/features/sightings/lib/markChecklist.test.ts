@@ -62,6 +62,10 @@ it('⚠️ an older report’s seen marks still carry the listing’s photo', ()
   expect(list.complete).toBe(false);
 });
 
+it('an older report keeps a seen mark the listing lacks — as the sighting’s own copy', () => {
+  expect(markChecklist([roofBox], [dent], null).checks).toEqual([{ mark: dent, seen: true }]);
+});
+
 it('keeps a seen mark the listing read doesn’t have, ticked, last', () => {
   expect(read(markChecklist([roofBox], [dent], ['m1', 'm2']))).toEqual(['m2:not', 'm1:seen']);
 });
