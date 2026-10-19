@@ -358,7 +358,9 @@ same place.
   use TWO lines (safety advice was being cut mid-sentence), inset hairline
   dividers (`InboxRowDivider`, shared with Messages), and the "Mark all as
   read" strip always keeps its height so clearing the last unread no longer
-  jumps the list.
+  jumps the list. The feed is grouped under Today / Yesterday / Earlier
+  (`lib/dayGroups.ts`, `DayHeader`) — Messages stays flat, since a
+  conversation list is scanned by person and a feed by day.
 - ⚠️ Both inbox faces stay MOUNTED (2026-08-28), so this screen's
   `center_view` log fires on becoming visible rather than on mount — the
   metric is per-view from that date and is not comparable with earlier

@@ -28,7 +28,8 @@
  *        here as wanted-but-out-of-scope. Both lists then went FLAT, and with
  *        no header above a row to say the day, both had to move to the shared
  *        `formatListStamp` ladder: the clock today, "Yesterday" yesterday, a
- *        date before that.
+ *        date before that. The feed regained Today / Yesterday / Earlier
+ *        headers on 2026-10-19; the stamp stays, since "Earlier" names no day.
  *
  *        ⚠️ A CIRCLE SINCE 2026-09-04, REVERSING THE PARAGRAPH THAT USED TO
  *        STAND HERE. It read: "A ROUNDED SQUARE, NOT A CIRCLE. Circles mean

@@ -1,9 +1,10 @@
 /**
  * WHAT:  DayHeader — the quiet label that divides a list into groups, plus
  *        DayHeaderSkeleton, the box it occupies while the list loads. Born as
- *        a calendar label ("Today", "23 July"); since 2026-10-09 its one
- *        consumer, My sightings, labels status sections with it ("Still
- *        open", "Answered", "Taken back").
+ *        a calendar label ("Today", "23 July"); since 2026-10-09 My sightings
+ *        labels status sections with it ("Still open", "Answered", "Taken
+ *        back"), and since 2026-10-19 the notification center groups its feed
+ *        under it again (Today / Yesterday / Earlier).
  * WHY:   Three lists once grouped by day (the inbox's two faces and My
  *        reports) and each had hand-rolled the same five style properties.
  *        The inbox stopped grouping on 2026-09-04 and My sightings moved to

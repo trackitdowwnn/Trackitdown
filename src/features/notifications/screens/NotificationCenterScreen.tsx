@@ -1,7 +1,7 @@
 /**
  * WHAT:  NotificationCenterScreen — the Inbox tab's second face: the
- *        persistent feed of everything notification-worthy, newest first, in
- *        one flat list, with "Mark all as read" and tap-through to each row's
+ *        persistent feed of everything notification-worthy, newest first,
+ *        under Today / Yesterday / Earlier headers, with "Mark all as read" and tap-through to each row's
  *        destination.
  * WHY:   Pushes were fire-and-forget; this is where they stop disappearing.
  *        Behaviour rules (Airbnb's, adopted): opening the segment NEVER
@@ -18,11 +18,11 @@
 
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
-import { Fragment, useEffect, useRef } from 'react';
+import { Fragment, useEffect, useMemo, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
 
-import { useEntranceGate } from '@/shared/hooks';
+import { useEntranceGate, useNow } from '@/shared/hooks';
 import { createLogger } from '@/shared/lib/logger';
 import {
   motion,
@@ -34,6 +34,8 @@ import {
   type Palette,
 } from '@/shared/theme';
 import {
+  DayHeader,
+  DayHeaderSkeleton,
   EmptyState,
   ErrorState,
   InboxRowDivider,
@@ -43,6 +45,7 @@ import {
 import type { NotificationRow } from '../api/notificationsApi';
 import { NotificationRowItem, NotificationRowSkeleton } from '../components/NotificationRowItem';
 import { useNotificationCenter } from '../hooks/useNotificationCenter';
+import { notificationDayGroups, type CenterListItem } from '../lib/dayGroups';
 import { pushRouteFor } from '../lib/pushRoute';
 
 const log = createLogger('notifications');
@@ -80,7 +83,11 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
     wasActive.current = active;
   }, [active]);
 
-  // Flat: the rows themselves, newest first. No day grouping since 2026-09-04.
+  // Grouped again since 2026-10-19: Today / Yesterday / Earlier (see
+  // ../lib/dayGroups). `now` is held state (useNow), not a render-time Date —
+  // the compiler would freeze that, and "Today" would outlive midnight.
+  const now = useNow(60_000);
+  const items = useMemo(() => notificationDayGroups(rows, now), [rows, now]);
 
   const hasUnread = rows.some((row) => row.readAt === null);
 
@@ -105,6 +112,8 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
         <View style={styles.markAllRow}>
           <View style={styles.markAllHit} />
         </View>
+        {/* A bar, not "Today": the newest row may well be from last week. */}
+        <DayHeaderSkeleton />
         {[0, 1, 2, 3].map((n) => (
           <Fragment key={n}>
             {n > 0 ? <InboxRowDivider /> : null}
@@ -145,9 +154,9 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
           unread, so clearing the last unread pulled the list up by 52pt — and
           the owner read the tab as jumpy. The old note weighed that jump
           against "dead space on every visit"; the space is no longer dead: at
-          44 + 8 it matches the Messages face's chip row exactly, so the first
-          row now starts at the same y on both faces and switching segments
-          doesn't shift anything. */}
+          44 + 8 it matches the Messages face's chip row exactly, so the list
+          starts at the same y on both faces and switching segments doesn't
+          shift anything. */}
       <View style={styles.markAllRow} testID="mark-all-strip">
         {hasUnread ? (
           <Pressable
@@ -162,19 +171,23 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
           <View style={styles.markAllHit} />
         )}
       </View>
-      {/* ⚠️ FLAT SINCE 2026-09-04, matching the Messages face. Both lists
-          dropped their day grouping together, which is what keeps "one tab,
-          one vocabulary" true — the rule was never "both must group", it was
-          "both must do the same thing", and each row's own `formatListStamp`
-          now carries the day the header used to.
+      {/* ⚠️ DAY GROUPS AGAIN since 2026-10-19 (owner's pick from mockups),
+          after flat from 2026-09-04. The faces now differ on purpose: a
+          conversation list is scanned by PERSON, so Messages stays flat; a
+          notification feed is read as "what happened today". Each row keeps
+          its own `formatListStamp`, so "Earlier" rows still say their date.
 
-          `getItemType` went with the headers: it was mandatory while ~38pt
-          headers recycled into ~106pt rows, and there is one cell type now.
-          The divider rides inside each row's entrance wrapper — see the
-          Messages face for why not ItemSeparatorComponent. */}
+          ⚠️ `getItemType` IS MANDATORY again, not an optimisation: ~38pt
+          headers and ~108pt rows must not recycle into each other's cells.
+          No divider above a group's first row — the header separates. The
+          divider rides inside the entrance wrapper; see the Messages face for
+          why not ItemSeparatorComponent. */}
       <FlashList
-        data={rows}
-        keyExtractor={(item) => item.id}
+        data={items}
+        keyExtractor={(item: CenterListItem) =>
+          item.type === 'header' ? `header-${item.label}` : item.row.id
+        }
+        getItemType={(item: CenterListItem) => item.type}
         renderItem={({ item, index }) => (
           <Animated.View
             entering={
@@ -185,8 +198,14 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
                 : undefined
             }
           >
-            {index > 0 ? <InboxRowDivider /> : null}
-            <NotificationRowItem row={item} onPress={onRowPress} />
+            {item.type === 'header' ? (
+              <DayHeader label={item.label} testID={`day-header-${item.label}`} />
+            ) : (
+              <>
+                {item.firstInGroup ? null : <InboxRowDivider />}
+                <NotificationRowItem row={item.row} onPress={onRowPress} />
+              </>
+            )}
           </Animated.View>
         )}
         refreshControl={
@@ -250,8 +269,7 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   // The row skeleton lives in NotificationRowItem (it shares the row's own
   // styles, so the two cannot drift the way this hand-copied block had). The
-  // day label that used to be named here went with the grouping on 2026-09-04;
-  // `shared/ui/DayHeader` still exists and is still used by MySightingsScreen.
+  // day headers are `shared/ui/DayHeader` (again since 2026-10-19).
   list: {
     paddingBottom: spacing.xl,
   },

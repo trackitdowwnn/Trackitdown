@@ -36,7 +36,9 @@
  *        degrades from a clock to "Yesterday" to a date. The gap that stood
  *        here — this row on a clock, NotificationRowItem on `timeAgo` — closed
  *        when the headers went, because with nothing above the row to say the
- *        day, one shared ladder had to carry it on both faces.
+ *        day, one shared ladder had to carry it on both faces. (Since
+ *        2026-10-19 Notifications groups by Today / Yesterday / Earlier again;
+ *        Messages stays flat. The shared stamp still holds on both.)
  * LINKS: src/features/chat/lib/inboxModel.ts (context/unread maths);
  *        src/features/notifications/components/NotificationRowItem.tsx (the
  *          silhouette twin);
