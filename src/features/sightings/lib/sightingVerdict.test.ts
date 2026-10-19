@@ -14,6 +14,7 @@ import {
   sightingCardStatus,
   sightingSeenAt,
   sightingVerdictLabel,
+  sightingVerdictView,
 } from './sightingVerdict';
 
 describe('sightingVerdictLabel', () => {
@@ -58,6 +59,53 @@ describe('sightingCardStatus', () => {
   });
 });
 
+describe('sightingVerdictView', () => {
+  it.each([
+    [
+      'unverified',
+      { label: null, tone: null, decide: true, canChange: false, offerRecovery: false },
+    ],
+    [
+      'helpful',
+      { label: 'Confirmed', tone: 'primary', decide: false, canChange: false, offerRecovery: true },
+    ],
+    [
+      'credited',
+      { label: 'Credited', tone: 'primary', decide: false, canChange: false, offerRecovery: false },
+    ],
+    [
+      'not_mine',
+      {
+        label: 'Not your car',
+        tone: 'neutral',
+        decide: false,
+        canChange: true,
+        offerRecovery: false,
+      },
+    ],
+    [
+      'withdrawn',
+      { label: null, tone: null, decide: false, canChange: false, offerRecovery: false },
+    ],
+  ] as const)('%s → %j', (status, expected) => {
+    expect(sightingVerdictView(status)).toEqual(expected);
+  });
+
+  it('⚠️ only "Not my car" can be changed — "Yes" is permanent', () => {
+    const changeable = (
+      ['unverified', 'helpful', 'credited', 'not_mine', 'withdrawn'] as const
+    ).filter((status) => sightingVerdictView(status).canChange);
+    expect(changeable).toEqual(['not_mine']);
+  });
+
+  it('asks the question exactly while undecided — never alongside a label', () => {
+    for (const status of ['unverified', 'helpful', 'credited', 'not_mine', 'withdrawn'] as const) {
+      const view = sightingVerdictView(status);
+      expect(view.decide && view.label !== null).toBe(false);
+    }
+  });
+});
+
 describe('sightingSeenAt', () => {
   const photo = (source: 'live' | 'gallery', capturedAt: string) => ({
     path: `${capturedAt}.jpg`,
@@ -94,6 +142,17 @@ describe('sightingSeenAt', () => {
     expect(sightingSeenAt({ createdAt, photos: [photo('live', '2026-10-08T10:03:00Z')] })).toBe(
       '2026-10-08T10:03:00Z',
     );
+  });
+
+  it('compares instants, so the clocks going back (25 Oct) cannot move the hour window', () => {
+    // Sent at 01:30 GMT, after the clocks went back at 02:00 BST (01:00 UTC).
+    // The photo was taken 45 minutes earlier, at 01:45 BST, which is LATER on
+    // the wall clock than 01:30 but earlier in fact, so it must be believed.
+    const sentAfterChange = '2026-10-25T01:30:00Z';
+    const takenBeforeChange = '2026-10-25T00:45:00Z';
+    expect(
+      sightingSeenAt({ createdAt: sentAfterChange, photos: [photo('live', takenBeforeChange)] }),
+    ).toBe(takenBeforeChange);
   });
 
   it('is when it was sent when every photo is from the library — or there are none', () => {

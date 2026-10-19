@@ -1,7 +1,8 @@
 /**
  * WHAT:  sightingVerdict — the owner's decision on a sighting, in words: the
  *        label each surface shows ("Confirmed", "Credited", "Not your car"),
- *        its tone, whether the page should treat the sighting as gone, the
+ *        its tone, the sighting page's whole reading of a status
+ *        (sightingVerdictView), whether the page should treat it as gone, the
  *        timeline card's pill (with "Needs your answer" while undecided), and
  *        when the car was seen (sightingSeenAt).
  *        Exhaustive over the status union, so a new status can't fall
@@ -45,6 +46,50 @@ export function isConfirmedVerdict(status: SightingStatus): boolean {
 /** A withdrawn sighting is "do not act on this": the page shows it as gone. */
 export function isGoneSighting(status: SightingStatus): boolean {
   return status === 'withdrawn';
+}
+
+/** A decision's pill tone. */
+export type SightingVerdictTone = 'primary' | 'neutral';
+
+/** What the owner's sighting page does with a status — ONE answer for the
+ *  whole page, so no two parts of it can disagree about where the owner
+ *  stands. The page once said the status twice (a pill AND the bar's "You said
+ *  this isn't your car.") and moved Message between the card and the bar as
+ *  the status changed; both came from each part deciding for itself (dev-team
+ *  review, 2026-10-19). The label and its tone come as a pair, or not at all. */
+export type SightingVerdictView = (
+  { label: null; tone: null } | { label: string; tone: SightingVerdictTone }
+) &
+  VerdictFlags;
+
+interface VerdictFlags {
+  /** Still the owner's to answer: the pinned "Is this your car?" bar shows. */
+  decide: boolean;
+  /** The answer can be taken back — "Not my car" moved no counter. "Yes"
+   *  never can: the RPC refuses it (ALREADY_COUNTED). */
+  canChange: boolean;
+  /** A confirmed sighting is the natural way into "Got your car back?". Not
+   *  once credited — that IS the recovery, already done. Whether the listing
+   *  can still be recovered is the post's question, not this one's. */
+  offerRecovery: boolean;
+}
+
+const VERDICT_VIEWS: Record<SightingStatus, VerdictFlags> = {
+  unverified: { decide: true, canChange: false, offerRecovery: false },
+  helpful: { decide: false, canChange: false, offerRecovery: true },
+  credited: { decide: false, canChange: false, offerRecovery: false },
+  not_mine: { decide: false, canChange: true, offerRecovery: false },
+  // Never reaches the page (it reads as gone), but the map is total.
+  withdrawn: { decide: false, canChange: false, offerRecovery: false },
+};
+
+/** The page's whole reading of a status — see SightingVerdictView. */
+export function sightingVerdictView(status: SightingStatus): SightingVerdictView {
+  const label = sightingVerdictLabel(status);
+  const flags = VERDICT_VIEWS[status];
+  return label === null
+    ? { label: null, tone: null, ...flags }
+    : { label, tone: isConfirmedVerdict(status) ? 'primary' : 'neutral', ...flags };
 }
 
 /** The status an owner's timeline card wears — including the undecided state,

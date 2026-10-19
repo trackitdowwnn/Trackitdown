@@ -79,10 +79,11 @@ import { SightingSpotterCard } from '../components/SightingSpotterCard';
 import { SightingWhereSection } from '../components/SightingWhereSection';
 import { usePostSightings } from '../hooks/usePostSightings';
 import {
-  isConfirmedVerdict,
   isGoneSighting,
   sightingSeenAt,
-  sightingVerdictLabel,
+  sightingVerdictView,
+  type SightingVerdictTone,
+  type SightingVerdictView,
 } from '../lib/sightingVerdict';
 import type { OwnerSighting } from '../types';
 
@@ -145,9 +146,16 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
   const localApplies = local !== null && sighting !== null && sighting.status === local.from;
   const effectiveStatus = localApplies ? local.status : (sighting?.status ?? 'unverified');
   const reviewedAt = localApplies ? local.reviewedAt : (sighting?.reviewedAt ?? null);
+  // The page's one reading of the status — the decision line and the Message
+  // gate read it here (the bar still takes the raw status for now).
+  const verdict = sightingVerdictView(effectiveStatus);
 
   // Which answer is on its way — so the spinner sits on THAT button.
   const [pending, setPending] = useState<'yes' | 'not_mine' | null>(null);
+  // ⚠️ THE LOCK IS A REF, NOT `pending` (review, 2026-10-19). Two taps landing
+  // before the next render both read the same `pending === null` closure and
+  // would both send — and "Yes" cannot be undone. A ref is seen at once.
+  const inFlight = useRef(false);
   const [opening, setOpening] = useState(false);
 
   // Peer profile sheet — component deferred-loaded (profile ↔ sightings graphs
@@ -223,7 +231,8 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
   // "Yes, it's my car" — only ever reached through yesConfirmRef: it credits
   // the spotter's reputation and cannot be undone.
   const confirmYes = async () => {
-    if (!sighting || pending) return;
+    if (!sighting || inFlight.current) return;
+    inFlight.current = true;
     setPending('yes');
     try {
       const result = await markSightingHelpful(sighting.id);
@@ -244,12 +253,14 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
     } catch {
       toast.show('We couldn’t confirm that just now.', 'error');
     } finally {
+      inFlight.current = false;
       setPending(null);
     }
   };
 
   const markNotMine = async () => {
-    if (!sighting || pending) return;
+    if (!sighting || inFlight.current) return;
+    inFlight.current = true;
     setPending('not_mine');
     try {
       const result = await markSightingNotMine(sighting.id);
@@ -269,6 +280,7 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
         'error',
       );
     } finally {
+      inFlight.current = false;
       setPending(null);
     }
   };
@@ -339,7 +351,7 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
             {/* The content sheet: rounded top riding up over the hero's foot,
                 as on the post page. */}
             <View style={styles.sheet}>
-              <SightingTitle sighting={sighting} status={effectiveStatus} reviewedAt={reviewedAt} />
+              <SightingTitle sighting={sighting} verdict={verdict} reviewedAt={reviewedAt} />
 
               {/* The safety notice lives here, beside the exact point and
                   above Open in Maps (SightingWhereSection). */}
@@ -371,9 +383,7 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
                   onViewProfile={() => void openSpotterProfile()}
                   // Before the decision, to ask a question first; after it,
                   // Message is the pinned bar's.
-                  onMessage={
-                    effectiveStatus === 'unverified' ? () => void messageSpotter() : undefined
-                  }
+                  onMessage={verdict.decide ? () => void messageSpotter() : undefined}
                   messaging={opening}
                 />
               </Section>
@@ -456,11 +466,11 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 /** "Seen near Deansgate", when, and the owner's decision so far. */
 function SightingTitle({
   sighting,
-  status,
+  verdict,
   reviewedAt,
 }: {
   sighting: OwnerSighting;
-  status: OwnerSighting['status'];
+  verdict: SightingVerdictView;
   reviewedAt: string | null;
 }) {
   const styles = useThemedStyles(makeStyles);
@@ -490,7 +500,7 @@ function SightingTitle({
       >
         {date ? `${ago} · ${date}` : ago}
       </Text>
-      <DecisionLine status={status} reviewedAt={reviewedAt} />
+      <DecisionLine verdict={verdict} reviewedAt={reviewedAt} />
     </View>
   );
 }
@@ -502,18 +512,18 @@ function SightingTitle({
  *  said was NOT their car was labelled "Marked helpful" — the exact opposite
  *  of their answer (SightingTimeline fixed the same bug). */
 function DecisionLine({
-  status,
+  verdict,
   reviewedAt,
 }: {
-  status: OwnerSighting['status'];
+  verdict: SightingVerdictView;
   reviewedAt: string | null;
 }) {
-  const label = sightingVerdictLabel(status);
-  if (!label) return null;
+  if (verdict.label === null) return null;
+  const { label, tone } = verdict;
   return reviewedAt ? (
-    <DecidedLine label={label} status={status} reviewedAt={reviewedAt} />
+    <DecidedLine label={label} tone={tone} reviewedAt={reviewedAt} />
   ) : (
-    <DecisionRow label={label} status={status} accessibilityLabel={`Your answer: ${label}`} />
+    <DecisionRow label={label} tone={tone} accessibilityLabel={`Your answer: ${label}`} />
   );
 }
 
@@ -521,18 +531,18 @@ function DecisionLine({
  *  once there is a decision to time. */
 function DecidedLine({
   label,
-  status,
+  tone,
   reviewedAt,
 }: {
   label: string;
-  status: OwnerSighting['status'];
+  tone: SightingVerdictTone;
   reviewedAt: string;
 }) {
   const ago = useTimeAgo(reviewedAt);
   return (
     <DecisionRow
       label={label}
-      status={status}
+      tone={tone}
       accessibilityLabel={`Your answer: ${label}, decided ${spokenAgo(ago)}`}
       ago={ago}
     />
@@ -541,12 +551,12 @@ function DecidedLine({
 
 function DecisionRow({
   label,
-  status,
+  tone,
   accessibilityLabel,
   ago,
 }: {
   label: string;
-  status: OwnerSighting['status'];
+  tone: SightingVerdictTone;
   accessibilityLabel: string;
   ago?: string;
 }) {
@@ -560,7 +570,7 @@ function DecisionRow({
     >
       {/* Primary ink for a confirmation, not success green — sage stays
           reserved for payout moments; "Not your car" is the quiet one. */}
-      <StatusPill label={label} tone={isConfirmedVerdict(status) ? 'primary' : 'neutral'} />
+      <StatusPill label={label} tone={tone} />
       {ago ? <Text style={styles.meta}>You decided {ago}</Text> : null}
     </View>
   );
