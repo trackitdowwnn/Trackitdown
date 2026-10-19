@@ -159,7 +159,8 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     postId,
     visiblePost?.lat,
     visiblePost?.lng,
-    visiblePost != null,
+    // Spotters only: the owner's page has no "More cars" rail (2026-10-16).
+    visiblePost != null && !visiblePost.isOwner,
   );
 
   // Log the view once per resolved visible post, with the viewer's mode.
@@ -440,8 +441,8 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
                 similarPosts={similar.posts}
                 similarLoading={similar.status === 'loading'}
                 onOpenPost={(next) => router.push(`/post/${next.id}`)}
-                // The pencils and the deactivate button drive PostOwnerActions
-                // below — the same editors and confirms the Manage sheet uses.
+                // The pencils drive PostOwnerActions below — the same editors
+                // the Manage sheet uses.
                 onEditCarDetails={
                   canEditSafeSection(result.post) ? () => edit('car_details') : undefined
                 }
@@ -461,7 +462,11 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
                 }
                 // Deactivating is the Manage listing sheet's alone (owner,
                 // 2026-10-16) — the page keeps only "I got it back".
-                onRecovered={canMarkRecovered(result.post) ? onRecovered : undefined}
+                // Not while the "still missing?" banner is up: it offers the
+                // same recovery a few lines higher (review, 2026-10-16).
+                onRecovered={
+                  canMarkRecovered(result.post) && !stillMissingOpen ? onRecovered : undefined
+                }
                 rewardTermLine={
                   showsRewardTerm ? quietRewardTermLine(rewardTerm.status, rewardTerm.readAt) : null
                 }

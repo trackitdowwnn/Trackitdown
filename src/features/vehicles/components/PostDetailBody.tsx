@@ -10,10 +10,11 @@
  *        "Car details" (the FULL fact list in-page, gaps struck through),
  *        "Distinctive features" (the owner's photographed marks as cards —
  *        photo inset beside the description, truncated past three behind a
- *        grey "Show all N" block button), the owner card (OwnerCard — one
- *        quiet row), the (dormant) sighting-activity line, the SafetyNotice,
- *        a subtle "Report this listing" button, and the "More cars nearby" compact-card
- *        rail (the reference's "More stays nearby" shelf; useSimilarPosts).
+ *        grey "Show all N" block button), and — for SPOTTERS — the owner card
+ *        (OwnerCard — one quiet row), sighting activity (PostSightingsSection),
+ *        the SafetyNotice, a subtle "Report this listing" button and the "More
+ *        cars nearby" compact-card rail (the reference's "More stays nearby"
+ *        shelf; useSimilarPosts). The OWNER's order differs: see WHY below.
  * WHY:   Splits the section rendering out of the screen so the screen file
  *        stays about orchestration (load → header → states). Section order is
  *        the domain-reordered composition from the redesign session: location
@@ -401,8 +402,8 @@ export function PostDetailBody({
         <>
           <Divider />
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Got your car back?</Text>
-            <Text style={styles.deactivateBody}>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Got your car back?</Text>
+            <Text style={styles.recoverBody}>
               {noReward
                 ? // Both halves of the bounty sentence are false here: there is
                   // nothing to send and nothing to get back. What IS true is the
@@ -411,7 +412,7 @@ export function PostDetailBody({
                   'Close the listing and credit the spotter who found it. There’s no cash reward to send, but the recovery goes on their spotter record.'
                 : 'Close the listing and either send the reward to the spotter who found it, or get it back if you found it another way.'}
             </Text>
-            <View style={styles.deactivateAction} testID="mark-recovered">
+            <View style={styles.recoverAction} testID="mark-recovered">
               <Button label="I got it back" fullWidth={false} onPress={onRecovered} />
             </View>
           </View>
@@ -426,7 +427,7 @@ export function PostDetailBody({
           <Divider />
           <View style={styles.section}>
             <View style={styles.sectionTitleRow}>
-              <Text style={styles.sectionTitle}>Last seen here</Text>
+              <Text style={styles.sectionTitle} accessibilityRole="header">Last seen here</Text>
               {onEditLastSeen ? (
                 <SectionEditButton onPress={onEditLastSeen} label="Edit last seen" testID="edit-last-seen" />
               ) : null}
@@ -465,7 +466,7 @@ export function PostDetailBody({
       <Divider />
       <View style={styles.section}>
         <View style={styles.sectionTitleRow}>
-          <Text style={styles.sectionTitle}>About this car</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">About this car</Text>
           {onEditDescription ? (
             <SectionEditButton
               onPress={onEditDescription}
@@ -499,7 +500,7 @@ export function PostDetailBody({
       <Divider />
       <View style={styles.section}>
         <View style={styles.sectionTitleRow}>
-          <Text style={styles.sectionTitle}>Car details</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">Car details</Text>
           {onEditCarDetails ? (
             <SectionEditButton
               onPress={onEditCarDetails}
@@ -538,7 +539,7 @@ export function PostDetailBody({
           <Divider />
           <View style={styles.section}>
             <View style={styles.sectionTitleRow}>
-              <Text style={styles.sectionTitle}>How it was taken</Text>
+              <Text style={styles.sectionTitle} accessibilityRole="header">How it was taken</Text>
               {onEditTheftContext ? (
                 <SectionEditButton
                   onPress={onEditTheftContext}
@@ -583,7 +584,7 @@ export function PostDetailBody({
           <Divider />
           <View style={styles.section}>
             <View style={styles.sectionTitleRow}>
-              <Text style={styles.sectionTitle}>Distinctive features</Text>
+              <Text style={styles.sectionTitle} accessibilityRole="header">Distinctive features</Text>
               {onEditDistinctiveFeatures ? (
                 <SectionEditButton
                   onPress={onEditDistinctiveFeatures}
@@ -605,52 +606,52 @@ export function PostDetailBody({
           the owner". SPOTTERS only (owner, 2026-10-16): on their own listing
           it was a card about themselves. */}
       {!post.isOwner ? (
-      <>
-      <Divider />
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Owner</Text>
-        <OwnerCard owner={post.owner} sightingCount={post.sightingCount} />
+        <>
+          <Divider />
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Owner</Text>
+            <OwnerCard owner={post.owner} sightingCount={post.sightingCount} />
 
-        {/* The spotter's next step — SPOTTER side only (the owner reaches
-            spotters through their sightings list). It always offers what the
-            sticky bar does NOT, so the page never shows one action twice:
-              · not reported yet: the bar says "I've seen this car"; here,
-                the reason to — reporting is what opens a private chat
-                (DOMAIN Chat: no cold DMs, so this is honest about the gate).
-              · reported: the bar has become "Message the owner"
-                (2026-09-24); here, reporting AGAIN — a fresher sighting is
-                worth more than the first, and nothing else on the page
-                offers it once the bar has moved on.
-            Subtle buttons in both states: encouraged, never competing with
-            the bar's primary. */}
-        {!post.isOwner && onMessageOwner ? (
-          <View style={styles.messageOwner}>
-            <Text style={styles.messageOwnerText}>
-              {post.viewerHasSighting
-                ? 'Seen it again? A new sighting shows the owner where it is now.'
-                : 'Seen this car? Report a sighting to start a private chat with the owner.'}
-            </Text>
-            {post.viewerHasSighting ? (
-              onReportSighting ? (
-                <Button
-                  label="Report another sighting"
-                  variant="subtle"
-                  fullWidth={false}
-                  onPress={onReportSighting}
-                />
-              ) : null
-            ) : (
-              <Button
-                label="Report a sighting"
-                variant="subtle"
-                fullWidth={false}
-                onPress={onMessageOwner}
-              />
-            )}
+            {/* The spotter's next step — SPOTTER side only (the owner reaches
+                spotters through their sightings list). It always offers what the
+                sticky bar does NOT, so the page never shows one action twice:
+                  · not reported yet: the bar says "I've seen this car"; here,
+                    the reason to — reporting is what opens a private chat
+                    (DOMAIN Chat: no cold DMs, so this is honest about the gate).
+                  · reported: the bar has become "Message the owner"
+                    (2026-09-24); here, reporting AGAIN — a fresher sighting is
+                    worth more than the first, and nothing else on the page
+                    offers it once the bar has moved on.
+                Subtle buttons in both states: encouraged, never competing with
+                the bar's primary. */}
+            {onMessageOwner ? (
+              <View style={styles.messageOwner}>
+                <Text style={styles.messageOwnerText}>
+                  {post.viewerHasSighting
+                    ? 'Seen it again? A new sighting shows the owner where it is now.'
+                    : 'Seen this car? Report a sighting to start a private chat with the owner.'}
+                </Text>
+                {post.viewerHasSighting ? (
+                  onReportSighting ? (
+                    <Button
+                      label="Report another sighting"
+                      variant="subtle"
+                      fullWidth={false}
+                      onPress={onReportSighting}
+                    />
+                  ) : null
+                ) : (
+                  <Button
+                    label="Report a sighting"
+                    variant="subtle"
+                    fullWidth={false}
+                    onPress={onMessageOwner}
+                  />
+                )}
+              </View>
+            ) : null}
           </View>
-        ) : null}
-      </View>
-      </>
+        </>
       ) : null}
 
       {/* 8 — Sighting activity, where it always was for the PUBLIC (built
@@ -734,7 +735,7 @@ export function PostDetailBody({
         <>
           <Divider />
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
+            <Text style={styles.sectionTitle} accessibilityRole="header">
               {hasCoords ? 'More cars nearby' : 'More cars'}
             </Text>
             {similarLoading ? (
@@ -998,13 +999,13 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     // compound to an off-rhythm 24px below the owner block).
     gap: spacing.md,
   },
-  deactivateBody: {
+  recoverBody: {
     // Instructional copy introducing a money action = body, not caption/meta
     // (mirrors messageOwnerText).
     ...typography.body,
     color: c.textSecondary,
   },
-  deactivateAction: {
+  recoverAction: {
     // Sit the button under the explainer at the section's rhythm.
     marginTop: spacing.md,
   },

@@ -158,9 +158,16 @@ describe('PostDetailBody', () => {
       { onRecovered: jest.fn(), similarPosts: similar },
     );
     const tree = JSON.stringify(view.toJSON());
-    const order = ['SIGHTINGS-SECTION', 'Got your car back?', 'About this car', 'Car details'].map(
-      (t) => at(tree, t),
-    );
+    // "Last seen" is the stat band's label (the title cluster); "Last seen
+    // here" is the map section — sightings sit between the two.
+    const order = [
+      'Last seen',
+      'SIGHTINGS-SECTION',
+      'Got your car back?',
+      'Last seen here',
+      'About this car',
+      'Car details',
+    ].map((t) => at(tree, t));
     expect(order.every((i) => i > -1)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(view.getByTestId('mark-recovered')).toBeTruthy();
@@ -184,16 +191,18 @@ describe('PostDetailBody', () => {
     const view = await renderBody(withCoords, { similarPosts: similar });
     const tree = JSON.stringify(view.toJSON());
     const order = [
-      'About this car',
-      'Car details',
-      'Owner',
-      'SIGHTINGS-SECTION',
-      'Report this listing',
-      'More cars nearby',
-    ].map((t) => at(tree, t));
+      at(tree, 'Last seen here'),
+      at(tree, 'About this car'),
+      at(tree, 'Car details'),
+      at(tree, 'Owner'),
+      at(tree, 'SIGHTINGS-SECTION'),
+      // The safety notice's text is longer than one token — found by its start.
+      tree.indexOf('Never approach the vehicle'),
+      at(tree, 'Report this listing'),
+      at(tree, 'More cars nearby'),
+    ];
     expect(order.every((i) => i > -1)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    expect(view.getByText(/Never approach the vehicle/)).toBeTruthy();
     expect(view.queryByText('Got your car back?')).toBeNull();
   });
 

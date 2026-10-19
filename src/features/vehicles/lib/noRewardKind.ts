@@ -9,7 +9,8 @@
  *        missing); the server now says it from the ledger (has_listing_fee,
  *        owner-only, 20261006110000). An older server doesn't send it, so the
  *        inference stays as the fallback rather than going silent.
- * LINKS: src/features/vehicles/components/PostDetailBody.tsx (deactivate card);
+ * LINKS: src/features/vehicles/components/PostManageSheet.tsx (the deactivate
+ *          row's money line); PostDetailBody.tsx (the ⓘ dialog);
  *        src/features/vehicles/components/PostOwnerActions.tsx (the confirm);
  *        supabase/migrations/20261006110000_a_fee_is_a_fact.sql.
  */

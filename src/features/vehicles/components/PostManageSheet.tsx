@@ -1,15 +1,16 @@
 /**
  * WHAT:  PostManageSheet — the owner's action sheet for THIS listing, opened by
- *        the sticky bar's "Manage post". A ListRow menu: view sightings, activity, one row
- *        per section they're currently allowed to edit, change / add the
- *        reward (live listings), share, archive /
- *        unarchive (finished listings, from My listings' long-press only), and
- *        (paid posts) the destructive deactivate + refund.
+ *        the sticky bar's "Manage listing". A ListRow menu: view sightings,
+ *        activity, one row per section they're currently allowed to edit,
+ *        change / add the reward (live listings), share, archive / unarchive
+ *        (finished listings, from My listings' long-press only), and (paid
+ *        posts) the destructive deactivate row, worded by what happens to the
+ *        money (deactivateKind) — since 2026-10-16 the ONLY way to deactivate.
  * WHY:   "Manage post" used to navigate to /my-posts, which threw the owner off
  *        the very listing they were managing to look at a list containing it —
- *        a dead end. Every owner action already exists on this screen (pencils,
- *        the deactivate block); this gathers them into one predictable place so
- *        the sticky bar's promise is kept without leaving the page. Rows are
+ *        a dead end. This gathers the owner's actions into one predictable
+ *        place on the page; the page itself keeps only the section pencils and
+ *        "I got it back". Rows are
  *        built from the handlers the parent passes, so the sheet can never offer
  *        an edit the server would reject: absent handler = absent row (the same
  *        presence-is-permission contract the pencils use).
@@ -42,24 +43,14 @@ import type { NoRewardKind } from '../lib/noRewardKind';
 export type DeactivateKind = 'refund' | NoRewardKind;
 
 /** The row's words per kind — the page's old deactivate block, one line each.
- *  The confirm that follows still quotes the exact figures (ADR-0021). */
+ *  The title already says it comes down; the subtitle says only the money.
+ *  No figures: the confirm that follows quotes the exact ones (ADR-0021), and
+ *  'fee' is also the fallback when an older server can't say (noRewardKind). */
 const DEACTIVATE_ROW: Record<DeactivateKind, { title: string; subtitle: string }> = {
-  refund: {
-    title: 'Deactivate & refund',
-    subtitle: 'Takes it down and refunds your reward, minus the card fee.',
-  },
-  fee: {
-    title: 'Deactivate listing',
-    subtitle: 'Takes it down. The £5 listing fee isn’t refunded.',
-  },
-  ended: {
-    title: 'Deactivate listing',
-    subtitle: 'Takes it down. Your reward already went back.',
-  },
-  unknown: {
-    title: 'Deactivate listing',
-    subtitle: 'Takes it down. There’s no reward held to refund.',
-  },
+  refund: { title: 'Deactivate & refund', subtitle: 'Refunds your reward, minus the card fee.' },
+  fee: { title: 'Deactivate listing', subtitle: 'Your listing fee isn’t refunded.' },
+  ended: { title: 'Deactivate listing', subtitle: 'Your reward already went back.' },
+  unknown: { title: 'Deactivate listing', subtitle: 'No reward is held to refund.' },
 };
 
 export interface PostManageSheetProps {
@@ -92,7 +83,9 @@ export interface PostManageSheetProps {
    * What deactivating does to the money, so the row says it truly (2026-10-16:
    * it said "refunds your reward" on £5 fee listings too). This row is now the
    * ONLY way to deactivate — the page's own explainer block is gone — so it
-   * carries the one-line version of that block. Defaults to 'refund'.
+   * carries the one-line version of that block. Required whenever
+   * onDeactivate is passed: a default would promise a refund by default,
+   * which is the bug this replaced.
    */
   deactivateKind?: DeactivateKind;
   /**
@@ -157,7 +150,7 @@ export function PostManageSheet({
   onEditDistinctiveFeatures,
   rewardAction,
   onDeactivate,
-  deactivateKind = 'refund',
+  deactivateKind,
   onDeleteDraft,
   onDeletePost,
   onReleasePayout,
@@ -278,7 +271,7 @@ export function PostManageSheet({
       ) : null}
 
       {/* Destructive, and last — the refund confirm is the parent's dialog. */}
-      {onDeactivate ? (
+      {onDeactivate && deactivateKind ? (
         <ListRow
           icon={Ban}
           title={DEACTIVATE_ROW[deactivateKind].title}

@@ -71,8 +71,6 @@ const log = createLogger('vehicles');
 export interface PostOwnerActionsHandle {
   /** Raise the "Manage your listing" sheet. */
   openManage: () => void;
-  /** The deactivate entry: pre-flight, then the attestation or the confirm. */
-  requestDeactivate: () => void;
   /** Open one section's editor (the listing page's pencils). */
   edit: (section: EditableSection) => void;
   /** True while an action is in flight or a flow is open (a request, the
@@ -113,9 +111,9 @@ export function PostOwnerActions({
   const router = useRouter();
   const toast = useToast();
 
-  // The sheet and the ONE deactivate confirm — both the sheet's row and the
-  // listing body's button open the latter, so the destructive copy and the
-  // refund figure exist in a single place.
+  // The sheet and the ONE deactivate confirm — the sheet's row is its only
+  // entry (2026-10-16), so the destructive copy and the refund figure exist in
+  // a single place.
   const manageRef = useRef<BottomSheetRef>(null);
   const deactivateRef = useRef<ConfirmDialogRef>(null);
   const deleteDraftRef = useRef<ConfirmDialogRef>(null);
@@ -292,8 +290,8 @@ export function PostOwnerActions({
     [deactivate, deactivating, postId, refresh, toast],
   );
 
-  // Every deactivate entry point (the listing body's button, the sheet's row)
-  // lands here. The pre-flight decides which door: recent sightings → the
+  // The sheet's deactivate row (the only entry point since 2026-10-16) lands
+  // here. The pre-flight decides which door: recent sightings → the
   // attestation; none → the plain destructive confirm. A failed pre-flight
   // opens the plain confirm — enforcement is the SERVER's (the gate
   // re-checks), so degrading here costs honesty nothing.
@@ -378,11 +376,10 @@ export function PostOwnerActions({
     ref,
     () => ({
       openManage: () => manageRef.current?.open(),
-      requestDeactivate,
       edit: (section: EditableSection) => setEditing(section),
       isBusy: () => busy,
     }),
-    [requestDeactivate, busy],
+    [busy],
   );
 
   if (!owned) {

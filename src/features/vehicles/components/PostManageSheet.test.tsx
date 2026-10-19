@@ -33,19 +33,19 @@ const renderSheet = (props: Partial<Parameters<typeof PostManageSheet>[0]> = {})
 
 describe('PostManageSheet — the deactivate row', () => {
   it.each([
-    ['refund', 'Deactivate & refund', /refunds your reward, minus the card fee/],
-    ['fee', 'Deactivate listing', /£5 listing fee isn’t refunded/],
-    ['ended', 'Deactivate listing', /Your reward already went back/],
-    ['unknown', 'Deactivate listing', /no reward held to refund/],
+    ['refund', 'Deactivate & refund', 'Refunds your reward, minus the card fee.'],
+    ['fee', 'Deactivate listing', 'Your listing fee isn’t refunded.'],
+    ['ended', 'Deactivate listing', 'Your reward already went back.'],
+    ['unknown', 'Deactivate listing', 'No reward is held to refund.'],
   ] as const)('%s: "%s" and the true money line', async (kind, title, line) => {
     const view = await renderSheet({ deactivateKind: kind });
     expect(view.getByText(title)).toBeTruthy();
     expect(view.getByText(line)).toBeTruthy();
   });
 
-  it('a reward listing is the default — the row is unchanged for callers that pass no kind', async () => {
+  it('⚠️ no kind, no row — it never guesses a refund (that was the bug)', async () => {
     const view = await renderSheet();
-    expect(view.getByText('Deactivate & refund')).toBeTruthy();
+    expect(view.queryByTestId('manage-deactivate')).toBeNull();
   });
 
   it('⚠️ a fee listing never promises a refund', async () => {
