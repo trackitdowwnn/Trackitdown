@@ -27,7 +27,7 @@
 
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, ReduceMotion } from 'react-native-reanimated';
 
@@ -37,6 +37,7 @@ import {
   ChoiceChips,
   EmptyState,
   ErrorState,
+  InboxRowDivider,
   ThemedRefreshControl,
 } from '@/shared/ui';
 
@@ -90,7 +91,10 @@ export function ChatInboxScreen() {
             skeleton does too. One more skeleton row takes the space the header
             used to, so the block still fills the same band. */}
         {[0, 1, 2, 3].map((n) => (
-          <ThreadRowSkeleton key={n} />
+          <Fragment key={n}>
+            {n > 0 ? <InboxRowDivider /> : null}
+            <ThreadRowSkeleton />
+          </Fragment>
         ))}
       </View>
     );
@@ -155,7 +159,12 @@ export function ChatInboxScreen() {
             it "MANDATORY, not an optimisation" — correctly, while the list
             interleaved ~38pt headers with ~106pt rows. Every cell is now a
             ThreadRow, so there is one type and nothing to tell FlashList
-            apart. Restore it the moment anything else enters this list. */
+            apart. Restore it the moment anything else enters this list.
+
+            Inset hairlines since 2026-10-19, drawn ABOVE every row but the
+            first and INSIDE its entrance wrapper — FlashList's own
+            ItemSeparatorComponent renders inside the cell but outside
+            renderItem, so its lines stood in place before the rows slid in. */
         <FlashList
           data={items}
           keyExtractor={(item) => item.threadId}
@@ -169,6 +178,7 @@ export function ChatInboxScreen() {
                   : undefined
               }
             >
+              {index > 0 ? <InboxRowDivider /> : null}
               <ThreadRow
                 thread={item}
                 onPress={(thread) => router.push(`/chat/${thread.threadId}`)}
@@ -212,9 +222,8 @@ const makeStyles = (_c: Palette) => StyleSheet.create({
   chipsRow: {
     paddingBottom: spacing.sm,
   },
-  // One list rhythm across both inbox faces. No paddingTop: the day header
-  // supplies spacing.lg above the first group, and a container pad would double
-  // it.
+  // One list rhythm across both inbox faces. No paddingTop: the chip row's own
+  // paddingBottom and the first row's 16pt padding already space it.
   list: {
     paddingBottom: spacing.xl,
   },

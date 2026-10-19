@@ -22,8 +22,9 @@
  *
  *        NEEDS-ATTENTION: `credited` (money waiting for bank details) and
  *        `closed_uncredited` (a 72-hour window is running) are the two kinds
- *        that must not fade into the scroll — they keep a warning accent bar
- *        while UNREAD. Unread-based, not resolution-based: tracking "resolved"
+ *        that must not fade into the scroll — while UNREAD their row shows the
+ *        errand's words in the body's place (the warning accent bar went on
+ *        2026-09-24; the words stayed). Unread-based, not resolution-based: tracking "resolved"
  *        would need per-kind server queries for a treatment whose whole job
  *        is "don't let me miss this".
  * LINKS: ./notificationKinds.ts; ../components/NotificationRowItem.tsx (the

@@ -18,7 +18,7 @@
 
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
 
@@ -36,6 +36,7 @@ import {
 import {
   EmptyState,
   ErrorState,
+  InboxRowDivider,
   ThemedRefreshControl,
 } from '@/shared/ui';
 
@@ -98,10 +99,17 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
   if (status === 'loading') {
     return (
       <View style={styles.container} testID="center-skeleton" accessibilityLabel="Loading notifications">
-        {/* No day header any more — the real list leads with a row, so the
-            skeleton does too. */}
+        {/* The mark-all strip's height is reserved here too — the real list
+            always keeps it (see below), so rows land where the skeleton drew
+            them. */}
+        <View style={styles.markAllRow}>
+          <View style={styles.markAllHit} />
+        </View>
         {[0, 1, 2, 3].map((n) => (
-          <NotificationRowSkeleton key={n} />
+          <Fragment key={n}>
+            {n > 0 ? <InboxRowDivider /> : null}
+            <NotificationRowSkeleton />
+          </Fragment>
         ))}
       </View>
     );
@@ -132,25 +140,16 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
 
   return (
     <View style={styles.container}>
-      {/* ⚠️ "Mark all as read" LOST ITS HOME ON 2026-09-04 and this is the
-          third one it has had. The day headers went (flat list, owner's call)
-          and it had been riding the first header's line, which needed no band
-          because the header was always there.
-
-          The two remaining options are both ones this screen has already
-          rejected, and the old note ranked them: a row rendered only while
-          there is something to mark JUMPS when you clear the last unread; a
-          permanently reserved row is dead space on every visit, since most of
-          the time there is nothing unread. Its own words — "a jump happens
-          once, on a tap you chose; dead space is there every time you open the
-          tab" — pick the first, so that is what it goes back to.
-
-          Two things soften it against the version that was rejected: the strip
-          is a caption action rather than a 52pt band, so the collapse is ~32pt
-          not 52; and it sits ABOVE the scroll rather than inside it, so the
-          list's own offset never changes underneath a reader mid-scroll. */}
-      {hasUnread ? (
-        <View style={styles.markAllRow}>
+      {/* ⚠️ THE STRIP IS ALWAYS THERE since 2026-10-19; only the LINK comes
+          and goes. Until then the whole strip mounted only while something was
+          unread, so clearing the last unread pulled the list up by 52pt — and
+          the owner read the tab as jumpy. The old note weighed that jump
+          against "dead space on every visit"; the space is no longer dead: at
+          44 + 8 it matches the Messages face's chip row exactly, so the first
+          row now starts at the same y on both faces and switching segments
+          doesn't shift anything. */}
+      <View style={styles.markAllRow} testID="mark-all-strip">
+        {hasUnread ? (
           <Pressable
             onPress={markAllRead}
             accessibilityRole="button"
@@ -159,8 +158,10 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
           >
             <Text style={styles.markAllLabel}>Mark all as read</Text>
           </Pressable>
-        </View>
-      ) : null}
+        ) : (
+          <View style={styles.markAllHit} />
+        )}
+      </View>
       {/* ⚠️ FLAT SINCE 2026-09-04, matching the Messages face. Both lists
           dropped their day grouping together, which is what keeps "one tab,
           one vocabulary" true — the rule was never "both must group", it was
@@ -168,7 +169,9 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
           now carries the day the header used to.
 
           `getItemType` went with the headers: it was mandatory while ~38pt
-          headers recycled into ~106pt rows, and there is one cell type now. */}
+          headers recycled into ~106pt rows, and there is one cell type now.
+          The divider rides inside each row's entrance wrapper — see the
+          Messages face for why not ItemSeparatorComponent. */}
       <FlashList
         data={rows}
         keyExtractor={(item) => item.id}
@@ -182,6 +185,7 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
                 : undefined
             }
           >
+            {index > 0 ? <InboxRowDivider /> : null}
             <NotificationRowItem row={item} onPress={onRowPress} />
           </Animated.View>
         )}
@@ -212,8 +216,8 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // A caption-height strip, not a band: it appears and disappears with the
-  // unread state, so its collapse must cost as little as possible.
+  // Always mounted, always 44 + 8 (the Messages chip row's height) — only the
+  // link inside it depends on the unread state.
   markAllRow: {
     alignItems: 'flex-end',
     paddingHorizontal: spacing.xl,

@@ -11,6 +11,7 @@
 import type { InboxThread } from '../types';
 import {
   INBOX_FILTERS,
+  carLine,
   contextLine,
   emptyFilterCopy,
   filterLabel,
@@ -58,6 +59,34 @@ describe('contextLine', () => {
     const t = thread();
     t.post.colour = null;
     expect(contextLine(t).prefix).toBe('About your BMW 3 Series');
+  });
+});
+
+describe('carLine', () => {
+  it("owner: '<colour model> · your car' — short, so the role survives", () => {
+    expect(carLine(thread())).toBe('Blue 3 Series · your car');
+  });
+
+  it("spotter: '<colour model> · your sighting'", () => {
+    expect(carLine(thread({ role: 'spotter' }))).toBe('Blue 3 Series · your sighting');
+  });
+
+  it('falls back to the make when there is no model', () => {
+    const t = thread();
+    t.post = { ...t.post, model: '' };
+    expect(carLine(t)).toBe('Blue BMW · your car');
+  });
+
+  it('PRIVACY: never draws the plate, even the owner’s own', () => {
+    expect(carLine(thread())).not.toContain('AB12');
+    expect(carLine(thread({ role: 'spotter' }))).not.toContain('AB12');
+  });
+
+  it('with no car words, still says whose it is', () => {
+    const t = thread();
+    t.post = { ...t.post, colour: null, make: '', model: '' };
+    expect(carLine(t)).toBe('Your car');
+    expect(carLine({ ...t, role: 'spotter' })).toBe('Your sighting');
   });
 });
 

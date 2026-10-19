@@ -135,16 +135,30 @@ describe('the row shape the inbox pass settled on', () => {
   });
 });
 
-// Owner's call, 2026-09-24: the car's photo already says what a conversation
-// is about, so the "About your …" line and the plate are no longer drawn.
-describe('no drawn context line', () => {
-  it.each(['owner', 'spotter'] as const)('draws neither the car line nor the plate (%s)', async (role) => {
-    const { queryByText } = await render(
+// Owner's call, 2026-10-19: the car line is DRAWN again (it went on
+// 2026-09-24) — short, car first, and never the plate.
+describe('the drawn car line', () => {
+  it.each([
+    ['owner', 'Blue 3 Series · your car'],
+    ['spotter', 'Blue 3 Series · your sighting'],
+  ] as const)('says which car and whose side (%s)', async (role, line) => {
+    const { getByTestId, queryByText } = await render(
       <ThreadRow thread={thread({ role })} onPress={jest.fn()} />,
     );
 
-    expect(queryByText(/About your|Your sighting/)).toBeNull();
-    expect(queryByText('AB12 CDE')).toBeNull();
+    expect(getByTestId('thread-car-line-t1')).toHaveTextContent(line);
+    // PRIVACY + brevity: the plate is spoken (below), never drawn.
+    expect(queryByText(/AB12/)).toBeNull();
+  });
+
+  it('is not read twice — the row is ONE accessible element with its own label', async () => {
+    // A screen reader stops on the row and speaks its label; it never reaches
+    // the children, so the drawn car line can't be read a second time.
+    const { getByTestId } = await render(<ThreadRow thread={thread()} onPress={jest.fn()} />);
+    const row = getByTestId('thread-row-t1');
+
+    expect(row.props.accessible).toBe(true);
+    expect(row.props.accessibilityLabel).toContain('About your Blue BMW 3 Series');
   });
 
   it('opens the conversation on a tap', async () => {

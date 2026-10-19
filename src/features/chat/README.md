@@ -33,9 +33,9 @@ Both routes call the same `open_thread` and land in `/chat/[threadId]`.
    never costs a round trip). Per-filter empty copy (an empty Unread is
    good news and reads like it); a truly EMPTY inbox keeps the plain
    invitation with no chips.
-   — FlashList of Airbnb-style rows, GROUPED BY DAY (2026-08-28) under the
-   same calendar labels the Notifications face uses, so one tab does not
-   speak two vocabularies for "when".
+   — FlashList of Airbnb-style rows, FLAT since 2026-09-04 (it was grouped by
+   day from 2026-08-28), with inset hairline dividers (`InboxRowDivider`,
+   2026-10-19) shared with the Notifications face.
    — The row leads with the CAR'S COVER PHOTO in a 48pt circle (`sizes.inboxRowTile`),
    falling back to a `CarColourTile` in the car's own paint when the post has
    no photo. The POST's public photo, never anything of the other person's —
@@ -45,11 +45,14 @@ Both routes call the same `open_thread` and land in `/chat/[threadId]`.
    "Yesterday" yesterday, a date before that. The a11y label keeps day AND
    time at every age, because a screen-reader user cannot glance at the rows
    above to place this one),
-   and the one-line preview. The context ("About your Blue BMW" + the owner's
-   plate / "Your sighting · Blue BMW") is SPOKEN only — no longer drawn since
-   2026-09-24 (owner's call: the leading car photo already says which
-   conversation it is). Trailing: `UnreadBadge` — a dot at one unread, a count above,
-   an empty reserved slot when read so the text column never changes width.
+   then a grey car line ("Blue 3 Series · your car" / "Red Golf · your
+   sighting" — colour + model, `inboxModel.carLine`, never the plate) and the one-line preview. The car
+   line was dropped on 2026-09-24 and DRAWN AGAIN on 2026-10-19 (owner: the
+   tab read as "squashed and hard to read" — a 48pt photo alone didn't say
+   which car or which side you're on). The fuller context ("About your Blue
+   BMW" + the owner's plate) stays in the spoken label. Rows pad 16pt.
+   Trailing: `UnreadBadge` — a dot at one unread, a count above, an empty
+   reserved slot when read so the text column never changes width.
    Unread also bolds the name (family swap, so the row height cannot jump).
    — ⚠️ Until 2026-08-28 the row led with an initial-letter Avatar wearing the
    car as a 24pt corner badge. The photo took the leading slot because you

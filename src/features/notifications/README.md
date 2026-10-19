@@ -348,12 +348,17 @@ same place.
   whose picture can never be a face. The 08-28 argument still stands on its own
   terms; it was overridden, not refuted. What survives it: the lead is never a
   PERSON. It is a car or an event icon.
-- ⚠️ `credited` and `closed_uncredited` keep the warning accent bar while
-  unread AND now carry a LABEL saying what to do ("Add your bank details",
-  "You can contest this"). The bar alone was status encoded as colour, which
-  DESIGN_SYSTEM forbids, and a 3pt stripe cannot say what is needed. The label
+- ⚠️ `credited` and `closed_uncredited` carry a LABEL saying what to do ("Add
+  your bank details", "You can contest this"), shown in the body's place while
+  unread. The warning accent bar they once had went in the 2026-09-24 minimal
+  pass; the words stayed, because a stripe cannot say what is needed. The label
   is part of `CenterRowMeta`'s discriminated union, so a new needs-attention
   kind cannot compile without someone choosing its words.
+- 2026-10-19 (owner: "squashed and hard to read"): rows pad 16pt, the body may
+  use TWO lines (safety advice was being cut mid-sentence), inset hairline
+  dividers (`InboxRowDivider`, shared with Messages), and the "Mark all as
+  read" strip always keeps its height so clearing the last unread no longer
+  jumps the list.
 - ⚠️ Both inbox faces stay MOUNTED (2026-08-28), so this screen's
   `center_view` log fires on becoming visible rather than on mount — the
   metric is per-view from that date and is not comparable with earlier

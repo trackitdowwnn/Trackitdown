@@ -134,10 +134,12 @@ describe('states', () => {
     expect(getByText('Keep an eye out — never approach.')).toBeTruthy();
   });
 
-  it('keeps an ordinary row to a one-line preview', async () => {
+  // ⚠️ TWO since 2026-10-19 (was one from 2026-09-24): the body is often the
+  // safety advice itself, and one line cut it mid-sentence.
+  it('gives an ordinary row’s body two lines', async () => {
     const { getByText } = await act(async () => render(<NotificationCenterScreen />));
 
-    expect(getByText('Keep an eye out — never approach.').props.numberOfLines).toBe(1);
+    expect(getByText('Keep an eye out — never approach.').props.numberOfLines).toBe(2);
   });
 
   it('leads with the car’s photo when the server sent one', async () => {
@@ -173,6 +175,22 @@ describe('states', () => {
     expect(getByTestId('notification-n-credited').props.accessibilityLabel).toContain(
       'Add your bank details.',
     );
+  });
+});
+
+// 2026-10-19: the same inset hairline the Messages face draws, between rows only.
+describe('dividers', () => {
+  it('draws one fewer divider than there are rows', async () => {
+    mockFetch.mockResolvedValue([rowFixture(), rowFixture({ id: 'n-2' }), rowFixture({ id: 'n-3' })]);
+    const { getAllByTestId } = await act(async () => render(<NotificationCenterScreen />));
+
+    expect(getAllByTestId('inbox-row-divider')).toHaveLength(2);
+  });
+
+  it('draws none under a single row', async () => {
+    const { queryAllByTestId } = await act(async () => render(<NotificationCenterScreen />));
+
+    expect(queryAllByTestId('inbox-row-divider')).toHaveLength(0);
   });
 });
 
@@ -219,6 +237,19 @@ describe('read-state transitions', () => {
     expect(queryByTestId('unread-n-1')).toBeNull();
     expect(queryByTestId('unread-n-2')).toBeNull();
     // Nothing left for it to do — the affordance goes away, not disabled.
+    expect(queryByTestId('mark-all-read')).toBeNull();
+    // ⚠️ BUT ITS STRIP STAYS (2026-10-19), so the list doesn't jump up 52pt
+    // the moment the last unread clears.
+    expect(getByTestId('mark-all-strip')).toBeTruthy();
+  });
+
+  it('keeps the strip with nothing unread at all — no jump on the next visit', async () => {
+    mockFetch.mockResolvedValue([rowFixture({ readAt: new Date().toISOString() })]);
+    const { getByTestId, queryByTestId } = await act(async () =>
+      render(<NotificationCenterScreen />),
+    );
+
+    expect(getByTestId('mark-all-strip')).toBeTruthy();
     expect(queryByTestId('mark-all-read')).toBeNull();
   });
 });

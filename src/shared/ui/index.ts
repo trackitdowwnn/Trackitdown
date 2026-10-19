@@ -73,6 +73,7 @@ export {
   type DayHeaderProps,
 } from './DayHeader';
 export { UnreadBadge, type UnreadBadgeProps } from './UnreadBadge';
+export { InboxRowDivider } from './InboxRowDivider';
 export {
   CameraCapture,
   type CameraCaptureProps,

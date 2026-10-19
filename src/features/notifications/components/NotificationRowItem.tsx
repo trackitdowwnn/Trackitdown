@@ -1,15 +1,16 @@
 /**
  * WHAT:  One notification feed row — icon (or the car) in a round tile, title,
- *        a ONE-line preview, and a trailing column holding the date stamp over
- *        the unread badge. Two lines of text, like a Messages row.
+ *        a body of up to TWO lines (one until 2026-10-19), and a trailing
+ *        column holding the date stamp over the unread badge.
  * WHY:   The Airbnb-calm row: the icon SHAPE says what happened (hue assists,
  *        never carries alone), and unread is a quiet badge and weight rather
  *        than a coloured background. The kinds that genuinely need the user
  *        (money waiting, a contest window, "is it still missing?") show their
  *        ERRAND in the preview's place until read. Minimal pass (owner's call,
- *        2026-09-24): the preview went from two lines to one, and the amber
- *        bar + ring went — the errand's words stayed. The whole row is one pressable ≥ touch-target height;
- *        the tap's destination comes from the row's stored payload through the
+ *        2026-09-24): the preview went from two lines to one (back to two on
+ *        2026-10-19), and the amber bar + ring went — the errand's words
+ *        stayed. The whole row is one pressable ≥ touch-target height; the
+ *        tap's destination comes from the row's stored payload through the
  *        same routing pushes use, so a row can never go somewhere its push
  *        wouldn't have.
  *
@@ -108,7 +109,7 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
   const stacked = (fontScale ?? 1) > listRowStackFontScale;
   const loud = unread && meta.needsAttention;
 
-  // The badge, the weight and the bar are visual; the LABEL is where a screen-
+  // The badge and the weight are visual; the LABEL is where a screen-
   // reader user learns the same facts (ThreadRow's precedent).
   // ⚠️ THE SAME WORDS THE ROW SHOWS. This used to append "Needs your
   // attention." — a sentence no sighted user ever saw, describing a stripe
@@ -154,8 +155,11 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
         <Text style={[styles.title, unread && styles.titleUnread]} numberOfLines={1}>
           {row.title}
         </Text>
-        {/* ONE LINE, like the Messages face's preview (owner's call,
-            2026-09-24: "more minimal like the messages tab").
+        {/* ⚠️ TWO LINES AGAIN since 2026-10-19 (owner: "hard to read and
+            understand"). The 2026-09-24 one-line cut left a notification's
+            body — often the actual advice, e.g. "don't approach the car" — as
+            a half-sentence. A conversation preview is a teaser of something
+            you open; a notification body is usually the whole message.
 
             ⚠️ WHILE AN ERRAND IS UNREAD, THE ERRAND IS THE LINE. The amber bar
             and ring went with the minimal pass, but the words did not: "Add
@@ -169,7 +173,7 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
             {meta.attentionLabel}
           </Text>
         ) : (
-          <Text style={styles.body} numberOfLines={1}>
+          <Text style={styles.body} numberOfLines={2} testID={`notification-body-${row.id}`}>
             {row.body}
           </Text>
         )}
@@ -243,6 +247,15 @@ export function NotificationRowSkeleton() {
             { height: typography.body.lineHeight * scale },
           ]}
         />
+        {/* The body's second line (two since 2026-10-19) — most bodies wrap
+            at ~30 characters, so a loaded row is three lines, not two. */}
+        <View
+          style={[
+            styles.skeletonBar,
+            styles.skeletonBodyTail,
+            { height: typography.body.lineHeight * scale },
+          ]}
+        />
       </View>
       {/* The same trailing column a real row keeps — a time bar over the
           badge's reserved slot — so nothing shifts sideways when it loads. */}
@@ -266,8 +279,8 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     paddingHorizontal: spacing.xl,
-    // md (12), matching ThreadRow — see its note on row density.
-    paddingVertical: spacing.md,
+    // lg (16), matching ThreadRow — back up from md on 2026-10-19; see its note.
+    paddingVertical: spacing.lg,
     minHeight: sizes.touchTarget,
   },
   // ⚠️ surfaceSubtlePressed, NOT surfaceSubtle — which is the fill of the tile
@@ -313,6 +326,9 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     alignItems: 'flex-end',
     gap: spacing.xs,
     flexShrink: 0,
+    // TOP-aligned since 2026-10-19, matching ThreadRow: centred, the time
+    // zig-zagged between one- and two-line bodies down the list.
+    alignSelf: 'flex-start',
   },
   // ⚠️ `body`, matching ThreadRow's name — NOT `label`. The two faces shared a
   // box but not a type ramp, so switching segments changed every text size on
@@ -365,5 +381,8 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   skeletonBody: {
     width: '85%',
+  },
+  skeletonBodyTail: {
+    width: '50%',
   },
 });
