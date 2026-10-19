@@ -33,17 +33,21 @@ const row = (overrides: Partial<NotificationRow> = {}): NotificationRow => ({
 
 const read = () => ({ readAt: new Date().toISOString() });
 
+const NOW = new Date();
+
 describe('the body', () => {
   it('gets two lines, so safety advice isn’t cut mid-sentence', async () => {
     const { getByTestId } = await render(
-      <NotificationRowItem row={row(read())} onPress={jest.fn()} />,
+      <NotificationRowItem row={row(read())} onPress={jest.fn()} now={NOW} />,
     );
 
     expect(getByTestId('notification-body-n-1').props.numberOfLines).toBe(2);
   });
 
   it('keeps the title to one line', async () => {
-    const { getByText } = await render(<NotificationRowItem row={row()} onPress={jest.fn()} />);
+    const { getByText } = await render(
+      <NotificationRowItem row={row()} onPress={jest.fn()} now={NOW} />,
+    );
 
     expect(getByText('A blue BMW was reported stolen near Camden').props.numberOfLines).toBe(1);
   });
@@ -52,13 +56,15 @@ describe('the body', () => {
 describe('unread', () => {
   it('sets the title in the heavier family, and a read row does not', async () => {
     const title = 'A blue BMW was reported stolen near Camden';
-    const unread = await render(<NotificationRowItem row={row()} onPress={jest.fn()} />);
+    const unread = await render(<NotificationRowItem row={row()} onPress={jest.fn()} now={NOW} />);
     expect(StyleSheet.flatten(unread.getByText(title).props.style).fontFamily).toBe(
       typography.cardTitle.fontFamily,
     );
     await unread.unmount();
 
-    const seen = await render(<NotificationRowItem row={row(read())} onPress={jest.fn()} />);
+    const seen = await render(
+      <NotificationRowItem row={row(read())} onPress={jest.fn()} now={NOW} />,
+    );
     expect(StyleSheet.flatten(seen.getByText(title).props.style).fontFamily).toBe(
       typography.body.fontFamily,
     );
@@ -69,6 +75,7 @@ describe('unread', () => {
       <NotificationRowItem
         row={row({ kind: 'credited', payload: { type: 'credited', postId: POST_ID } })}
         onPress={jest.fn()}
+        now={NOW}
       />,
     );
 
@@ -82,7 +89,9 @@ describe('unread', () => {
 
 it('forwards the press with its row', async () => {
   const onPress = jest.fn();
-  const { getByTestId } = await render(<NotificationRowItem row={row()} onPress={onPress} />);
+  const { getByTestId } = await render(
+    <NotificationRowItem row={row()} onPress={onPress} now={NOW} />,
+  );
 
   await fireEvent.press(getByTestId('notification-n-1'));
 

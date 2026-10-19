@@ -1,8 +1,8 @@
 /**
  * WHAT:  NotificationCenterScreen — the Inbox tab's second face: the
  *        persistent feed of everything notification-worthy, newest first,
- *        under Today / Yesterday / Earlier headers, with "Mark all as read" and tap-through to each row's
- *        destination.
+ *        under Today / Yesterday / Earlier headers, with "Mark all as read"
+ *        and tap-through to each row's destination.
  * WHY:   Pushes were fire-and-forget; this is where they stop disappearing.
  *        Behaviour rules (Airbnb's, adopted): opening the segment NEVER
  *        auto-marks-read — unread is the user's to clear, by tap or the one
@@ -86,7 +86,11 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
   // Grouped again since 2026-10-19: Today / Yesterday / Earlier (see
   // ../lib/dayGroups). `now` is held state (useNow), not a render-time Date —
   // the compiler would freeze that, and "Today" would outlive midnight.
-  const now = useNow(60_000);
+  // DAY-granular: the clock ticks each minute, but groups and row stamps only
+  // change at midnight, so the list rebuilds once a day, not every minute.
+  const clock = useNow(60_000);
+  const todayMs = new Date(clock.getFullYear(), clock.getMonth(), clock.getDate()).getTime();
+  const now = useMemo(() => new Date(todayMs), [todayMs]);
   const items = useMemo(() => notificationDayGroups(rows, now), [rows, now]);
 
   const hasUnread = rows.some((row) => row.readAt === null);
@@ -203,7 +207,7 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
             ) : (
               <>
                 {item.firstInGroup ? null : <InboxRowDivider />}
-                <NotificationRowItem row={item.row} onPress={onRowPress} />
+                <NotificationRowItem row={item.row} onPress={onRowPress} now={now} />
               </>
             )}
           </Animated.View>

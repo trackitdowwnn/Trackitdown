@@ -7,8 +7,10 @@
  * LINKS: ./dayGroups.ts.
  */
 
+import { formatClock } from '@/shared/lib/dateTimeLabel';
+
 import type { NotificationRow } from '../api/notificationsApi';
-import { dayGroupOf, notificationDayGroups } from './dayGroups';
+import { dayGroupOf, groupedRowStamp, notificationDayGroups } from './dayGroups';
 
 // Midday local time, so ±hours never cross a day edge by accident.
 const NOW = new Date(2026, 9, 19, 12, 0, 0);
@@ -37,6 +39,24 @@ describe('dayGroupOf', () => {
 
   it('counts a row from the future (clock skew) as Today', () => {
     expect(dayGroupOf(at(2026, 9, 20, 9), NOW)).toBe('Today');
+  });
+});
+
+describe('groupedRowStamp', () => {
+  it('⚠️ draws the CLOCK under Yesterday — never repeats the header', () => {
+    const iso = at(2026, 9, 18, 14, 32);
+    expect(groupedRowStamp(iso, NOW)).toBe(formatClock(iso));
+    expect(groupedRowStamp(iso, NOW)).not.toBe('Yesterday');
+  });
+
+  it('draws the clock under Today', () => {
+    const iso = at(2026, 9, 19, 9, 5);
+    expect(groupedRowStamp(iso, NOW)).toBe(formatClock(iso));
+  });
+
+  it('draws the date under Earlier, with the year only when it differs', () => {
+    expect(groupedRowStamp(at(2026, 9, 6), NOW)).toBe('6 Oct');
+    expect(groupedRowStamp(at(2025, 9, 6), NOW)).toBe('6 Oct 2025');
   });
 });
 

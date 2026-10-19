@@ -20,6 +20,8 @@
  *        src/shared/ui/DayHeader.tsx.
  */
 
+import { formatClock, formatDateLabelCompact } from '@/shared/lib/dateTimeLabel';
+
 import type { NotificationRow } from '../api/notificationsApi';
 
 export type DayGroupLabel = 'Today' | 'Yesterday' | 'Earlier';
@@ -46,6 +48,25 @@ export function dayGroupOf(iso: string, now: Date): DayGroupLabel {
   return 'Earlier';
 }
 
+/**
+ * A grouped row's stamp: the clock under Today AND Yesterday — the header
+ * already says the day, so a row repeating "Yesterday" says nothing — and the
+ * date under Earlier, which names no day ("6 Oct"; "6 Oct 2025" in another
+ * year). Uses the SAME `now` as the grouping, so a row can never disagree with
+ * its own header across midnight.
+ */
+export function groupedRowStamp(iso: string, now: Date): string {
+  return dayGroupOf(iso, now) === 'Earlier'
+    ? formatDateLabelCompact(iso, now)
+    : formatClock(iso);
+}
+
+/**
+ * The center's list items: up to three groups in the fixed order Today →
+ * Yesterday → Earlier, each a header then its rows. Empty groups are left
+ * out, input order is kept within a group, and each group's first row has
+ * `firstInGroup` (no divider above it). Rows dated after `now` count as Today.
+ */
 export function notificationDayGroups(rows: NotificationRow[], now: Date): CenterListItem[] {
   const buckets: Record<DayGroupLabel, NotificationRow[]> = {
     Today: [],

@@ -47,6 +47,13 @@ jest.mock('../api/notificationsApi', () => ({
 
 const POST_ID = '11111111-2222-3333-4444-555555555555';
 
+/** Local NOON `days` from today — not `Date.now() - n days`, which lands on
+ *  the wrong day around a clock change (Jest runs in Europe/London). */
+const localNoon = (days: number) => {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, 12).toISOString();
+};
+
 const rowFixture = (overrides: Record<string, unknown> = {}) => ({
   id: 'n-1',
   kind: 'alert' as const,
@@ -85,11 +92,10 @@ describe('states', () => {
   });
 
   it('groups older rows under Yesterday and Earlier, in that order', async () => {
-    const DAY_MS = 24 * 60 * 60 * 1000;
     mockFetch.mockResolvedValue([
       rowFixture({ id: 'n-today' }),
-      rowFixture({ id: 'n-yday', createdAt: new Date(Date.now() - DAY_MS).toISOString() }),
-      rowFixture({ id: 'n-old', createdAt: new Date(Date.now() - 9 * DAY_MS).toISOString() }),
+      rowFixture({ id: 'n-yday', createdAt: localNoon(-1) }),
+      rowFixture({ id: 'n-old', createdAt: localNoon(-9) }),
     ]);
     const { getAllByText, queryAllByTestId } = await act(async () =>
       render(<NotificationCenterScreen />),
@@ -211,6 +217,18 @@ describe('dividers', () => {
     const { queryAllByTestId } = await act(async () => render(<NotificationCenterScreen />));
 
     expect(queryAllByTestId('inbox-row-divider')).toHaveLength(0);
+  });
+
+  it('divides rows WITHIN a day, never across a header', async () => {
+    mockFetch.mockResolvedValue([
+      rowFixture({ id: 'n-1' }),
+      rowFixture({ id: 'n-2' }),
+      rowFixture({ id: 'n-yday', createdAt: localNoon(-1) }),
+    ]);
+    const { getAllByTestId } = await act(async () => render(<NotificationCenterScreen />));
+
+    // Between the two Today rows only; the Yesterday header separates the rest.
+    expect(getAllByTestId('inbox-row-divider')).toHaveLength(1);
   });
 });
 

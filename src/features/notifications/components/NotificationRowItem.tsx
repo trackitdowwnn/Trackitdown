@@ -29,7 +29,9 @@
  *        no header above a row to say the day, both had to move to the shared
  *        `formatListStamp` ladder: the clock today, "Yesterday" yesterday, a
  *        date before that. The feed regained Today / Yesterday / Earlier
- *        headers on 2026-10-19; the stamp stays, since "Earlier" names no day.
+ *        headers on 2026-10-19, so this row now draws `groupedRowStamp`
+ *        instead: the clock under Today and Yesterday, the date under Earlier
+ *        (which names no day). Messages keeps `formatListStamp`.
  *
  *        ⚠️ A CIRCLE SINCE 2026-09-04, REVERSING THE PARAGRAPH THAT USED TO
  *        STAND HERE. It read: "A ROUNDED SQUARE, NOT A CIRCLE. Circles mean
@@ -54,7 +56,7 @@
 
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { formatDateTimeLabel, formatListStamp } from '@/shared/lib/dateTimeLabel';
+import { formatDateTimeLabel } from '@/shared/lib/dateTimeLabel';
 import {
   listRowStackFontScale,
   radii,
@@ -69,10 +71,17 @@ import { AppImage, UnreadBadge } from '@/shared/ui';
 
 import type { NotificationRow } from '../api/notificationsApi';
 import { CENTER_ROW_META, type NotificationTone } from '../lib/centerRowMeta';
+import { groupedRowStamp } from '../lib/dayGroups';
 
 export interface NotificationRowItemProps {
   row: NotificationRow;
   onPress: (row: NotificationRow) => void;
+  /**
+   * The screen's held "now" (useNow) — the same one its day groups were cut
+   * with, so the row's stamp and its header can't disagree across midnight.
+   * Required: a render-time `new Date()` here would be frozen by the compiler.
+   */
+  now: Date;
 }
 
 /**
@@ -94,7 +103,7 @@ function toneColor(c: Palette, tone: NotificationTone): string {
   }
 }
 
-export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) {
+export function NotificationRowItem({ row, onPress, now }: NotificationRowItemProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   // ⚠️ A FALLBACK FOR A KIND THIS BUILD HAS NEVER HEARD OF. The server's CHECK
@@ -109,6 +118,9 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
   // ⚠️ RESTORED 2026-09-05 alongside ThreadRow — see the meta column note.
   const stacked = (fontScale ?? 1) > listRowStackFontScale;
   const loud = unread && meta.needsAttention;
+  // The clock under Today/Yesterday, the date under Earlier — the header says
+  // the day now (2026-10-19), so "Yesterday" on the row would only repeat it.
+  const stamp = groupedRowStamp(row.createdAt, now);
 
   // The badge and the weight are visual; the LABEL is where a screen-
   // reader user learns the same facts (ThreadRow's precedent).
@@ -121,7 +133,7 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
     // `timeAgo` while the row DREW formatListStamp, so the two faces of one
     // tab still disagreed about time — the divergence the flat pass claimed to
     // have closed, moved one layer down where nobody looks.
-    `${row.title}. ${row.body}. ${formatDateTimeLabel(row.createdAt)}.` +
+    `${row.title}. ${row.body}. ${formatDateTimeLabel(row.createdAt, now)}.` +
     (loud ? ` ${meta.attentionLabel}.` : unread ? ' Unread.' : '');
 
   return (
@@ -180,7 +192,7 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
         )}
         {/* Past listRowStackFontScale the stamp lives here — see the meta note. */}
         {stacked ? (
-          <Text style={styles.timeStacked}>{formatListStamp(row.createdAt)}</Text>
+          <Text style={styles.timeStacked}>{stamp}</Text>
         ) : null}
       </View>
       {/* ⚠️ FOLLOWS ThreadRow (2026-09-04): time above, unread below, as one
@@ -201,7 +213,7 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
       <View style={styles.meta}>
         {!stacked ? (
           <Text style={styles.time} numberOfLines={1}>
-            {formatListStamp(row.createdAt)}
+            {stamp}
           </Text>
         ) : null}
         <UnreadBadge count={unread ? 1 : 0} testID={unread ? `unread-${row.id}` : undefined} />
