@@ -1,8 +1,9 @@
 /**
  * WHAT:  PostSightingsSection — the detail page's "Sighting activity"
  *        section, serving BOTH faces from one mount point: the owner gets
- *        the rich timeline preview (a summary line — "4 sightings · 1 needs
- *        your answer" — then the 3 newest + movement hint + "View all"),
+ *        the rich timeline preview (a summary line — "1 needs your answer";
+ *        the count is the stat band's — then the 3 newest + movement hint +
+ *        "View all"),
  *        everyone else gets the restrained public timeline or nothing at
  *        all. Owns its own divider + title chrome so the public-empty case
  *        can vanish entirely (the host page cannot know emptiness).
@@ -45,19 +46,20 @@ const log = createLogger('sightings');
 /** Newest entries shown in the owner's on-page preview before "View all". */
 const PREVIEW_LIMIT = 3;
 
-/** "4 sightings · 1 needs your answer" — counted over ALL the owner's
- *  sightings, not the 3 the preview shows, so a waiting one below the fold is
- *  never missed. "· nothing waiting on you" once every one is decided. */
+/** "1 needs your answer" — counted over ALL the owner's sightings, not the 3
+ *  the preview shows, so a waiting one below the fold is never missed;
+ *  "Nothing waiting on you" once every one is decided.
+ *  NO TOTAL since 2026-10-16 (owner): the section sits right under the stat
+ *  band, which already says how many sightings there are — the line says only
+ *  what needs them. */
 export function sightingsSummaryLine(all: Pick<OwnerSighting, 'status'>[]): string | null {
   // A withdrawn sighting was never answered — it is not counted at all (the
   // owner RPC filters them; this holds if one ever slips through).
   const sightings = all.filter((s) => !isGoneSighting(s.status));
   if (sightings.length === 0) return null;
-  const total = `${sightings.length} ${sightings.length === 1 ? 'sighting' : 'sightings'}`;
   const waiting = sightings.filter((s) => s.status === 'unverified').length;
-  if (waiting === 0) return `${total} · nothing waiting on you`;
-  if (sightings.length === 1) return `${total} · needs your answer`;
-  return `${total} · ${waiting} ${waiting === 1 ? 'needs' : 'need'} your answer`;
+  if (waiting === 0) return 'Nothing waiting on you';
+  return `${waiting} ${waiting === 1 ? 'needs' : 'need'} your answer`;
 }
 
 /** Public entries arrive newest-first; the map walks time forward. Only

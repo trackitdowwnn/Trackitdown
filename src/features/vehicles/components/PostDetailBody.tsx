@@ -409,8 +409,10 @@ export function PostDetailBody({
                   // nothing to send and nothing to get back. What IS true is the
                   // credit, which on a no-reward listing is the spotter's whole
                   // reward (ADR-0014) — so it leads.
-                  'Close the listing and credit the spotter who found it. There’s no cash reward to send, but the recovery goes on their spotter record.'
-                : 'Close the listing and either send the reward to the spotter who found it, or get it back if you found it another way.'}
+                  // Short on purpose (owner, 2026-10-16): the recovery screen
+                  // explains the options in full; this only names the choice.
+                  'Credit the spotter who found it.'
+                : 'Send the reward to the spotter who found it, or get it back.'}
             </Text>
             <View style={styles.recoverAction} testID="mark-recovered">
               <Button label="I got it back" fullWidth={false} onPress={onRecovered} />
