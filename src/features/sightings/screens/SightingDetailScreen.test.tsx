@@ -305,6 +305,46 @@ describe('the decision', () => {
     expect(view.queryByText('Not your car')).toBeNull();
   });
 
+  it('⚠️ a poll that still has the OLD status keeps the answer just given', async () => {
+    const view = await renderScreen();
+    await press(view.getByRole('button', { name: 'Not my car' }));
+
+    // The 30s poll lands before the server's copy has caught up — a NEW
+    // payload (another field moved), still carrying the old status.
+    ready(sighting({ status: 'unverified', note: 'Still outside the Tesco' }));
+    await act(async () => {
+      view.rerender(<SightingDetailScreen postId={POST_ID} sightingId={SIGHTING_ID} />);
+    });
+    expect(view.getByText('Still outside the Tesco')).toBeTruthy();
+    expect(view.getByText('Not your car')).toBeTruthy();
+    expect(view.queryByText('Is this your car?')).toBeNull();
+  });
+
+  it('⚠️ a double tap on the confirm sends "Yes" once — it cannot be undone', async () => {
+    mockHelpful.mockReturnValue(new Promise(() => {})); // still on its way
+    const view = await renderScreen();
+    await press(view.getByRole('button', { name: 'Yes, it’s my car' }));
+    const confirm = last(view.getAllByRole('button', { name: 'Yes, it’s my car' }));
+    // Both taps inside ONE act: they land before any re-render, so both see
+    // the same render's state — exactly a fast double tap on a device.
+    await act(async () => {
+      fireEvent.press(confirm);
+      fireEvent.press(confirm);
+    });
+    expect(mockHelpful).toHaveBeenCalledTimes(1);
+  });
+
+  it('a double tap on "Not my car" sends it once', async () => {
+    mockNotMine.mockReturnValue(new Promise(() => {}));
+    const view = await renderScreen();
+    const notMine = view.getByRole('button', { name: 'Not my car' });
+    await act(async () => {
+      fireEvent.press(notMine);
+      fireEvent.press(notMine);
+    });
+    expect(mockNotMine).toHaveBeenCalledTimes(1);
+  });
+
   it('the spinner sits on the answer being sent, not the other one', async () => {
     mockNotMine.mockReturnValue(new Promise(() => {})); // still on its way
     const view = await renderScreen();
