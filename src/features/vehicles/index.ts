@@ -33,6 +33,9 @@ export type { PostDetail, PostDetailResult, ClosedReason } from './types';
 // The report-sighting wizard reads the post's registered marks through this
 // (deferred-imported) to offer them as confirmable checkmarks.
 export { fetchPostDetail } from './api/vehicleApi';
+// The owner's sighting page offers "Got your car back?" after a confirmation,
+// on the same rule the post page uses (deferred-imported, like the above).
+export { canMarkRecovered } from './lib/ownerPermissions';
 // The shared vehicle-identity slice. features/garage collects EXACTLY this data,
 // so it consumes the type (and, from step 5, the step list) from here rather
 // than duplicating it. One-way only: vehicles must never import the garage —

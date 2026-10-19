@@ -18,7 +18,7 @@
  *        docs/TESTING.md; docs/SECURITY_AND_TRUST.md.
  */
 
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { Linking } from 'react-native';
 
 import { mapPinUrl } from '@/shared/lib';
@@ -101,6 +101,17 @@ const { SightingVerdictError } = jest.requireMock('../api/sightingApi') as {
   SightingVerdictError: new (message: string) => Error;
 };
 
+// The "Got your car back?" door — its own deferred fetch, stood in for here
+// (its rule is tested in useRecoveryDoor.test).
+let mockDoor: { noReward: boolean; bounty: string } | null = null;
+const mockDoorCall = jest.fn();
+jest.mock('../hooks/useRecoveryDoor', () => ({
+  useRecoveryDoor: (postId: string, enabled: boolean) => {
+    mockDoorCall(postId, enabled);
+    return enabled ? mockDoor : null;
+  },
+}));
+
 const mockOpenThread = jest.fn();
 // The deferred chat import, stood in for (Jest can't run a dynamic import).
 jest.mock('../api/openSpotterThread', () => ({
@@ -172,12 +183,19 @@ const press = async (node: Parameters<typeof fireEvent.press>[0]) => {
     fireEvent.press(node);
   });
 };
+/** Every plain-string Text on screen, in tree (reading) order. */
+const textsInOrder = (view: Awaited<ReturnType<typeof renderScreen>>) =>
+  view
+    .getAllByText(/./)
+    .map((node) => node.props.children)
+    .filter((child): child is string => typeof child === 'string');
 /** The last match — the dialog's button, drawn after the bar's. */
 const last = <T,>(items: T[]) => items[items.length - 1];
 
 beforeEach(() => {
   jest.clearAllMocks();
   ready();
+  mockDoor = null;
   mockCanGoBack.mockReturnValue(true);
   mockHelpful.mockResolvedValue({
     status: 'helpful',
@@ -367,26 +385,58 @@ describe('the decision', () => {
     expect(view.getByText('Not your car')).toBeTruthy();
     expect(view.getByLabelText(/^Your answer: Not your car, decided /)).toBeTruthy();
     expect(view.queryByText(/helpful/i)).toBeNull();
-    expect(view.getByText('You said this isn’t your car.')).toBeTruthy();
   });
 
-  it('⚠️ "Actually, it is" goes through the same confirm', async () => {
+  it.each(['not_mine', 'helpful', 'credited'] as const)(
+    '⚠️ once answered (%s) there is no bar — the answer is said ONCE',
+    async (status) => {
+      ready(sighting({ status, reviewedAt: '2026-10-08T11:00:00Z' }));
+      const view = await renderScreen();
+      expect(view.queryByTestId('sighting-decision-bar')).toBeNull();
+      expect(view.queryByText('Is this your car?')).toBeNull();
+      expect(view.queryByText('You said this isn’t your car.')).toBeNull();
+      expect(view.getAllByTestId('sighting-decision')).toHaveLength(1);
+    },
+  );
+
+  it('the bar goes as soon as the owner answers', async () => {
+    const view = await renderScreen();
+    await press(view.getByRole('button', { name: 'Not my car' }));
+    expect(view.queryByTestId('sighting-decision-bar')).toBeNull();
+  });
+
+  it('⚠️ "Change" on "Not your car" goes through the same confirm', async () => {
     ready(sighting({ status: 'not_mine', reviewedAt: '2026-10-08T11:00:00Z' }));
     const view = await renderScreen();
-    await press(view.getByRole('button', { name: 'Actually, it is' }));
+    await press(view.getByRole('button', { name: 'Change your answer' }));
     expect(mockHelpful).not.toHaveBeenCalled();
+    expect(view.getByText('Confirm it’s your car?')).toBeTruthy();
     await press(view.getByRole('button', { name: 'Yes, it’s my car' }));
     expect(mockHelpful).toHaveBeenCalledWith(SIGHTING_ID);
     expect(view.getByText('Confirmed')).toBeTruthy();
+    // "Yes" can't be undone, so there is nothing left to change.
+    expect(view.queryByRole('button', { name: 'Change your answer' })).toBeNull();
   });
 
-  it('once confirmed, the bar is just Message', async () => {
-    ready(sighting({ status: 'helpful', reviewedAt: '2026-10-08T11:00:00Z' }));
+  it('while the changed answer is on its way, "Change" says so and can’t be pressed', async () => {
+    mockHelpful.mockReturnValue(new Promise(() => {})); // still on its way
+    ready(sighting({ status: 'not_mine', reviewedAt: '2026-10-08T11:00:00Z' }));
     const view = await renderScreen();
-    expect(view.queryByText('Is this your car?')).toBeNull();
-    expect(view.getByText('Confirmed')).toBeTruthy();
-    expect(view.getAllByRole('button', { name: 'Message Sam' })).toHaveLength(1);
+    await press(view.getByRole('button', { name: 'Change your answer' }));
+    await press(view.getByRole('button', { name: 'Yes, it’s my car' }));
+    expect(view.getByRole('button', { name: 'Saving your answer', busy: true })).toBeDisabled();
   });
+
+  it.each(['unverified', 'helpful', 'credited'] as const)(
+    'offers no "Change" unless the answer is "Not your car" (%s)',
+    async (status) => {
+      ready(
+        sighting({ status, reviewedAt: status === 'unverified' ? null : '2026-10-08T11:00:00Z' }),
+      );
+      const view = await renderScreen();
+      expect(view.queryByTestId('sighting-change-answer')).toBeNull();
+    },
+  );
 
   it('a credited sighting says so', async () => {
     ready(sighting({ status: 'credited', reviewedAt: '2026-10-08T11:00:00Z' }));
@@ -395,10 +445,87 @@ describe('the decision', () => {
   });
 });
 
+describe('"Got your car back?"', () => {
+  it('⚠️ under a confirmation, leads to the recovery with the listing’s pricing mode', async () => {
+    mockDoor = { noReward: false, bounty: '5000' };
+    ready(sighting({ status: 'helpful', reviewedAt: '2026-10-08T11:00:00Z' }));
+    const view = await renderScreen();
+    expect(mockDoorCall).toHaveBeenLastCalledWith(POST_ID, true);
+    expect(view.getByText('Got your car back?', { includeHiddenElements: true })).toBeTruthy();
+    await press(view.getByRole('button', { name: 'Got your car back? Send the reward' }));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/recover-post',
+      params: { postId: POST_ID, bounty: '5000' },
+    });
+  });
+
+  it('on a no-reward listing, offers the credit — never "the reward"', async () => {
+    mockDoor = { noReward: true, bounty: 'none' };
+    ready(sighting({ status: 'helpful', reviewedAt: '2026-10-08T11:00:00Z' }));
+    const view = await renderScreen();
+    expect(view.getByText('Credit the spotter')).toBeTruthy();
+    expect(view.queryByText('Send the reward')).toBeNull();
+  });
+
+  it('appears right after the owner confirms', async () => {
+    mockDoor = { noReward: false, bounty: '5000' };
+    const view = await renderScreen();
+    expect(view.queryByTestId('sighting-recovery')).toBeNull();
+    await press(view.getByRole('button', { name: 'Yes, it’s my car' }));
+    await press(last(view.getAllByRole('button', { name: 'Yes, it’s my car' })));
+    expect(view.getByTestId('sighting-recovery')).toBeTruthy();
+  });
+
+  it.each(['unverified', 'not_mine', 'credited'] as const)(
+    'is not offered — nor even looked up — for a %s sighting',
+    async (status) => {
+      mockDoor = { noReward: false, bounty: '5000' };
+      ready(
+        sighting({ status, reviewedAt: status === 'unverified' ? null : '2026-10-08T11:00:00Z' }),
+      );
+      const view = await renderScreen();
+      expect(mockDoorCall).toHaveBeenLastCalledWith(POST_ID, false);
+      expect(view.queryByTestId('sighting-recovery')).toBeNull();
+    },
+  );
+
+  it('is not offered when the listing can’t be recovered', async () => {
+    mockDoor = null;
+    ready(sighting({ status: 'helpful', reviewedAt: '2026-10-08T11:00:00Z' }));
+    const view = await renderScreen();
+    expect(view.queryByTestId('sighting-recovery')).toBeNull();
+  });
+});
+
 describe('the evidence', () => {
   it('leads with where and when it was seen', async () => {
     const view = await renderScreen();
     expect(view.getByText('Seen near Deansgate, Manchester')).toBeTruthy();
+  });
+
+  it('with no area, the title says when — never just "Sighting" again', async () => {
+    ready(sighting({ locationUnavailable: true, areaLabel: null }));
+    const view = await renderScreen();
+    expect(view.getByRole('header', { name: /^Seen (?!near)/ })).toBeTruthy();
+    // The header bar's "Sighting" is the only one.
+    expect(view.getAllByText('Sighting')).toHaveLength(1);
+  });
+
+  it('⚠️ reads evidence first: What they saw → Where → Spotted by', async () => {
+    const view = await renderScreen();
+    const sections = textsInOrder(view).filter((text) =>
+      ['What they saw', 'Where', 'Spotted by'].includes(text),
+    );
+    expect(sections).toEqual(['What they saw', 'Where', 'Spotted by']);
+  });
+
+  it('lists your marks they could see before their answers and note', async () => {
+    const view = await renderScreen();
+    const texts = textsInOrder(view);
+    const at = (text: string) => texts.indexOf(text);
+    expect(at('Your marks they could see')).toBeGreaterThan(-1);
+    expect(at('Your marks they could see')).toBeLessThan(at('What it was doing'));
+    expect(at('What it was doing')).toBeLessThan(at('In their words'));
   });
 
   it('marks a library photo ON the photo — ADR-0003', async () => {
@@ -454,10 +581,12 @@ describe('the evidence', () => {
     expect(view.getByText('Dent on the rear door')).toBeTruthy();
   });
 
-  it('shows who spotted it, and their record', async () => {
+  it('shows who spotted it, and their record on one line — no "View profile"', async () => {
     const view = await renderScreen();
-    expect(view.getByText('12 sightings · 4 confirmed by owners · 1 recovery')).toBeTruthy();
-    expect(view.getByText('Member since July 2026')).toBeTruthy();
+    expect(
+      view.getByText('12 sightings · 4 confirmed by owners · 1 recovery · since July 2026'),
+    ).toBeTruthy();
+    expect(view.queryByText('View profile')).toBeNull();
   });
 });
 
@@ -480,6 +609,20 @@ describe('the actions', () => {
       openURL.mockRestore();
     }
   });
+
+  it.each(['unverified', 'not_mine', 'helpful', 'credited'] as const)(
+    '⚠️ Message is in the spotter card, once, whatever the answer (%s)',
+    async (status) => {
+      ready(
+        sighting({ status, reviewedAt: status === 'unverified' ? null : '2026-10-08T11:00:00Z' }),
+      );
+      const view = await renderScreen();
+      expect(view.getAllByRole('button', { name: 'Message Sam' })).toHaveLength(1);
+      expect(
+        within(view.getByTestId('spotter-card')).getByRole('button', { name: 'Message Sam' }),
+      ).toBeTruthy();
+    },
+  );
 
   it('Message opens the conversation by sighting — before deciding, too', async () => {
     const view = await renderScreen();

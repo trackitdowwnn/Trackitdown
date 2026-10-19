@@ -1,9 +1,10 @@
 /**
- * WHAT:  "What they saw" on the owner's sighting page: the spotter's answers
- *        as labelled rows ("What it was doing — Parked · Looks settled"),
- *        then their note under "In their words" (set apart by a rule), then
- *        the owner's own
- *        distinctive marks they said they could see, as a check list.
+ * WHAT:  "What they saw" on the owner's sighting page — the page's first
+ *        section since 2026-10-19 (owner: evidence first): the owner's own
+ *        distinctive marks the spotter said they could see, as ticks; then
+ *        the spotter's answers as labelled rows ("What it was doing — Parked ·
+ *        Looks settled"); then their note under "In their words" (set apart
+ *        by a rule).
  * WHY:   It used to be one dense unlabelled line ("Parked · Looks settled ·
  *        Heading north · 2 people nearby") and an unlabelled paragraph — the
  *        owner had to work out what each part answered (2026-10-08, "hard to
@@ -18,7 +19,6 @@ import { Feather } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
 import {
-  cardSurface,
   sizes,
   spacing,
   typography,
@@ -52,6 +52,33 @@ export function SightingSeenSection({ sighting }: SightingSeenSectionProps) {
 
   return (
     <View style={styles.root}>
+      {/* FIRST since 2026-10-19 (owner: evidence first): the strongest
+          identity signal a report can carry — "it really is my car" — read
+          before anything else, as ticks. A plain list under a label like the
+          rows below, no longer a card of its own: the section is one account. */}
+      {sighting.confirmedFeatures.length > 0 ? (
+        <View style={styles.marks} testID="confirmed-marks">
+          <Text style={styles.rowLabel}>Your marks they could see</Text>
+          {sighting.confirmedFeatures.map((mark) => (
+            // One stop per mark — never the tick glyph on its own.
+            <View
+              key={mark.id}
+              style={styles.markRow}
+              accessible
+              accessibilityLabel={mark.description}
+            >
+              <Feather
+                name="check"
+                size={sizes.iconSm}
+                color={palette.primary}
+                style={styles.markTick}
+              />
+              <Text style={styles.markText}>{mark.description}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
       {rows.length > 0 ? (
         <View style={styles.rows}>
           {rows.map((row) => (
@@ -74,25 +101,6 @@ export function SightingSeenSection({ sighting }: SightingSeenSectionProps) {
         <View style={styles.note} testID="seen-note">
           <Text style={styles.noteLabel}>In their words</Text>
           <Text style={styles.noteText}>{note}</Text>
-        </View>
-      ) : null}
-
-      {/* The strongest identity signal a report can carry — "it really is my
-          car" — so it reads as a confirmation, with ticks. */}
-      {sighting.confirmedFeatures.length > 0 ? (
-        <View style={styles.marks} testID="confirmed-marks">
-          <Text style={styles.marksTitle}>Your marks they could see</Text>
-          {sighting.confirmedFeatures.map((mark) => (
-            <View key={mark.id} style={styles.markRow}>
-              <Feather
-                name="check"
-                size={sizes.iconSm}
-                color={palette.primary}
-                style={styles.markTick}
-              />
-              <Text style={styles.markText}>{mark.description}</Text>
-            </View>
-          ))}
         </View>
       ) : null}
     </View>
@@ -136,15 +144,10 @@ const makeStyles = (c: Palette) =>
       ...typography.body,
       color: c.textPrimary,
     },
-    // The same card as the spotter's, so adjacent sections share one form.
+    // Label then ticks — the rows' own form (caption label above), so the
+    // section reads as one account.
     marks: {
-      ...cardSurface(c),
-      padding: spacing.lg,
-      gap: spacing.sm,
-    },
-    marksTitle: {
-      ...typography.cardTitle,
-      color: c.textPrimary,
+      gap: spacing.xs,
     },
     // Top-aligned, the tick centred on the FIRST line: on a two-line mark a
     // centred tick floats between the lines.
