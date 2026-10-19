@@ -15,6 +15,9 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
+
+import { spacing } from '@/shared/theme';
 
 import { PaymentError } from '@/shared/lib/functionError';
 import { refundPence, formatPounds } from '@/shared/lib/money';
@@ -32,7 +35,12 @@ jest.mock('@/shared/ui', () => {
   const { Pressable, Text, View } = require('react-native');
   return {
     useToast: () => ({ show: (...args: unknown[]) => mockToast(...args) }),
-    Screen: ({ children }: { children: unknown }) => <View>{children}</View>,
+    // The content style is forwarded so the bottom inset can be checked.
+    Screen: ({ children, contentContainerStyle }: { children: unknown; contentContainerStyle?: unknown }) => (
+      <View testID="change-reward-scroll" style={contentContainerStyle}>
+        {children}
+      </View>
+    ),
     Button: ({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) => (
       <Pressable accessibilityRole="button" accessibilityState={{ disabled }} onPress={disabled ? undefined : onPress}>
         <Text>{label}</Text>
@@ -55,6 +63,12 @@ jest.mock('@/shared/ui', () => {
 
 const mockBack = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ back: mockBack }) }));
+
+// A phone with Android's navigation buttons: 48pt of bottom inset.
+const MOCK_BOTTOM_INSET = 48;
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: MOCK_BOTTOM_INSET, left: 0, right: 0 }),
+}));
 
 const mockFetchStatus = jest.fn();
 const mockSetAmount = jest.fn();
@@ -120,6 +134,15 @@ beforeEach(() => {
 // --- tests -------------------------------------------------------------------
 
 describe('ChangeRewardScreen', () => {
+  // 2026-10-19 (owner): on Android the Pay button sat behind the navigation
+  // buttons — Screen pads only the top, so the scroll's end must clear them.
+  it('⚠️ the scroll ends above the phone’s navigation buttons (bottom inset + gap)', async () => {
+    mockFetchStatus.mockResolvedValue(status());
+    const view = await mount();
+    const style = StyleSheet.flatten(view.getByTestId('change-reward-scroll').props.style);
+    expect(style.paddingBottom).toBe(MOCK_BOTTOM_INSET + spacing.xl);
+  });
+
   it('summarises the money in full and exactly: charged now, back to your card and when, and the card fee kept', async () => {
     mockFetchStatus.mockResolvedValue(status());
     const view = await mount();
