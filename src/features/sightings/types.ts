@@ -143,6 +143,9 @@ export interface CreateSightingParams {
   p_direction: string | null;
   p_people_presence: string | null;
   p_confirmed_feature_ids: string[] | null;
+  /** The ids of the marks the wizard showed — ids only, never their words or
+   *  photos. null = the marks never loaded (unknown). */
+  p_offered_feature_ids: string[] | null;
 }
 
 export interface CreateSightingResult {
@@ -189,6 +192,12 @@ export interface OwnerSighting {
   /** The registered marks this spotter confirmed seeing, resolved to their
    *  descriptions server-side (empty for older sightings). */
   confirmedFeatures: ConfirmableFeature[];
+  /** The ids of the marks the spotter was ASKED about ("Could you see any of
+   *  these?") — so the owner's page can say "not seen" only of a mark that
+   *  was actually offered. null/absent = unknown (reported before
+   *  2026-10-19, or by an older app): the page then lists the seen ones
+   *  alone. [] = asked, but there were no marks to show. */
+  offeredFeatureIds?: string[] | null;
   spotter: {
     firstName: string;
     sightingsReported: number;

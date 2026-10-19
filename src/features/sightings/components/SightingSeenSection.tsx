@@ -1,81 +1,86 @@
 /**
  * WHAT:  "What they saw" on the owner's sighting page — the page's first
- *        section since 2026-10-19 (owner: evidence first): the owner's own
- *        distinctive marks the spotter said they could see, as ticks; then
- *        the spotter's answers as labelled rows ("What it was doing — Parked ·
- *        Looks settled"); then their note under "In their words" (set apart
- *        by a rule).
- * WHY:   It used to be one dense unlabelled line ("Parked · Looks settled ·
- *        Heading north · 2 people nearby") and an unlabelled paragraph — the
- *        owner had to work out what each part answered (2026-10-08, "hard to
- *        read and understand"). The rows use the SAME labels the spotter
- *        checked before sending (sightingDetailRows), so both sides read one
- *        account of the sighting. Only answered questions appear.
- * LINKS: src/features/sightings/lib/contextLabels.ts (sightingDetailRows);
+ *        section since 2026-10-19 (owner: evidence first): every one of the
+ *        owner's marks the spotter was asked about, the ones they could see
+ *        ticked ("Seen 1 of 3") — or, for an older report, the seen ones alone
+ *        ("Your marks they could see"; markChecklist says which); then the
+ *        spotter's answers as labelled rows
+ *        ("What it was doing — Parked · Looks settled"); then their note under
+ *        "In their words" (set apart by a rule).
+ * WHY:   The marks are the report wizard's own "Could you see any of these?"
+ *        list, read back in the SAME rows (MarkTile, read-only) with the same
+ *        ticks — the owner asked to see it exactly as the spotter answered it,
+ *        unseen marks included (2026-10-19). Until then only the seen ones
+ *        were listed, and the owner couldn't tell "they didn't see the dent"
+ *        from "the dent isn't on my listing".
+ *
+ *        The rows used to be one dense unlabelled line ("Parked · Looks
+ *        settled · Heading north · 2 people nearby") and an unlabelled
+ *        paragraph (2026-10-08, "hard to read and understand"). They use the
+ *        SAME labels the spotter checked before sending (sightingDetailRows),
+ *        so both sides read one account of the sighting. Only answered
+ *        questions appear.
+ * LINKS: ./MarkTile.tsx; ../lib/markChecklist.ts (which marks, seen or not);
+ *        src/features/sightings/lib/contextLabels.ts (sightingDetailRows);
  *        src/features/sightings/screens/SightingDetailScreen.tsx.
  */
 
-import { Feather } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
-import {
-  sizes,
-  spacing,
-  typography,
-  usePalette,
-  useThemedStyles,
-  type Palette,
-} from '@/shared/theme';
+import { sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 
 import { sightingDetailRows } from '../lib/contextLabels';
+import type { MarkChecklist } from '../lib/markChecklist';
 import type { OwnerSighting } from '../types';
+import { MarkTile } from './MarkTile';
 
 export interface SightingSeenSectionProps {
   sighting: OwnerSighting;
+  /** The marks to list, seen or not, and whether that is all of the ones the
+   *  spotter was asked about (markChecklist). */
+  marks: MarkChecklist;
 }
 
-/** True when the sighting has anything for this section to show. */
-export function hasSeenDetails(sighting: OwnerSighting): boolean {
+/** True when there is anything for this section to show. Offered marks always
+ *  list — "none of them seen" is an answer too. */
+export function hasSeenDetails(sighting: OwnerSighting, marks: MarkChecklist): boolean {
   return (
+    marks.checks.length > 0 ||
     sightingDetailRows(sighting).length > 0 ||
-    Boolean(sighting.note?.trim()) ||
-    sighting.confirmedFeatures.length > 0
+    Boolean(sighting.note?.trim())
   );
 }
 
-/** The spotter's answers, note and confirmed marks — see the header. */
-export function SightingSeenSection({ sighting }: SightingSeenSectionProps) {
+/** The marks, the spotter's answers and their note — see the header. */
+export function SightingSeenSection({ sighting, marks }: SightingSeenSectionProps) {
   const styles = useThemedStyles(makeStyles);
-  const palette = usePalette();
   const rows = sightingDetailRows(sighting);
   const note = sighting.note?.trim();
+  const { checks, complete } = marks;
+  const seen = checks.filter((check) => check.seen).length;
 
   return (
     <View style={styles.root}>
-      {/* FIRST since 2026-10-19 (owner: evidence first): the strongest
-          identity signal a report can carry — "it really is my car" — read
-          before anything else, as ticks. A plain list under a label like the
-          rows below, no longer a card of its own: the section is one account. */}
-      {sighting.confirmedFeatures.length > 0 ? (
-        <View style={styles.marks} testID="confirmed-marks">
-          <Text style={styles.rowLabel}>Your marks they could see</Text>
-          {sighting.confirmedFeatures.map((mark) => (
-            // One stop per mark — never the tick glyph on its own.
-            <View
-              key={mark.id}
-              style={styles.markRow}
-              accessible
-              accessibilityLabel={mark.description}
-            >
-              <Feather
-                name="check"
-                size={sizes.iconSm}
-                color={palette.primary}
-                style={styles.markTick}
+      {/* FIRST (owner: evidence first): the strongest identity signal a
+          report can carry — "it really is my car". */}
+      {checks.length > 0 ? (
+        <View style={styles.marks} testID="sighting-marks">
+          {/* Short: the section title already says "What they saw". A total
+              only when it is one — the seen ones alone claim none. */}
+          <Text style={styles.rowLabel}>
+            {complete ? `Seen ${seen} of ${checks.length}` : 'Your marks they could see'}
+          </Text>
+          <View style={styles.markTiles}>
+            {checks.map(({ mark, seen: isSeen }) => (
+              <MarkTile
+                key={mark.id}
+                description={mark.description}
+                photoUrl={mark.photoUrl}
+                selected={isSeen}
+                testID={`seen-mark-${mark.id}`}
               />
-              <Text style={styles.markText}>{mark.description}</Text>
-            </View>
-          ))}
+            ))}
+          </View>
         </View>
       ) : null}
 
@@ -144,24 +149,12 @@ const makeStyles = (c: Palette) =>
       ...typography.body,
       color: c.textPrimary,
     },
-    // Label then ticks — the rows' own form (caption label above), so the
-    // section reads as one account.
+    // The label sits on its list like the rows' labels on their values (xs);
+    // the tiles keep the wizard's own spacing (sightingSteps' markTiles).
     marks: {
       gap: spacing.xs,
     },
-    // Top-aligned, the tick centred on the FIRST line: on a two-line mark a
-    // centred tick floats between the lines.
-    markRow: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
+    markTiles: {
       gap: spacing.sm,
-    },
-    markTick: {
-      marginTop: (typography.body.lineHeight - sizes.iconSm) / 2,
-    },
-    markText: {
-      ...typography.body,
-      color: c.textPrimary,
-      flexShrink: 1,
     },
   });

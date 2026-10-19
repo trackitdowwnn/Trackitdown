@@ -101,14 +101,17 @@ const { SightingVerdictError } = jest.requireMock('../api/sightingApi') as {
   SightingVerdictError: new (message: string) => Error;
 };
 
-// The "Got your car back?" door — its own deferred fetch, stood in for here
-// (its rule is tested in useRecoveryDoor.test).
+// What the page reads from the LISTING — its own deferred fetch, stood in for
+// here (tested in useSightingPost.test): the owner's marks and the "Got your
+// car back?" door. Both null = the listing not read (yet, or at all).
 let mockDoor: { noReward: boolean; bounty: string } | null = null;
-const mockDoorCall = jest.fn();
-jest.mock('../hooks/useRecoveryDoor', () => ({
-  useRecoveryDoor: (postId: string, enabled: boolean) => {
-    mockDoorCall(postId, enabled);
-    return enabled ? mockDoor : null;
+let mockListingMarks: { id: string; description: string }[] | null = null;
+const mockListingCall = jest.fn();
+jest.mock('../hooks/useSightingPost', () => ({
+  useSightingPost: (postId: string, enabled: boolean) => {
+    mockListingCall(postId, enabled);
+    if (!enabled || (mockDoor === null && mockListingMarks === null)) return null;
+    return { marks: mockListingMarks ?? [], recovery: mockDoor };
   },
 }));
 
@@ -196,6 +199,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   ready();
   mockDoor = null;
+  mockListingMarks = null;
   mockCanGoBack.mockReturnValue(true);
   mockHelpful.mockResolvedValue({
     status: 'helpful',
@@ -450,7 +454,7 @@ describe('"Got your car back?"', () => {
     mockDoor = { noReward: false, bounty: '5000' };
     ready(sighting({ status: 'helpful', reviewedAt: '2026-10-08T11:00:00Z' }));
     const view = await renderScreen();
-    expect(mockDoorCall).toHaveBeenLastCalledWith(POST_ID, true);
+    expect(mockListingCall).toHaveBeenLastCalledWith(POST_ID, true);
     expect(view.getByText('Got your car back?', { includeHiddenElements: true })).toBeTruthy();
     await press(view.getByRole('button', { name: 'Got your car back? Send the reward' }));
     expect(mockPush).toHaveBeenCalledWith({
@@ -477,14 +481,13 @@ describe('"Got your car back?"', () => {
   });
 
   it.each(['unverified', 'not_mine', 'credited'] as const)(
-    'is not offered — nor even looked up — for a %s sighting',
+    'is not offered for a %s sighting — even on a recoverable listing',
     async (status) => {
       mockDoor = { noReward: false, bounty: '5000' };
       ready(
         sighting({ status, reviewedAt: status === 'unverified' ? null : '2026-10-08T11:00:00Z' }),
       );
       const view = await renderScreen();
-      expect(mockDoorCall).toHaveBeenLastCalledWith(POST_ID, false);
       expect(view.queryByTestId('sighting-recovery')).toBeNull();
     },
   );
@@ -519,13 +522,61 @@ describe('the evidence', () => {
     expect(sections).toEqual(['What they saw', 'Where', 'Spotted by']);
   });
 
-  it('lists your marks they could see before their answers and note', async () => {
+  it('lists your marks before their answers and note', async () => {
     const view = await renderScreen();
     const texts = textsInOrder(view);
     const at = (text: string) => texts.indexOf(text);
+    // An older report (no "asked about" record): the seen ones, no total.
     expect(at('Your marks they could see')).toBeGreaterThan(-1);
     expect(at('Your marks they could see')).toBeLessThan(at('What it was doing'));
     expect(at('What it was doing')).toBeLessThan(at('In their words'));
+  });
+
+  it('⚠️ lists ALL the marks they were asked about, ticking the ones they saw', async () => {
+    mockListingMarks = [
+      { id: 'm1', description: 'Dent on the rear door' },
+      { id: 'm2', description: 'Roof box' },
+      { id: 'm3', description: 'Bee sticker' },
+    ];
+    ready(sighting({ offeredFeatureIds: ['m1', 'm2', 'm3'] })); // saw m1 only
+    const view = await renderScreen();
+    expect(view.getByText('Seen 1 of 3')).toBeTruthy();
+    expect(view.getByLabelText('Dent on the rear door, seen')).toBeTruthy();
+    expect(view.getByLabelText('Roof box, not seen')).toBeTruthy();
+    expect(view.getByLabelText('Bee sticker, not seen')).toBeTruthy();
+    // Read-only: nothing here to tick.
+    expect(view.queryByRole('checkbox')).toBeNull();
+  });
+
+  it('lists the marks even when they saw none — "none seen" is an answer', async () => {
+    mockListingMarks = [{ id: 'm2', description: 'Roof box' }];
+    ready(
+      sighting({
+        offeredFeatureIds: ['m2'],
+        confirmedFeatures: [],
+        contextFlags: [],
+        note: null,
+        parkedLikelihood: null,
+        peoplePresence: null,
+      }),
+    );
+    const view = await renderScreen();
+    expect(view.getByText('What they saw')).toBeTruthy();
+    expect(view.getByText('Seen 0 of 1')).toBeTruthy();
+    expect(view.getByLabelText('Roof box, not seen')).toBeTruthy();
+  });
+
+  it('⚠️ an older report lists only what they saw — never "not seen" of a mark not asked', async () => {
+    mockListingMarks = [
+      { id: 'm1', description: 'Dent on the rear door' },
+      { id: 'm2', description: 'Roof box' },
+    ];
+    ready(sighting({ offeredFeatureIds: null })); // reported before marks were recorded
+    const view = await renderScreen();
+    expect(view.getByText('Your marks they could see')).toBeTruthy();
+    expect(view.getByLabelText('Dent on the rear door, seen')).toBeTruthy();
+    expect(view.queryByLabelText('Roof box, not seen')).toBeNull();
+    expect(view.queryByText(/^Seen \d+ of/)).toBeNull();
   });
 
   it('marks a library photo ON the photo — ADR-0003', async () => {
