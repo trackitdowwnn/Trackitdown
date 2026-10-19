@@ -40,6 +40,7 @@ import { useRouter } from 'expo-router';
 import { CalendarClock, ChevronLeft, Info } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   BOUNTY_SNAP_STEPS,
@@ -129,6 +130,12 @@ const realWait = (ms: number) => new Promise<void>((resolve) => setTimeout(resol
 export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: ChangeRewardScreenProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
+  // ⚠️ THE BOTTOM INSET (2026-10-19): Screen pads only the top, and on
+  // edge-to-edge Android the Pay button — last in the scroll — sat behind the
+  // navigation buttons (owner: "off the screen and behind the android
+  // buttons"). The same end-of-scroll padding Payouts and Settings use.
+  const insets = useSafeAreaInsets();
+  const scrollStyle = [styles.scroll, { paddingBottom: insets.bottom + spacing.xl }];
   const router = useRouter();
   const toast = useToast();
   const { payBounty } = useBountyPayment();
@@ -292,7 +299,7 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
 
   if (status === null) {
     return (
-      <Screen scroll contentContainerStyle={styles.scroll}>
+      <Screen scroll contentContainerStyle={scrollStyle}>
         {header}
         <ErrorState
           body={loadError ?? undefined}
@@ -309,7 +316,7 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
   // be completed.
   if (status.blockedMessage) {
     return (
-      <Screen scroll contentContainerStyle={styles.scroll}>
+      <Screen scroll contentContainerStyle={scrollStyle}>
         {header}
         <View style={styles.notice} testID="change-reward-blocked">
           <Info size={sizes.iconSm} color={palette.textSecondary} />
@@ -325,7 +332,7 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
   const feeKept = currentPence !== null && refundBack !== null ? currentPence - refundBack : 0;
 
   return (
-    <Screen scroll contentContainerStyle={styles.scroll}>
+    <Screen scroll contentContainerStyle={scrollStyle}>
       {header}
 
       <Text style={styles.lede}>
