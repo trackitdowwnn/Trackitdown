@@ -1,9 +1,9 @@
 /**
  * WHAT:  ThreadRow — one inbox conversation: the CAR'S COVER PHOTO leading,
- *        first name + the clock time, a one-line last-message preview, and the
- *        unread badge. The context ("About your Blue BMW" + the owner's own
- *        plate / "Your sighting · Blue BMW") is spoken, no longer drawn
- *        (owner's call, 2026-09-24).
+ *        first name + the clock time, a short car line ("Blue BMW · your car",
+ *        drawn again since 2026-10-19), a one-line last-message preview, and
+ *        the unread badge. The fuller context ("About your Blue BMW" + the
+ *        owner's own plate) is spoken in the label.
  * WHY:   Airbnb-style rows anchor a conversation to the THING it's about, and
  *        they give that thing the leading slot at full size — a listing row
  *        leads with the listing. Ours leads with the car, which is how you
@@ -57,7 +57,7 @@ import {
 } from '@/shared/theme';
 import { AppImage, CarColourTile, spellPlate, UnreadBadge } from '@/shared/ui';
 
-import { contextLine, isUnread, previewText } from '../lib/inboxModel';
+import { carLine, contextLine, isUnread, previewText } from '../lib/inboxModel';
 import type { InboxThread } from '../types';
 
 export interface ThreadRowProps {
@@ -135,10 +135,21 @@ export function ThreadRow({ thread, onPress }: ThreadRowProps) {
         <Text style={[styles.name, unread && styles.nameUnread]} numberOfLines={1}>
           {thread.other.firstName}
         </Text>
-        {/* The message now sits ABOVE the context line, and takes `body` rather
-            than `caption`. Once the car is the picture leading the row, what it
-            is about is answered before you read anything — so the words someone
-            actually sent are the more useful second line. */}
+        {/* ⚠️ THE CAR LINE IS DRAWN AGAIN (owner's call, 2026-10-19), reversing
+            2026-09-24. With only a 48pt photo saying which car, the list read
+            as names and messages with no anchor. A short caption — car, then
+            your side of it — and NO plate (the label above still speaks the
+            owner's). The row is ONE accessible element, so a reader hears the
+            label, not these children — the context is never read twice. */}
+        <Text
+          style={styles.carLine}
+          numberOfLines={1}
+          testID={`thread-car-line-${thread.threadId}`}
+        >
+          {carLine(thread)}
+        </Text>
+        {/* The message takes `body`, not `caption`: the words someone actually
+            sent are the line most worth reading. */}
         <Text
           style={[styles.preview, unread && styles.previewUnread]}
           numberOfLines={1}
@@ -149,11 +160,6 @@ export function ThreadRow({ thread, onPress }: ThreadRowProps) {
         {/* Past `listRowStackFontScale` the stamp lives here instead of in the
             trailing column — see the note below the body. */}
         {stacked ? <Text style={styles.timeStacked}>{when}</Text> : null}
-        {/* ⚠️ NO DRAWN CONTEXT LINE (owner's call, 2026-09-24). "About your
-            Blue BMW" + the plate chip sat under the message; the car's photo
-            leading the row already says which conversation this is, so the
-            line went. It is still SPOKEN (the label above), because a screen
-            reader can't see the photo. */}
       </View>
       {/* ⚠️ THE TIME AND THE BADGE ARE ONE TRAILING COLUMN (2026-09-04). The
           time used to share the top line with the name and the badge sat in a
@@ -220,6 +226,13 @@ export function ThreadRowSkeleton() {
         <View
           style={[
             styles.skeletonBar,
+            styles.skeletonCarLine,
+            { height: typography.caption.lineHeight * scale },
+          ]}
+        />
+        <View
+          style={[
+            styles.skeletonBar,
             styles.skeletonPreview,
             { height: typography.body.lineHeight * scale },
           ]}
@@ -247,10 +260,10 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    // md (12), down from lg (16) on 2026-09-04 — tighter rows put more
-    // conversations on screen, which is the density a messaging list is judged
-    // by. The lead still sets the real floor, so nothing clips.
-    paddingVertical: spacing.md,
+    // lg (16) AGAIN since 2026-10-19 (owner: "squashed and hard to read"). The
+    // 2026-09-04 cut to md bought density; with the car line back the row has
+    // three lines, and the inset dividers between rows need air either side.
+    paddingVertical: spacing.lg,
     paddingHorizontal: spacing.xl,
     // Inert while the 48pt tile sets a 72pt floor, and kept anyway so the two
     // inbox rows declare the same box — see the silhouette note in the header.
@@ -326,8 +339,12 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     // Never shrinks — a truncated timestamp is worse than a truncated name.
     flexShrink: 0,
   },
-  // `body`, not `caption`: with the car pictured, the message is the second
-  // most important thing in the row rather than the third.
+  // Caption + secondary ink: it labels the row, it isn't the message.
+  carLine: {
+    ...typography.caption,
+    color: c.textSecondary,
+  },
+  // `body`, not `caption`: the message is what you came to read.
   preview: {
     ...typography.body,
     color: c.textSecondary,
@@ -345,6 +362,9 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   skeletonTime: {
     width: sizes.skeletonTimeBar,
+  },
+  skeletonCarLine: {
+    width: '40%',
   },
   skeletonPreview: {
     width: '85%',

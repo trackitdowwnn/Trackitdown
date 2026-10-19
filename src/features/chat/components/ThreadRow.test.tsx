@@ -135,16 +135,28 @@ describe('the row shape the inbox pass settled on', () => {
   });
 });
 
-// Owner's call, 2026-09-24: the car's photo already says what a conversation
-// is about, so the "About your …" line and the plate are no longer drawn.
-describe('no drawn context line', () => {
-  it.each(['owner', 'spotter'] as const)('draws neither the car line nor the plate (%s)', async (role) => {
-    const { queryByText } = await render(
+// Owner's call, 2026-10-19: the car line is DRAWN again (it went on
+// 2026-09-24) — short, car first, and never the plate.
+describe('the drawn car line', () => {
+  it.each([
+    ['owner', 'Blue BMW 3 Series · your car'],
+    ['spotter', 'Blue BMW 3 Series · your sighting'],
+  ] as const)('says which car and whose side (%s)', async (role, line) => {
+    const { getByTestId, queryByText } = await render(
       <ThreadRow thread={thread({ role })} onPress={jest.fn()} />,
     );
 
-    expect(queryByText(/About your|Your sighting/)).toBeNull();
-    expect(queryByText('AB12 CDE')).toBeNull();
+    expect(getByTestId('thread-car-line-t1')).toHaveTextContent(line);
+    // PRIVACY + brevity: the plate is spoken (below), never drawn.
+    expect(queryByText(/AB12/)).toBeNull();
+  });
+
+  it('is not read twice — the row speaks its own label, once', async () => {
+    const { getByTestId } = await render(<ThreadRow thread={thread()} onPress={jest.fn()} />);
+    const label: string = getByTestId('thread-row-t1').props.accessibilityLabel;
+
+    expect(label).toContain('About your Blue BMW 3 Series');
+    expect(label).not.toContain('· your car');
   });
 
   it('opens the conversation on a tap', async () => {

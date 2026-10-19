@@ -1,7 +1,8 @@
 /**
  * WHAT:  Pure inbox maths — the context line for a thread row ("About your
  *        Blue BMW" + plate for owners / "Your sighting · Blue BMW" for
- *        spotters), the unread total that feeds the Inbox tab badge, the
+ *        spotters; spoken), the drawn car line ("Blue BMW · your car"), the
+ *        unread total that feeds the Inbox tab badge, the
  *        row's unread treatment, and the filter-chip model (All · Unread ·
  *        My cars · My sightings) with its per-filter empty-state copy.
  * WHY:   The context line is what anchors a conversation to a CAR (Airbnb
@@ -64,6 +65,21 @@ export function contextLine(thread: InboxThread): ContextLine {
   // PRIVACY: a spotter's row never carries the plate — the car is anchored
   // by description only (the post's public face).
   return { prefix: `Your sighting · ${carLabel(thread.post)}`, plate: null };
+}
+
+/**
+ * The row's DRAWN car line (2026-10-19, owner's call): "Blue BMW · your car" /
+ * "Red Golf · your sighting". The context had been spoken only since
+ * 2026-09-24, and a 48pt photo alone didn't say which car or which side you
+ * were on. Car first, because that is what you scan for.
+ *
+ * PRIVACY: never the plate, on either face — the owner's plate stays in the
+ * spoken label (contextLine), and a spotter's row never had one.
+ */
+export function carLine(thread: InboxThread): string {
+  const role = thread.role === 'owner' ? 'your car' : 'your sighting';
+  const car = carLabel(thread.post);
+  return car ? `${car} · ${role}` : role.charAt(0).toUpperCase() + role.slice(1);
 }
 
 /**

@@ -335,7 +335,7 @@ export const sizes = {
   /**
    * The car's tile in a chat thread's header (added 2026-08-29).
    *
-   * ⚠️ 44, NOT `inboxRowTile` (64) — the inbox tile leads a list row where the
+   * ⚠️ 44, NOT `inboxRowTile` (48 since 2026-09-04) — the inbox tile leads a list row where the
    * picture is how you pick one conversation out of many. In a thread you are
    * already inside the conversation: the tile is confirming which car, beside a
    * 44pt back button, in a row whose whole purpose was to stop being 136pt
