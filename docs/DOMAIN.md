@@ -640,7 +640,15 @@ Rules that follow, and are not implementation details:
   and
   confirmed distinctive marks (`confirmed_feature_ids` — the post's
   registered marks the spotter ticked "could you see…?"; ids validated
-  server-side against that post's marks). Every field is skippable: an
+  server-side against that post's marks), and since 2026-10-19 the marks
+  they were ASKED about (`offered_feature_ids` — stale ids dropped silently,
+  confirmed ⊆ offered). The owner's sighting page lists the offered marks
+  with the confirmed ones ticked; NULL (older reports, older apps) means
+  "unknown", never "not seen", and then only the ticked marks show. "Not
+  seen" is what the spotter could see from where they stood — never
+  evidence against crediting them. Mark ids are stable across edits
+  (`update_post_distinctive_features` matches by photo, 2026-10-19), so a
+  caption fix no longer orphans earlier confirmations. Every field is skippable: an
   empty context step is a valid report. "Not sure" stores nothing, and the
   free-text note stays the catch-all. Nothing here is ever public — structured context is owner-only
   like the note (ADR-0008 unchanged).
