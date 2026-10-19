@@ -3,7 +3,7 @@
  *        correct DEPTH from one mount point, the per-viewer empty rules
  *        (owner: warm copy; public: the section vanishes), the owner
  *        preview's View-all doorway, entry tap-through, and the owner's
- *        summary line ("4 sightings · 1 needs your answer"), counted over
+ *        summary line ("1 needs your answer" — no total), counted over
  *        every sighting, not just the three shown.
  * WHY:   The face split is the feature's // SAFETY core (ADR-0008): the
  *        public face must render nothing but time + locality — the absence
@@ -126,14 +126,16 @@ beforeEach(() => {
 describe('sightingsSummaryLine', () => {
   const of = (...statuses: OwnerSighting['status'][]) => statuses.map((status) => ({ status }));
 
+  // No total (2026-10-16): the stat band right above already says how many.
   it.each([
-    [of('unverified'), '1 sighting · needs your answer'],
-    [of('helpful'), '1 sighting · nothing waiting on you'],
-    [of('unverified', 'helpful', 'not_mine'), '3 sightings · 1 needs your answer'],
-    [of('unverified', 'unverified', 'credited'), '3 sightings · 2 need your answer'],
-    [of('helpful', 'not_mine'), '2 sightings · nothing waiting on you'],
+    [of('unverified'), '1 needs your answer'],
+    [of('helpful'), 'Nothing waiting on you'],
+    [of('unverified', 'helpful', 'not_mine'), '1 needs your answer'],
+    [of('unverified', 'unverified', 'credited'), '2 need your answer'],
+    [of('helpful', 'not_mine'), 'Nothing waiting on you'],
     // A withdrawn one was never answered — and is not counted at all.
-    [of('helpful', 'withdrawn'), '1 sighting · nothing waiting on you'],
+    [of('helpful', 'withdrawn'), 'Nothing waiting on you'],
+    [of('unverified', 'withdrawn'), '1 needs your answer'],
     [of('withdrawn'), null],
   ])('%j → "%s"', (sightings, line) => {
     expect(sightingsSummaryLine(sightings)).toBe(line);
@@ -198,7 +200,7 @@ describe('owner face', () => {
     mockOwnerHook.mockReturnValue(ownerReady(four));
     const { getByTestId, queryByTestId } = await renderSection({ postId: 'p1', isOwner: true });
     expect(queryByTestId('timeline-entry-s26')).toBeNull();
-    expect(getByTestId('sightings-summary')).toHaveTextContent('4 sightings · 1 needs your answer');
+    expect(getByTestId('sightings-summary')).toHaveTextContent('1 needs your answer');
   });
 
   it('shows the warm empty state when no sightings exist yet', async () => {
