@@ -425,6 +425,9 @@ export function PostOwnerActions({
             : undefined
         }
         onDeactivate={canDeactivate(owned) ? requestDeactivate : undefined}
+        // The row is the only way to deactivate now (2026-10-16), so it says
+        // what happens to the money, as the page's block used to.
+        deactivateKind={owned.bountyPence !== null ? 'refund' : noRewardKind(owned)}
         onDeleteDraft={canDeleteDraft(owned) ? () => deleteDraftRef.current?.open() : undefined}
         onDeletePost={canDeletePost(owned) ? () => deletePostRef.current?.open() : undefined}
         onReleasePayout={canReleasePayout(owned) ? () => void onReleasePayout() : undefined}

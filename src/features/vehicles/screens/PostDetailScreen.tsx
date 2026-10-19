@@ -459,11 +459,8 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
                 onEditDistinctiveFeatures={
                   canEditSafeSection(result.post) ? () => edit('distinctive_features') : undefined
                 }
-                onDeactivate={
-                  canDeactivate(result.post)
-                    ? () => ownerRef.current?.requestDeactivate()
-                    : undefined
-                }
+                // Deactivating is the Manage listing sheet's alone (owner,
+                // 2026-10-16) — the page keeps only "I got it back".
                 onRecovered={canMarkRecovered(result.post) ? onRecovered : undefined}
                 rewardTermLine={
                   showsRewardTerm ? quietRewardTermLine(rewardTerm.status, rewardTerm.readAt) : null

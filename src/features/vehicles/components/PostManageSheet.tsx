@@ -36,6 +36,32 @@ import { useImperativeHandle, useRef, type Ref } from 'react';
 
 import { BottomSheet, ListRow, type BottomSheetRef } from '@/shared/ui';
 
+import type { NoRewardKind } from '../lib/noRewardKind';
+
+/** A held reward is refunded; otherwise noRewardKind says which truth applies. */
+export type DeactivateKind = 'refund' | NoRewardKind;
+
+/** The row's words per kind — the page's old deactivate block, one line each.
+ *  The confirm that follows still quotes the exact figures (ADR-0021). */
+const DEACTIVATE_ROW: Record<DeactivateKind, { title: string; subtitle: string }> = {
+  refund: {
+    title: 'Deactivate & refund',
+    subtitle: 'Takes it down and refunds your reward, minus the card fee.',
+  },
+  fee: {
+    title: 'Deactivate listing',
+    subtitle: 'Takes it down. The £5 listing fee isn’t refunded.',
+  },
+  ended: {
+    title: 'Deactivate listing',
+    subtitle: 'Takes it down. Your reward already went back.',
+  },
+  unknown: {
+    title: 'Deactivate listing',
+    subtitle: 'Takes it down. There’s no reward held to refund.',
+  },
+};
+
 export interface PostManageSheetProps {
   ref?: Ref<BottomSheetRef>;
   /** OWNER only: open their sighting list. */
@@ -59,9 +85,16 @@ export interface PostManageSheetProps {
    *  listing ('add'). Opens the change screen, which discloses every penny
    *  before anything is charged. */
   rewardAction?: { mode: 'change' | 'add'; onPress: () => void };
-  /** OWNER + PAID only: take the listing down and refund the bounty. Opens the
-   *  parent's confirm — never deactivates straight from a row tap. */
+  /** OWNER + PAID only: take the listing down (and refund a held reward). Opens
+   *  the parent's confirm — never deactivates straight from a row tap. */
   onDeactivate?: () => void;
+  /**
+   * What deactivating does to the money, so the row says it truly (2026-10-16:
+   * it said "refunds your reward" on £5 fee listings too). This row is now the
+   * ONLY way to deactivate — the page's own explainer block is gone — so it
+   * carries the one-line version of that block. Defaults to 'refund'.
+   */
+  deactivateKind?: DeactivateKind;
   /**
    * OWNER + DRAFT only: delete the draft for good. Mutually exclusive with
    * onDeactivate — a draft has no escrow to refund. (A paid listing becomes
@@ -124,6 +157,7 @@ export function PostManageSheet({
   onEditDistinctiveFeatures,
   rewardAction,
   onDeactivate,
+  deactivateKind = 'refund',
   onDeleteDraft,
   onDeletePost,
   onReleasePayout,
@@ -247,8 +281,8 @@ export function PostManageSheet({
       {onDeactivate ? (
         <ListRow
           icon={Ban}
-          title="Deactivate & refund"
-          subtitle="Takes the listing down and refunds your reward."
+          title={DEACTIVATE_ROW[deactivateKind].title}
+          subtitle={DEACTIVATE_ROW[deactivateKind].subtitle}
           destructive
           onPress={run(onDeactivate)}
           testID="manage-deactivate"

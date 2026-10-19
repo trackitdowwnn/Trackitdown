@@ -33,9 +33,18 @@ jest.mock('@/features/watchlist', () => ({ WatchToggle: () => null }));
 // The sighting-activity section owns its own data fetching (both faces hit
 // supabase) — stub the whole feature barrel; the section has its own tests.
 // The spy pins that the body hands it the right face split (id + isOwner).
+// It renders a marker so the page ORDER can be read from the tree (the owner's
+// face leads with it since 2026-10-16).
 const mockSightingsSection = jest.fn((_props: unknown) => null);
 jest.mock('@/features/sightings', () => ({
-  PostSightingsSection: (props: unknown) => mockSightingsSection(props),
+  PostSightingsSection: (props: unknown) => {
+    mockSightingsSection(props);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+    const { createElement } = require('react');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- same
+    const { Text } = require('react-native');
+    return createElement(Text, null, 'SIGHTINGS-SECTION');
+  },
 }));
 
 // ConfirmDialog (the bounty ⓘ popup) rides the bottom-sheet + safe-area
@@ -75,7 +84,7 @@ const renderBody = (
     onReportSighting?: () => void;
     onShowAbout?: () => void;
     onOpenPost?: (target: unknown) => void;
-    onDeactivate?: () => void;
+    onRecovered?: () => void;
     similarPosts?: import('@/shared/types').PostSummary[];
     similarLoading?: boolean;
     rewardTermLine?: string | null;
@@ -92,7 +101,7 @@ const renderBody = (
       similarPosts={handlers.similarPosts ?? []}
       similarLoading={handlers.similarLoading ?? false}
       onOpenPost={handlers.onOpenPost ?? (() => {})}
-      onDeactivate={handlers.onDeactivate}
+      onRecovered={handlers.onRecovered}
       rewardTermLine={handlers.rewardTermLine}
     />,
   );
@@ -123,25 +132,69 @@ describe('PostDetailBody', () => {
     expect(getByText('Please help find it.')).toBeTruthy();
   });
 
-  it('shows the deactivate trigger and REQUESTS (never runs) deactivation', async () => {
-    const onDeactivate = jest.fn();
-    const { getByTestId, getByText, queryByText } = await renderBody(
-      { ...base, isOwner: true, status: 'active' },
-      { onDeactivate },
+  // ── THE OWNER'S FACE (2026-10-16) ────────────────────────────────────────
+  // Sightings first, then "Got your car back?", then the listing as spotters
+  // see it — and none of the sections that are only for spotters.
+  const withCoords = { ...base, lat: 51.75, lng: -0.34 };
+  const similar = [
+    {
+      id: 'p2',
+      photos: [],
+      make: 'Ford',
+      model: 'Focus',
+      colour: 'Red',
+      plate: null,
+      status: 'active' as const,
+      lastSeenAt: '2026-07-18T10:00:00Z',
+      bountyPence: 30000,
+    },
+  ];
+  /** Where each text first appears in the rendered tree, to read its order. */
+  const at = (tree: string, text: string) => tree.indexOf(`"${text}"`);
+
+  it('owner: sightings lead, then "Got your car back?", then the listing', async () => {
+    const view = await renderBody(
+      { ...withCoords, isOwner: true },
+      { onRecovered: jest.fn(), similarPosts: similar },
     );
-    expect(getByTestId('deactivate-listing')).toBeTruthy();
-    await act(async () => {
-      fireEvent.press(getByText('Deactivate & refund'));
-    });
-    // The button asks the SCREEN to open its confirm — the destructive dialog
-    // is owned there (shared with the "Manage post" sheet), not here.
-    expect(onDeactivate).toHaveBeenCalled();
-    expect(queryByText('Yes, deactivate')).toBeNull();
+    const tree = JSON.stringify(view.toJSON());
+    const order = ['SIGHTINGS-SECTION', 'Got your car back?', 'About this car', 'Car details'].map(
+      (t) => at(tree, t),
+    );
+    expect(order.every((i) => i > -1)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(view.getByTestId('mark-recovered')).toBeTruthy();
   });
 
-  it('hides the deactivate control when onDeactivate is absent (spotter / draft)', async () => {
-    const { queryByTestId } = await renderBody({ ...base, status: 'active' });
-    expect(queryByTestId('deactivate-listing')).toBeNull();
+  it('owner: none of the spotters’ sections — owner card, safety, report, more cars', async () => {
+    const view = await renderBody(
+      { ...withCoords, isOwner: true },
+      { onRecovered: jest.fn(), similarPosts: similar },
+    );
+    expect(view.queryByText('Owner')).toBeNull();
+    expect(view.queryByText(/Never approach the vehicle/)).toBeNull();
+    expect(view.queryByText('Report this listing')).toBeNull();
+    expect(view.queryByText(/More cars/)).toBeNull();
+    // …and deactivating is the Manage sheet's alone.
+    expect(view.queryByTestId('deactivate-listing')).toBeNull();
+    expect(view.queryByText(/Deactivate/)).toBeNull();
+  });
+
+  it('⚠️ the PUBLIC page is unchanged — same sections, same order', async () => {
+    const view = await renderBody(withCoords, { similarPosts: similar });
+    const tree = JSON.stringify(view.toJSON());
+    const order = [
+      'About this car',
+      'Car details',
+      'Owner',
+      'SIGHTINGS-SECTION',
+      'Report this listing',
+      'More cars nearby',
+    ].map((t) => at(tree, t));
+    expect(order.every((i) => i > -1)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(view.getByText(/Never approach the vehicle/)).toBeTruthy();
+    expect(view.queryByText('Got your car back?')).toBeNull();
   });
 
   it('always shows "Car details" with the identity facts', async () => {
@@ -338,39 +391,8 @@ describe('reward ended (lapsed reward)', () => {
     expect(queryByText('This reward has ended')).toBeNull();
   });
 
-  it('the deactivate card says the reward already went back — no listing fee', async () => {
-    const { getByText, getByTestId, getByRole, queryByText } = await renderBody(
-      { ...lapsed, isOwner: true },
-      { onDeactivate: jest.fn() },
-    );
-    expect(getByTestId('deactivate-listing')).toBeTruthy();
-    expect(getByText(/Your reward already went back to your card when it ended/)).toBeTruthy();
-    expect(queryByText(/listing fee/)).toBeNull();
-    // Nothing to refund, so the button does not promise one.
-    expect(getByRole('button', { name: 'Deactivate listing' })).toBeTruthy();
-    expect(queryByText('Deactivate & refund')).toBeNull();
-  });
-
-  it('a fee listing’s deactivate card still says the listing fee isn’t refunded', async () => {
-    const { getByText, queryByText } = await renderBody(
-      { ...base, bountyPence: null, isOwner: true },
-      { onDeactivate: jest.fn() },
-    );
-    expect(getByText(/Your listing fee isn’t refunded/)).toBeTruthy();
-    expect(queryByText(/already went back/)).toBeNull();
-  });
-
-  // 20261006110000: the ledger says this listing never paid a fee (and its
-  // reward didn't end) — so no fee is claimed, and no refund promised.
-  it('a no-reward listing the ledger says paid no fee claims neither a fee nor a refund', async () => {
-    const { getByText, queryByText } = await renderBody(
-      { ...base, bountyPence: null, isOwner: true, hasListingFee: false },
-      { onDeactivate: jest.fn() },
-    );
-    expect(getByText('Take this listing down. There’s no reward held on it to refund.')).toBeTruthy();
-    expect(queryByText(/listing fee/)).toBeNull();
-    expect(queryByText(/already went back/)).toBeNull();
-  });
+  // The deactivate wording for lapsed / fee / no-fee listings moved with the
+  // control to the Manage sheet (2026-10-16): PostManageSheet.test.tsx.
 });
 
 describe('owner reward-term line', () => {

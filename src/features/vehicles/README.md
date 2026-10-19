@@ -25,8 +25,8 @@ rounded-top sheet overlapping the hero.)
    curve. The `AppHeader` floats over it: back (left), share (right),
    transparent → solid surface + hairline + title as the hero scrolls away;
    the buttons' white circles fade out in the same range, leaving flat icons.
-2. **Title cluster** (redesigned 2026-07-23) — a right-aligned "Listed on
-   `<date>`" dateline hugging the sheet's curved top, then "Make Model" with
+2. **Title cluster** (redesigned 2026-07-23; the "Listed on" dateline was
+   removed 2026-08-09) — "Make Model" with
    the `PlateChip` and a colour chip inline beside it (one chip grammar; the
    colour chip reads at the plate's 14pt so the plate stays dominant),
    `StatusBadge` when not plain active, then the **stat band**: three
@@ -82,10 +82,11 @@ rounded-top sheet overlapping the hero.)
    sightings are allowed and a fresher one is worth more. Both subtle, never
    competing with the bar's primary. Hidden for the owner. Driven by
    `get_post_detail.viewer_has_sighting`.
-7. **Sighting activity — DORMANT** — the RPC returns a zero aggregate today;
-    the section renders only when count > 0 and lights up when the sightings
-    feature ships. **SAFETY** (SECURITY_AND_TRUST §6): aggregate count ONLY,
-    never individual sightings or their locations to a non-owner.
+7. **Sighting activity** (`PostSightingsSection`, sightings feature) — two
+    faces from one mount point: the owner's rich preview (summary, trail map,
+    the newest three, "View all"), the public's restrained {time, locality}
+    timeline or nothing. **SAFETY** (ADR-0008, SECURITY_AND_TRUST §6): the
+    face split and its fences live in the sightings feature.
 8. **SafetyNotice** banner (deliberately a banner, never quiet rows), then
     a subtle **"Report this listing"** button (moved out of the header; an
     underlined link with a flag until 2026-09-24 — grey, never `danger`:
@@ -97,16 +98,28 @@ rounded-top sheet overlapping the hero.)
     coords). Reuses the feed pipeline, adds no server surface; excludes the
     post itself, caps at 6, and is quietly absent (never an error) on failure.
 
+**The owner's page is ordered for the owner** (2026-10-16). The list above is
+the spotter's page. On their OWN listing the owner opens to what happened:
+after the title cluster comes **Sighting activity**, then **Got your car
+back?** (active only; the recovery flow), then the map and the car sections,
+each editable by its pencil. Sections that exist for spotters are not shown
+to the owner: the Owner card, the SafetyNotice, "Report this listing" and
+More cars nearby. Taking the listing down is the Manage listing sheet's
+alone; the page has one owner action, "I got it back". The public page is
+unchanged, and `PostDetailBody.test.tsx` pins its order.
+
 **Sticky bottom bar** (`PostBottomBar`) — always visible, safe-area padded.
 - **Spotter:** bounty + "reward", primary "I've seen this car" → the
   report-sighting flow (auth-gated). Once they have reported
   (`viewerHasSighting`), the primary becomes **"Message the owner"** → the
   thread (2026-09-24): the step they have done stops being the headline, and
   the conversation it unlocked takes its place. Never shown before a sighting.
-- **Owner:** "Your listing" + `StatusBadge`, secondary "Manage post" →
+- **Owner:** "Your listing" + `StatusBadge`, secondary "Manage listing" →
   **`PostManageSheet`**, a `BottomSheet` of `ListRow`s for THIS listing: view
   sightings, one row per section currently editable, share, and (paid posts) the
-  destructive "Deactivate & refund". It used to push `/my-posts`, which bounced
+  destructive deactivate row — the ONLY way to deactivate since 2026-10-16, so
+  its wording follows the money (`deactivateKind`): "Deactivate & refund" for a
+  held reward, "Deactivate listing" for a £5 fee or an ended reward. It used to push `/my-posts`, which bounced
   the owner off the very post they were managing. Rows are built from the
   handlers the screen passes — an absent handler means an absent row, so the
   sheet can never offer an edit the server would reject.
@@ -114,8 +127,8 @@ rounded-top sheet overlapping the hero.)
     (2026-09-24): the sheet, the deactivate / delete-draft / delete-listing
     confirms (and the delete offer after a clean cancel), the owner-denial
     attestation, the section editors, send-the-reward. The listing page
-    drives it by ref (the bottom bar, the pencils, the body's deactivate
-    button); it renders nothing for a non-owner. The rules for which rows
+    drives it by ref (the bottom bar and the pencils); it renders nothing for
+    a non-owner. The rules for which rows
     show are in `lib/ownerPermissions.ts`, shared by both hosts. Mount it at
     the host's ROOT — its overlays fill their parent.
   - **Press and hold a card on My listings** raises that same sheet OVER
@@ -137,9 +150,9 @@ rounded-top sheet overlapping the hero.)
     listing whose money is moving again never hides. Archiving changes
     nothing public — no status, money or visibility.
 
-**Deactivate confirm** — owned by `PostDetailScreen`, not the body: the body's
-"Deactivate listing" section button and the manage sheet's row both open the same
-`ConfirmDialog`, so the destructive copy and the refund figure
+**Deactivate confirm** — owned by `PostOwnerActions`: the manage sheet's row
+(the only entry since 2026-10-16) opens the one `ConfirmDialog`, so the
+destructive copy and the refund figure
 (`refundPence` / `cardFeePence`, `src/shared/lib/money.ts`) exist exactly once. The quoted figure is EXACT (ADR-0021: a fixed card fee);
 the post-refund toast shows the server's amount, which matches it.
 
