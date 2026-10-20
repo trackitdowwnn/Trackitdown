@@ -718,7 +718,7 @@ describe('the actions', () => {
 
         await press(view.getByTestId(testID));
         expect(openURL).not.toHaveBeenCalled();
-        expect(view.getByText('Opening the map — please don’t approach')).toBeTruthy();
+        expect(view.getByText('Warning')).toBeTruthy();
         expect(view.getAllByText(SAFETY_NOTICE_BODY)).toHaveLength(2);
 
         // A pin in the app they picked — never directions (§1).
