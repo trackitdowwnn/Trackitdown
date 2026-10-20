@@ -19,7 +19,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { MARK } from './markSpec.mjs';
+import { INK, INK_DARK, MARK } from './markSpec.mjs';
 
 const REPO = path.join(fileURLToPath(new URL('../..', import.meta.url)));
 
@@ -83,4 +83,12 @@ test('MARK_ASPECT matches the mark the spec actually describes', () => {
     Math.abs(aspect - halfHeight) < 1e-5,
     `MARK_ASPECT is ${aspect} but the spec's half-height is ${halfHeight.toFixed(6)}`,
   );
+});
+
+test('the opening screen inks the mark exactly as the native splash PNGs do', () => {
+  // BrandSplash continues the native splash, so a different ink there is a
+  // visible step at the handover — the thing that screen exists to hide.
+  const src = fs.readFileSync(path.join(REPO, 'src/shared/brand/markGeometry.ts'), 'utf8');
+  assert.equal(src.match(/MARK_INK\s*=\s*'(#[0-9A-Fa-f]{6})'/)?.[1], INK);
+  assert.equal(src.match(/MARK_INK_DARK\s*=\s*'(#[0-9A-Fa-f]{6})'/)?.[1], INK_DARK);
 });

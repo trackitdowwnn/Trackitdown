@@ -53,3 +53,13 @@ export const MARK_DOTS: readonly MarkDot[] = [{ cx: 0.732639, cy: 0.6875, r: 0.2
  * vertical space.
  */
 export const MARK_ASPECT = 0.954861;
+
+/**
+ * The native splash's ink — markSpec's INK / INK_DARK. Blacker (and whiter)
+ * than `primary`: the designer's values, and an icon is not UI. Only the
+ * opening screen (BrandSplash) uses them, because it must be pixel-for-pixel
+ * the native splash; every other in-app mark wears the palette's `primary`.
+ * The drift test pins both to markSpec.
+ */
+export const MARK_INK = '#000000';
+export const MARK_INK_DARK = '#FFFFFF';

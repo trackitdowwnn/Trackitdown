@@ -11,10 +11,11 @@
  *        src/shared/lib/appReady.ts; docs/TESTING.md.
  */
 
-import { act, render } from '@testing-library/react-native';
+import { act, configure, render } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
 import { markContentReady, resetContentReadyForTests } from '@/shared/lib/appReady';
+import { motion } from '@/shared/theme';
 
 import type { AuthRoute } from '../hooks/useAuthGate';
 import { AuthGate } from './AuthGate';
@@ -40,7 +41,36 @@ jest.mock('expo-router', () => ({
   useGlobalSearchParams: () => mockParams,
 }));
 
+let mockLaunchScheme: 'light' | 'dark' = 'light';
+jest.mock('../lib/launchScheme', () => ({
+  launchScheme: () => mockLaunchScheme,
+}));
+
+// The last style the gate asked the status bar for.
+let mockStatusStyle: string | undefined;
+jest.mock('expo-status-bar', () => ({
+  StatusBar: ({ style }: { style: string }) => {
+    mockStatusStyle = style;
+    return null;
+  },
+}));
+
 const child = <Text>the app</Text>;
+
+/** AuthGate's backstop — mirrored, as the gate keeps it private. */
+const MAX_CONTENT_WAIT_MS = 6000;
+
+/** Lifting starts a fade; the splash is removed once it has run. */
+async function finishFade() {
+  await act(async () => {
+    jest.advanceTimersByTime(motion.standard);
+  });
+}
+
+// A leaving splash hides itself from screen readers, and RNTL's queries skip
+// hidden elements by default — so "the splash is gone" would pass while it was
+// still mounted. Counting hidden elements makes null mean unmounted.
+configure({ defaultIncludeHiddenElements: true });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -49,6 +79,8 @@ beforeEach(() => {
   mockRoute = 'loading';
   mockSegments = ['(tabs)'];
   mockParams = {};
+  mockLaunchScheme = 'light';
+  mockStatusStyle = undefined;
 });
 
 afterEach(() => {
@@ -62,10 +94,14 @@ describe('while the session is restoring', () => {
     expect(getByTestId('brand-splash')).toBeTruthy();
   });
 
-  it('shows a loader, so a slow start does not look frozen', async () => {
+  it('shows the mark, and a progress line once the start is slow', async () => {
     const { getByTestId } = await act(async () => render(<AuthGate>{child}</AuthGate>));
+    expect(getByTestId('brand-splash-mark')).toBeTruthy();
 
-    expect(getByTestId('brand-splash-loader')).toBeTruthy();
+    await act(async () => {
+      jest.advanceTimersByTime(motion.splashSlowAfter);
+    });
+    expect(getByTestId('brand-splash-progress')).toBeTruthy();
   });
 });
 
@@ -81,13 +117,18 @@ describe('once routing has resolved to the app', () => {
     expect(getByTestId('brand-splash')).toBeTruthy();
   });
 
-  it('lifts as soon as content is ready', async () => {
-    const { queryByTestId } = await act(async () => render(<AuthGate>{child}</AuthGate>));
+  it('lifts as soon as content is ready — the app is live at once, the splash fades', async () => {
+    const { getByTestId, queryByTestId } = await act(async () =>
+      render(<AuthGate>{child}</AuthGate>),
+    );
 
     await act(async () => {
       markContentReady();
     });
+    // Still on screen for its fade, but no longer in the way of a tap.
+    expect(getByTestId('brand-splash').props.pointerEvents).toBe('none');
 
+    await finishFade();
     expect(queryByTestId('brand-splash')).toBeNull();
   });
 
@@ -101,17 +142,50 @@ describe('once routing has resolved to the app', () => {
     expect(getByTestId('brand-splash')).toBeTruthy();
 
     await act(async () => {
-      jest.advanceTimersByTime(10_000);
+      jest.advanceTimersByTime(MAX_CONTENT_WAIT_MS - 1);
     });
+    expect(getByTestId('brand-splash').props.pointerEvents).toBe('auto');
+
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    await finishFade();
 
     expect(queryByTestId('brand-splash')).toBeNull();
   });
 
-  it('never re-raises the splash after content has landed', async () => {
+  it('does not hold when content has already landed', async () => {
     markContentReady();
-    const { queryByTestId } = await act(async () => render(<AuthGate>{child}</AuthGate>));
+    const { getByTestId, queryByTestId } = await act(async () =>
+      render(<AuthGate>{child}</AuthGate>),
+    );
+    expect(getByTestId('brand-splash').props.pointerEvents).toBe('none');
 
+    await finishFade();
     expect(queryByTestId('brand-splash')).toBeNull();
+  });
+
+  it('never raises the splash again once it has come down', async () => {
+    markContentReady();
+    const view = await act(async () => render(<AuthGate>{child}</AuthGate>));
+    await finishFade();
+
+    // Whatever the gate reports later in the session, the splash stays gone.
+    mockRoute = 'loading';
+    await view.rerender(<AuthGate>{child}</AuthGate>);
+    expect(view.queryByTestId('brand-splash')).toBeNull();
+  });
+
+  it('stays down if the gate wavers mid-fade', async () => {
+    markContentReady();
+    const view = await act(async () => render(<AuthGate>{child}</AuthGate>));
+
+    mockRoute = 'loading';
+    await view.rerender(<AuthGate>{child}</AuthGate>);
+    expect(view.getByTestId('brand-splash').props.pointerEvents).toBe('none');
+
+    await finishFade();
+    expect(view.queryByTestId('brand-splash')).toBeNull();
   });
 });
 
@@ -121,9 +195,68 @@ describe('onboarding', () => {
     // until the timeout rescued it. First launch must be instant.
     mockRoute = 'onboarding';
 
-    const { queryByTestId } = await act(async () => render(<AuthGate>{child}</AuthGate>));
+    const { getByTestId, queryByTestId } = await act(async () =>
+      render(<AuthGate>{child}</AuthGate>),
+    );
+    expect(getByTestId('brand-splash').props.pointerEvents).toBe('none');
 
+    await finishFade();
     expect(queryByTestId('brand-splash')).toBeNull();
+  });
+
+  it('brings the splash back over the feed once onboarding is done, until it has content', async () => {
+    // A new user's first look at the feed gets the same courtesy as a
+    // returning user's cold start: no feed assembling itself in public.
+    mockRoute = 'onboarding';
+    const view = await act(async () => render(<AuthGate>{child}</AuthGate>));
+    await finishFade();
+    expect(view.queryByTestId('brand-splash')).toBeNull();
+
+    mockRoute = 'app';
+    await view.rerender(<AuthGate>{child}</AuthGate>);
+    expect(view.getByTestId('brand-splash').props.pointerEvents).toBe('auto');
+
+    await act(async () => {
+      markContentReady();
+    });
+    await finishFade();
+    expect(view.queryByTestId('brand-splash')).toBeNull();
+  });
+
+  it('a raise mid-fade is a fresh, whole splash — never a half-faded one', async () => {
+    mockRoute = 'onboarding';
+    const view = await act(async () => render(<AuthGate>{child}</AuthGate>));
+    const leaving = view.getByTestId('brand-splash');
+    expect(leaving.props.pointerEvents).toBe('none');
+
+    mockRoute = 'app';
+    await view.rerender(<AuthGate>{child}</AuthGate>);
+    const raised = view.getByTestId('brand-splash');
+    expect(raised).not.toBe(leaving);
+    expect(raised.props.pointerEvents).toBe('auto');
+
+    // The old one's exit timer died with it: the new one stays up.
+    await finishFade();
+    expect(view.getByTestId('brand-splash').props.pointerEvents).toBe('auto');
+  });
+});
+
+describe('the status bar', () => {
+  it('⚠️ matches the splash’s scheme while it is up, then the app’s', async () => {
+    // A dark phone, the app set to Light: the splash is dark, so its icons
+    // must be light — or the clock vanishes for the whole hold.
+    mockLaunchScheme = 'dark';
+    mockRoute = 'app';
+    const view = await act(async () => render(<AuthGate>{child}</AuthGate>));
+    expect(mockStatusStyle).toBe('light');
+
+    await act(async () => {
+      markContentReady();
+    });
+    await finishFade();
+    expect(view.queryByTestId('brand-splash')).toBeNull();
+    // No ThemeProvider here, so the app's scheme is light → dark icons.
+    expect(mockStatusStyle).toBe('dark');
   });
 });
 

@@ -865,11 +865,31 @@ to use.
   the pulse alone read as an empty grey tile, and it stops entirely under
   reduced motion; and in the picker's hand-back nothing else on screen
   answers the tap.
-  Blocking waits show ONE face — `BrandLoader` (the mark + a rotating waiting
-  phrase), rendered by both the cold-start splash and `FullscreenLoader`. The
+  **The opening screen** (`BrandSplash`, 2026-10-20) is its own face, because
+  its job is to be the native splash's continuation, not a loader: the mark
+  ALONE, at the native splash's size (`NATIVE_SPLASH_MARK_DP`, ≈59dp, pinned
+  by test to app.json's `imageWidth` × markSpec's splash `fill`) and centre,
+  on the background of the scheme the phone LAUNCHED in (`launchScheme`, not
+  the in-app preference, which the native splash cannot see), in the PNG's own
+  ink (`MARK_INK`/`MARK_INK_DARK` — the one in-app mark that is not
+  `primary`), with the status-bar icons to match while it is up. It breathes
+  (opacity 1 → `opacity.splashBreathLow`, `motion.splashPulse` per half,
+  starting a beat after mount so the mark is whole at the handover). A start
+  still going after `motion.splashSlowAfter` (2s) gains a
+  `sizes.splashProgressStroke` line under the mark, placed outside the flow so
+  the mark never moves: a `primary` bar gliding on a `border` track — a
+  sanctioned exception to "progress tracks are `borderStrong`", because the
+  moving bar carries the signal and the track should stay quiet. It leaves
+  with a `motion.standard` dissolve that lets touches through, and drops out
+  of the accessibility tree, from its first frame. No spinner, no phrases, no
+  words. Reduced motion: mark still, bar resting mid-track on `borderStrong`
+  (at rest the track must read on its own), and the dissolve kept — it moves
+  nothing, and a cut would flash when phone and app themes differ.
+  In-app blocking waits show ONE face — `BrandLoader` (the mark + a rotating
+  waiting phrase), via `FullscreenLoader`. The
   phrase is lit by a highlight sweeping left to right through its letters
   (`motion.loaderShimmer`, 700ms), above a small `ActivityIndicator`. Both,
-  deliberately: the splash usually lifts inside 500ms, and in a glimpse that
+  deliberately: these waits are often short, and in a glimpse that
   short the spinner is the part that reads, while the sweep is what makes the
   wait feel like this app rather than any app. **Do not lengthen the sweep for
   calm** — it shipped at 1800ms on 2026-08-06 and never completed a third of a

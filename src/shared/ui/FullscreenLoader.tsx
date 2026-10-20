@@ -1,8 +1,8 @@
 /**
  * WHAT:  FullscreenLoader — the app's ONLY sanctioned blocking loader: a
  *        calm full-opacity page (app background, not a scrim) carrying the
- *        BrandLoader — the SAME mark-plus-rotating-phrase face as the
- *        cold-start splash, so every wait in the app looks like the app,
+ *        BrandLoader — the mark-plus-rotating-phrase face every in-app
+ *        blocking wait shares, so every wait in the app looks like the app,
  *        with an optional live-updating status message that overrides the
  *        phrases while set.
  * WHY:   Reserved for the few moments the user genuinely must wait and must

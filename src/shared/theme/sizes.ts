@@ -396,6 +396,9 @@ export const sizes = {
    * aspectRatio (width / height).
    */
   reviewPhotoAspect: 3 / 4,
+  /** The opening screen's slow-start progress line (BrandSplash): a stroke,
+   *  like timelineRailStroke — thin enough to stay quiet under the mark. */
+  splashProgressStroke: 2,
 } as const;
 
 export type SizeToken = keyof typeof sizes;
