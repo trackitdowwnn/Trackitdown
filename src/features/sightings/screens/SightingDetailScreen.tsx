@@ -6,9 +6,10 @@
  *        - a content sheet, EVIDENCE FIRST (owner's pick, 2026-10-19):
  *          where and when it was seen, and the owner's answer so far (with
  *          "Change" for "Not my car", and "Got your car back?" under a
- *          confirmation); "What they saw" (ALL the owner's marks, the ones the
- *          spotter could see ticked — the wizard's list read back; their
- *          answers as a label | answers table; their note); "Where" (the
+ *          confirmation); "What they saw" (the owner's marks, the ones the
+ *          spotter could see ticked — the wizard's list read back);
+ *          "Details" (their answers as a label | answers table, then their
+ *          note); "Where" (the
  *          street address, the map, the safety notice, then [Google Maps]
  *          [Waze] — each behind
  *          the same don't-approach confirm, each a pin); "Spotted by" (their
@@ -93,7 +94,11 @@ import { openSpotterThread } from '../api/openSpotterThread';
 import { markSightingHelpful, markSightingNotMine, SightingVerdictError } from '../api/sightingApi';
 import { SightingDecisionBar } from '../components/SightingDecisionBar';
 import { SightingDetailHero } from '../components/SightingDetailHero';
-import { hasSeenDetails, SightingSeenSection } from '../components/SightingSeenSection';
+import {
+  hasSightingDetails,
+  SightingDetails,
+  SightingMarks,
+} from '../components/SightingSeenSection';
 import { SightingSpotterCard } from '../components/SightingSpotterCard';
 import { SightingWhereSection, type MapsApp } from '../components/SightingWhereSection';
 import { usePostSightings } from '../hooks/usePostSightings';
@@ -390,9 +395,17 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
               {/* EVIDENCE FIRST (owner, 2026-10-19): what tells the owner
                   whether it IS their car — their own marks above all — before
                   where it was, which matters once it is. */}
-              {hasSeenDetails(sighting, marks) ? (
+              {marks.checks.length > 0 ? (
                 <Section title="What they saw">
-                  <SightingSeenSection sighting={sighting} marks={marks} />
+                  <SightingMarks marks={marks} />
+                </Section>
+              ) : null}
+
+              {/* Their answers as a table, then their note — under a title of
+                  its own (owner, 2026-10-20). */}
+              {hasSightingDetails(sighting) ? (
+                <Section title="Details">
+                  <SightingDetails sighting={sighting} />
                 </Section>
               ) : null}
 

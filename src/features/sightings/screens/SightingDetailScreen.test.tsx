@@ -528,12 +528,39 @@ describe('the evidence', () => {
     expect(view.getAllByText('Sighting')).toHaveLength(1);
   });
 
-  it('⚠️ reads evidence first: What they saw → Where → Spotted by', async () => {
+  it('⚠️ reads evidence first: What they saw → Details → Where → Spotted by', async () => {
     const view = await renderScreen();
     const sections = textsInOrder(view).filter((text) =>
-      ['What they saw', 'Where', 'Spotted by'].includes(text),
+      ['What they saw', 'Details', 'Where', 'Spotted by'].includes(text),
     );
-    expect(sections).toEqual(['What they saw', 'Where', 'Spotted by']);
+    expect(sections).toEqual(['What they saw', 'Details', 'Where', 'Spotted by']);
+  });
+
+  it('puts the answers table and the note under a "Details" title of their own', async () => {
+    const view = await renderScreen();
+    const texts = textsInOrder(view);
+    const at = (text: string) => texts.indexOf(text);
+    // A heading like the other sections' (owner, 2026-10-20).
+    expect(view.getByRole('header', { name: 'Details' })).toBeTruthy();
+    expect(
+      at('Seen 1 of 1') === -1 ? at('Your marks they could see') : at('Seen 1 of 1'),
+    ).toBeLessThan(at('Details'));
+    expect(at('Details')).toBeLessThan(at('Doing'));
+    expect(at('Doing')).toBeLessThan(at('In their words'));
+  });
+
+  it('shows no "Details" when they answered nothing and left no note', async () => {
+    ready(sighting({ contextFlags: [], parkedLikelihood: null, peoplePresence: null, note: null }));
+    const view = await renderScreen();
+    expect(view.queryByText('Details')).toBeNull();
+    expect(view.getByText('What they saw')).toBeTruthy(); // the marks still have theirs
+  });
+
+  it('shows no "What they saw" when there are no marks to list', async () => {
+    ready(sighting({ confirmedFeatures: [] }));
+    const view = await renderScreen();
+    expect(view.queryByText('What they saw')).toBeNull();
+    expect(view.getByText('Details')).toBeTruthy();
   });
 
   it('lists your marks before their answers and note', async () => {

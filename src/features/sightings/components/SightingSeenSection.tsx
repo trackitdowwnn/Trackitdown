@@ -1,12 +1,16 @@
 /**
- * WHAT:  "What they saw" on the owner's sighting page — the page's first
- *        section since 2026-10-19 (owner: evidence first): every one of the
- *        owner's marks the spotter was asked about, the ones they could see
- *        ticked ("Seen 1 of 3") — or, for an older report, the seen ones alone
- *        ("Your marks they could see"; markChecklist says which); then the
- *        spotter's answers as a small TABLE, label | answers, one row per
- *        question they answered (Doing | Parked · Looks settled); then their
- *        note under "In their words" (set apart by a rule).
+ * WHAT:  The owner's sighting page's two evidence sections, each under its
+ *        own title (the screen's Section):
+ *        - "What they saw" (SightingMarks) — the page's first section since
+ *          2026-10-19 (owner: evidence first): every one of the owner's marks
+ *          the spotter was asked about, the ones they could see ticked ("Seen
+ *          1 of 3") — or, for an older report, the seen ones alone ("Your
+ *          marks they could see"; markChecklist says which);
+ *        - "Details" (SightingDetails; owner, 2026-10-20: "a title above the
+ *          table just like the What they saw") — the spotter's answers as a
+ *          small TABLE, label | answers, one row per question they answered
+ *          (Doing | Parked · Looks settled), then their note under "In their
+ *          words" (set apart by a rule).
  * WHY:   - The marks read back the report wizard the way the spotter filled
  *          it in (owner, 2026-10-19): the SAME rows (MarkTile, read-only),
  *          the same ticks, unseen marks included — so "they didn't see the
@@ -49,21 +53,10 @@ import type { MarkChecklist } from '../lib/markChecklist';
 import type { OwnerSighting } from '../types';
 import { MarkTile } from './MarkTile';
 
-export interface SightingSeenSectionProps {
-  sighting: OwnerSighting;
-  /** The marks to list, seen or not, and whether that is all of the ones the
-   *  spotter was asked about (markChecklist). */
-  marks: MarkChecklist;
-}
-
-/** True when there is anything for this section to show. Offered marks always
- *  list — "none of them seen" is an answer too. */
-export function hasSeenDetails(sighting: OwnerSighting, marks: MarkChecklist): boolean {
-  return (
-    marks.checks.length > 0 ||
-    sightingAnswerGroups(sighting).length > 0 ||
-    Boolean(sighting.note?.trim())
-  );
+/** True when the "Details" section has anything to show: an answered
+ *  question or a note. */
+export function hasSightingDetails(sighting: OwnerSighting): boolean {
+  return sightingAnswerGroups(sighting).length > 0 || Boolean(sighting.note?.trim());
 }
 
 /** A row's answer lines: the state with its follow-up on ONE line ("Parked ·
@@ -72,41 +65,48 @@ function answerLines(group: ContextAnswerGroup): string[] {
   return group.key === 'state' ? [group.answers.join(' · ')] : group.answers;
 }
 
-/** The marks, the spotter's answers and their note — see the header. */
-export function SightingSeenSection({ sighting, marks }: SightingSeenSectionProps) {
+/** "What they saw": the owner's marks, seen or not — see the header. The
+ *  screen shows the section only when there are marks to list. */
+export function SightingMarks({ marks }: { marks: MarkChecklist }) {
+  const styles = useThemedStyles(makeStyles);
+  const { checks, complete } = marks;
+  const seen = checks.filter((check) => check.seen).length;
+
+  // The strongest identity signal a report can carry — "it really is my
+  // car" — so it leads the page (owner: evidence first).
+  return (
+    <View style={styles.marks} testID="sighting-marks">
+      {/* Short: the section title already says "What they saw". A total
+          only when it is one — the seen ones alone claim none. */}
+      <Text style={styles.label}>
+        {complete ? `Seen ${seen} of ${checks.length}` : 'Your marks they could see'}
+      </Text>
+      <View style={styles.markTiles}>
+        {checks.map(({ mark, seen: isSeen }) => (
+          <MarkTile
+            key={mark.id}
+            description={mark.description}
+            photoUrl={mark.photoUrl}
+            selected={isSeen}
+            testID={`seen-mark-${mark.id}`}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+/** "Details": the spotter's answers as a table, then their note — see the
+ *  header. The screen shows the section only when hasSightingDetails. */
+export function SightingDetails({ sighting }: { sighting: OwnerSighting }) {
   const styles = useThemedStyles(makeStyles);
   const { fontScale } = useWindowDimensions();
   const stacked = fontScale > listRowStackFontScale;
   const groups = sightingAnswerGroups(sighting);
   const note = sighting.note?.trim();
-  const { checks, complete } = marks;
-  const seen = checks.filter((check) => check.seen).length;
 
   return (
     <View style={styles.root}>
-      {/* FIRST (owner: evidence first): the strongest identity signal a
-          report can carry — "it really is my car". */}
-      {checks.length > 0 ? (
-        <View style={styles.marks} testID="sighting-marks">
-          {/* Short: the section title already says "What they saw". A total
-              only when it is one — the seen ones alone claim none. */}
-          <Text style={styles.label}>
-            {complete ? `Seen ${seen} of ${checks.length}` : 'Your marks they could see'}
-          </Text>
-          <View style={styles.markTiles}>
-            {checks.map(({ mark, seen: isSeen }) => (
-              <MarkTile
-                key={mark.id}
-                description={mark.description}
-                photoUrl={mark.photoUrl}
-                selected={isSeen}
-                testID={`seen-mark-${mark.id}`}
-              />
-            ))}
-          </View>
-        </View>
-      ) : null}
-
       {groups.length > 0 ? (
         <View testID="sighting-answers">
           {groups.map((group, index) => (
