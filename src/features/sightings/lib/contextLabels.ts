@@ -4,8 +4,9 @@
  *        context step renders as chips, and its questions (CONTEXT_QUESTIONS);
  *        contextReviewRows(), the answers as labelled rows for the
  *        check-and-send step, and sightingAnswerGroups(), the same answers per
- *        question for the owner's sighting page ("What they saw", drawn as
- *        chips); and contextDetailCount(), how many details a report carries.
+ *        question under short labels (CONTEXT_SHORT_LABELS) for the owner's
+ *        sighting page ("What they saw", a label | answers table); and
+ *        contextDetailCount(), how many details a report carries.
  * WHY:   The context step, the confirm step and the owner's sighting page all
  *        describe the same facts. One module keeps
  *        the words identical everywhere: the step used to keep its own copies,
@@ -115,9 +116,8 @@ const CONTEXT_ROW_LABELS: Record<ContextQuestionKey, string> = {
 };
 
 /**
- * The context step's questions, word for word, ONE copy: the spotter is asked
- * them (sightingSteps' ContextStep) and the owner reads the answers under
- * them (sightingAnswerGroups) — the owner sees what was actually asked.
+ * The context step's questions, word for word, ONE copy — the spotter is asked
+ * them (sightingSteps' ContextStep).
  */
 export const CONTEXT_QUESTIONS: Record<ContextQuestionKey, string> = {
   state: 'What was it doing?',
@@ -125,11 +125,23 @@ export const CONTEXT_QUESTIONS: Record<ContextQuestionKey, string> = {
   condition: 'Its condition',
 };
 
-/** One question the spotter answered, and their answers to it in the words
- *  of the chips they tapped (the state's follow-up rides with it). */
+/**
+ * The same questions as a table's left-hand labels on the owner's sighting
+ * page (sightingAnswerGroups) — one word, like a spec sheet, so the answers
+ * keep the width on a small phone (owner's pick, 2026-10-20).
+ */
+export const CONTEXT_SHORT_LABELS: Record<ContextQuestionKey, string> = {
+  state: 'Doing',
+  people: 'People',
+  condition: 'Condition',
+};
+
+/** One question the spotter answered, under its short label, and their
+ *  answers in the words of the chips they tapped (the state's follow-up
+ *  rides with it). */
 export interface ContextAnswerGroup {
   key: ContextQuestionKey;
-  question: string;
+  label: string;
   answers: string[];
 }
 
@@ -184,17 +196,17 @@ function answeredContextRows(source: ContextSummarySource): ContextReviewRow[] {
 
 /**
  * The owner's "What they saw" on the sighting page: each question the spotter
- * answered, in the context step's own words, with their answers as the labels
- * of the chips they tapped — the page draws those as chips (owner,
- * 2026-10-19: the answers "just like" the report; only what was chosen, so a
- * skipped question isn't there at all). The marks and the note have blocks
- * of their own.
+ * answered, under its short label, with their answers in the words of the
+ * chips they tapped — the page sets them out as a label | answers table
+ * (owner, 2026-10-20; chips under the full questions before that). Only what
+ * was chosen, so a skipped question isn't there at all. The marks and the
+ * note have blocks of their own.
  */
 export function sightingAnswerGroups(source: ContextSummarySource): ContextAnswerGroup[] {
   const answered = answeredContext(source);
   return QUESTION_ORDER.filter((key) => answered[key].length > 0).map((key) => ({
     key,
-    question: CONTEXT_QUESTIONS[key],
+    label: CONTEXT_SHORT_LABELS[key],
     answers: answered[key],
   }));
 }

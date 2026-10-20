@@ -15,6 +15,7 @@
 import {
   CONDITION_OPTIONS,
   CONTEXT_QUESTIONS,
+  CONTEXT_SHORT_LABELS,
   FLAG_LABELS,
   PARKED_LIKELIHOOD_LABELS,
   PEOPLE_OPTIONS,
@@ -42,7 +43,7 @@ describe('contextLabels — the shared words', () => {
   it('still names a legacy street-parked row', () => {
     expect(PARKED_LIKELIHOOD_LABELS.street).toBe('Street parked');
     expect(sightingAnswerGroups({ contextFlags: ['parked'], parkedLikelihood: 'street' })).toEqual(
-      [{ key: 'state', question: 'What was it doing?', answers: ['Parked', 'Street parked'] }],
+      [{ key: 'state', label: 'Doing', answers: ['Parked', 'Street parked'] }],
     );
   });
 
@@ -54,11 +55,11 @@ describe('contextLabels — the shared words', () => {
         peoplePresence: 'in_vehicle',
       }),
     ).toEqual([
-      { key: 'state', question: 'What was it doing?', answers: ['Moving', 'Heading north-east'] },
-      { key: 'people', question: 'Anyone in or near it?', answers: ['Someone in it'] },
+      { key: 'state', label: 'Doing', answers: ['Moving', 'Heading north-east'] },
+      { key: 'people', label: 'People', answers: ['Someone in it'] },
       {
         key: 'condition',
-        question: 'Its condition',
+        label: 'Condition',
         answers: ['Damage visible', FLAG_LABELS.plate_changed],
       },
     ]);
@@ -72,7 +73,7 @@ describe('contextLabels — the shared words', () => {
 
   it('shows a legacy two-state row as stored — never guessing which was meant', () => {
     expect(sightingAnswerGroups({ contextFlags: ['parked', 'driving'] })).toEqual([
-      { key: 'state', question: 'What was it doing?', answers: ['Parked', 'Moving'] },
+      { key: 'state', label: 'Doing', answers: ['Parked', 'Moving'] },
     ]);
   });
 
@@ -80,20 +81,24 @@ describe('contextLabels — the shared words', () => {
     expect(
       sightingAnswerGroups({ contextFlags: ['parked', 'people_nearby'], peoplePresence: 'nobody' }),
     ).toEqual([
-      { key: 'state', question: 'What was it doing?', answers: ['Parked'] },
-      { key: 'people', question: 'Anyone in or near it?', answers: ['No one seen'] },
+      { key: 'state', label: 'Doing', answers: ['Parked'] },
+      { key: 'people', label: 'People', answers: ['No one seen'] },
     ]);
     expect(sightingAnswerGroups({ contextFlags: ['people_nearby'] })).toEqual([
-      { key: 'people', question: 'Anyone in or near it?', answers: ['People nearby'] },
+      { key: 'people', label: 'People', answers: ['People nearby'] },
     ]);
   });
 
-  it('asks the owner’s page the wizard’s own questions — one copy', () => {
+  it('keeps the wizard’s questions in one copy', () => {
     expect(CONTEXT_QUESTIONS).toEqual({
       state: 'What was it doing?',
       people: 'Anyone in or near it?',
       condition: 'Its condition',
     });
+  });
+
+  it('labels the owner’s table in one word per question', () => {
+    expect(CONTEXT_SHORT_LABELS).toEqual({ state: 'Doing', people: 'People', condition: 'Condition' });
   });
 
   it('keeps the check-and-send rows as they were (same answers, statement labels)', () => {
@@ -149,17 +154,13 @@ describe('sightingAnswerGroups — the owner’s "What they saw"', () => {
     expect(owner.map((group) => group.answers.join(' · '))).toEqual(
       spotter.filter((row) => shared.includes(row.key)).map((row) => row.value),
     );
-    expect(owner.map((group) => group.question)).toEqual([
-      'What was it doing?',
-      'Anyone in or near it?',
-      'Its condition',
-    ]);
+    expect(owner.map((group) => group.label)).toEqual(['Doing', 'People', 'Condition']);
   });
 
   it('shows only the questions that were answered', () => {
     expect(sightingAnswerGroups({ contextFlags: [] })).toEqual([]);
     expect(sightingAnswerGroups({ contextFlags: [], peoplePresence: 'nobody' })).toEqual([
-      { key: 'people', question: 'Anyone in or near it?', answers: ['No one seen'] },
+      { key: 'people', label: 'People', answers: ['No one seen'] },
     ]);
   });
 });

@@ -136,10 +136,12 @@ car today — the owner has them.").
     any of these?" list read back in the same rows (`MarkTile`, read-only;
     `markChecklist`; the marks are the listing's, via `useSightingPost`;
     an older report with no `offered_feature_ids` shows the seen ones
-    alone). Then each question they answered, in the wizard's own words
-    (`CONTEXT_QUESTIONS`), with what they chose as read-only chips in the
-    wizard's selected style (`sightingAnswerGroups`; skipped questions
-    aren't shown), then their note.
+    alone). Then their answers as a small table, label | answers
+    (`sightingAnswerGroups` under `CONTEXT_SHORT_LABELS`: Doing / People /
+    Condition), plain text with hairlines between rows — a state's
+    follow-up on its line ("Parked · Looks settled"), conditions a line
+    each; skipped questions aren't shown, and rows stack at large text.
+    Then their note.
   - **Where:** the street address in a chip (`useSightingAddress`: a device
     reverse geocode of the point, the stored area as the fallback), the map,
     the safety notice beside the point, then [Google Maps] [Waze] side by

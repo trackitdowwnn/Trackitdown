@@ -8,8 +8,9 @@
  *          "Change" for "Not my car", and "Got your car back?" under a
  *          confirmation); "What they saw" (ALL the owner's marks, the ones the
  *          spotter could see ticked — the wizard's list read back; their
- *          answers as chips; their note); "Where" (the street address, the
- *          map, the safety notice, then [Google Maps] [Waze] — each behind
+ *          answers as a label | answers table; their note); "Where" (the
+ *          street address, the map, the safety notice, then [Google Maps]
+ *          [Waze] — each behind
  *          the same don't-approach confirm, each a pin); "Spotted by" (their
  *          record, and Message — always there);
  *        - pinned to the bottom, ONLY while undecided: "Is this your car?".
