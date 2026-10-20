@@ -3,45 +3,48 @@
  *        section since 2026-10-19 (owner: evidence first): every one of the
  *        owner's marks the spotter was asked about, the ones they could see
  *        ticked ("Seen 1 of 3") — or, for an older report, the seen ones alone
- *        ("Your marks they could see"; markChecklist says which); then each
- *        question they answered, in the report's own words, with what they
- *        chose as chips ("What was it doing?" — [Parked] [Looks settled]);
- *        then their note under "In their words" (set apart by a rule).
- * WHY:   Both halves read back the report wizard the way the spotter filled
- *        it in (owner, 2026-10-19):
- *        - the marks in the SAME rows (MarkTile, read-only) with the same
- *          ticks, unseen marks included — so "they didn't see the dent" and
- *          "the dent isn't on my listing" no longer look alike;
- *        - the answers as the chips they tapped, under the questions they
- *          were asked — ONLY the chosen ones (owner's pick): unlike a mark,
- *          an option nobody chose says nothing ("not Driving" is noise).
- *          Skipped and "Not sure" store nothing, so those questions aren't
- *          here at all.
- *        Before that the answers were caption/text rows (2026-10-08), and
- *        before THAT one dense unlabelled line ("Parked · Looks settled ·
- *        Heading north · 2 people nearby").
+ *        ("Your marks they could see"; markChecklist says which); then the
+ *        spotter's answers as a small TABLE, label | answers, one row per
+ *        question they answered (Doing | Parked · Looks settled); then their
+ *        note under "In their words" (set apart by a rule).
+ * WHY:   - The marks read back the report wizard the way the spotter filled
+ *          it in (owner, 2026-10-19): the SAME rows (MarkTile, read-only),
+ *          the same ticks, unseen marks included — so "they didn't see the
+ *          dent" and "the dent isn't on my listing" no longer look alike.
+ *        - The answers as a table (owner, 2026-10-20: "a table look … instead
+ *          of stacked on top of each other"), with the owner's picks: SHORT
+ *          labels (Doing / People / Condition) so the answers keep the width,
+ *          and PLAIN TEXT, not chips — nothing here is tappable, and 44pt
+ *          filled chips sat heavy in a table cell. Only what was chosen:
+ *          skipped and "Not sure" store nothing, so those rows aren't here.
+ *          A state's follow-up stays on its line (Parked · Looks settled);
+ *          conditions take a line each.
+ *        Before: chips under the full questions (2026-10-19), caption/text
+ *        rows (2026-10-08), and before THAT one dense unlabelled line.
  *
- *        A follow-up rides in its question's group as its own chip ([Parked]
- *        [Looks settled], [Moving] [Heading north-east]) — the compass
- *        direction never was a chip in the wizard, but here it is an answer
- *        like the rest, and one block per question reads faster than the
- *        wizard's indented follow-ups.
- *
- *        ⚠️ THE CHIPS ARE NOT CONTROLS. They wear ChoiceChips' selected look
- *        but are plain text in a box: no radio/checkbox role, nothing to
- *        press, and each question is ONE screen-reader stop that reads as a
- *        statement ("What was it doing? Parked, Looks settled").
+ *        ⚠️ LARGE TEXT STACKS THE ROWS. Two columns on a 360dp phone squeeze
+ *        both at big font sizes, so past listRowStackFontScale each row puts
+ *        its label above its answers — the decision bar's and the maps
+ *        buttons' rule. Nothing truncates at any size.
+ *        Each row is ONE screen-reader stop, read as a statement ("Condition:
+ *        Damage visible, Plate changed or missing").
  * LINKS: ./MarkTile.tsx; ../lib/markChecklist.ts (which marks, seen or not);
- *        ../lib/contextLabels.ts (sightingAnswerGroups, CONTEXT_QUESTIONS);
- *        src/shared/ui/ChoiceChips.tsx (the look the answer chips copy);
+ *        ../lib/contextLabels.ts (sightingAnswerGroups, CONTEXT_SHORT_LABELS);
  *        src/features/sightings/screens/SightingDetailScreen.tsx.
  */
 
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
+import {
+  listRowStackFontScale,
+  sizes,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 
-import { sightingAnswerGroups } from '../lib/contextLabels';
+import { sightingAnswerGroups, type ContextAnswerGroup } from '../lib/contextLabels';
 import type { MarkChecklist } from '../lib/markChecklist';
 import type { OwnerSighting } from '../types';
 import { MarkTile } from './MarkTile';
@@ -63,16 +66,17 @@ export function hasSeenDetails(sighting: OwnerSighting, marks: MarkChecklist): b
   );
 }
 
-/** "What was it doing? Parked, Looks settled" / "Its condition: Damage
- *  visible" — a question that isn't phrased as one still gets a break, so
- *  the screen reader doesn't run it into the answer. */
-function spokenAnswer(question: string, answers: readonly string[]): string {
-  return `${question}${question.endsWith('?') ? '' : ':'} ${answers.join(', ')}`;
+/** A row's answer lines: the state with its follow-up on ONE line ("Parked ·
+ *  Looks settled" is one answer, qualified), everything else a line each. */
+function answerLines(group: ContextAnswerGroup): string[] {
+  return group.key === 'state' ? [group.answers.join(' · ')] : group.answers;
 }
 
 /** The marks, the spotter's answers and their note — see the header. */
 export function SightingSeenSection({ sighting, marks }: SightingSeenSectionProps) {
   const styles = useThemedStyles(makeStyles);
+  const { fontScale } = useWindowDimensions();
+  const stacked = fontScale > listRowStackFontScale;
   const groups = sightingAnswerGroups(sighting);
   const note = sighting.note?.trim();
   const { checks, complete } = marks;
@@ -103,27 +107,44 @@ export function SightingSeenSection({ sighting, marks }: SightingSeenSectionProp
         </View>
       ) : null}
 
-      {groups.map((group) => (
-        // One stop per question, read as a statement — see the header.
-        <View
-          key={group.key}
-          style={styles.group}
-          accessible
-          accessibilityLabel={spokenAnswer(group.question, group.answers)}
-          testID={`seen-${group.key}`}
-        >
-          <Text style={styles.label}>{group.question}</Text>
-          <View style={styles.chips}>
-            {group.answers.map((answer, index) => (
-              // Indexed: a legacy or direct-RPC row can repeat a flag, and
-              // the answers are shown as stored, never deduped.
-              <View key={`${index}-${answer}`} style={styles.chip}>
-                <Text style={styles.chipLabel}>{answer}</Text>
+      {groups.length > 0 ? (
+        <View testID="sighting-answers">
+          {groups.map((group, index) => (
+            // One stop per row, read as a statement — see the header.
+            <View
+              key={group.key}
+              style={[
+                styles.row,
+                stacked && styles.rowStacked,
+                index > 0 && styles.rowDivided,
+                // The section's own rhythm frames the table: no extra padding
+                // above the first row or below the last.
+                index === 0 && styles.rowFirst,
+                index === groups.length - 1 && styles.rowLast,
+              ]}
+              accessible
+              accessibilityLabel={`${group.label}: ${group.answers.join(', ')}`}
+              testID={`seen-${group.key}`}
+            >
+              <Text style={[styles.cellLabel, !stacked && styles.cellLabelColumn]}>
+                {group.label}
+              </Text>
+              <View
+                style={[styles.cellAnswers, !stacked && styles.cellAnswersColumn]}
+                testID={`seen-${group.key}-answers`}
+              >
+                {answerLines(group).map((line, lineIndex) => (
+                  // Indexed: a legacy or direct-RPC row can repeat a flag, and
+                  // the answers are shown as stored, never deduped.
+                  <Text key={`${lineIndex}-${line}`} style={styles.answer}>
+                    {line}
+                  </Text>
+                ))}
               </View>
-            ))}
-          </View>
+            </View>
+          ))}
         </View>
-      ))}
+      ) : null}
 
       {note ? (
         <View style={styles.note} testID="seen-note">
@@ -140,7 +161,7 @@ const makeStyles = (c: Palette) =>
     root: {
       gap: spacing.xl,
     },
-    // Every block's quiet label — the marks' count, each question, the note.
+    // The blocks' quiet label — the marks' count and the note.
     label: {
       ...typography.caption,
       color: c.textSecondary,
@@ -153,31 +174,54 @@ const makeStyles = (c: Palette) =>
     markTiles: {
       gap: spacing.sm,
     },
-    group: {
+    // A table row: label | answers, top-aligned so a two-line answer cell
+    // keeps its label on the first line.
+    row: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.md,
+      paddingVertical: spacing.md,
+    },
+    // Large text: the label over its answers, the row otherwise the same.
+    rowStacked: {
+      flexDirection: 'column',
       gap: spacing.xs,
     },
-    // ChoiceChips' own row and SELECTED chip, token for token (plus centred
-    // text for large-text wraps, below), so an answer
-    // looks exactly like the chip the spotter tapped. Wraps at large text.
-    chips: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: spacing.sm,
+    // Hairlines BETWEEN rows only — the section's own dividers frame the
+    // table, so none above the first or below the last.
+    rowFirst: {
+      paddingTop: 0,
     },
-    chip: {
-      minHeight: sizes.touchTarget,
-      minWidth: sizes.touchTarget,
-      paddingHorizontal: spacing.lg,
-      borderRadius: radii.sm,
-      backgroundColor: c.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
+    rowLast: {
+      paddingBottom: 0,
     },
-    // Centred, so a long answer that wraps at large text stays one block.
-    chipLabel: {
-      ...typography.label,
-      color: c.textOnPrimary,
-      textAlign: 'center',
+    rowDivided: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.border,
+    },
+    cellLabel: {
+      ...typography.caption,
+      color: c.textSecondary,
+    },
+    // A fixed share of the row, so every row's answers start on one line
+    // down the table — wide enough for "Condition" at normal text.
+    // Side by side, the caption takes the answer's line height, so the label
+    // sits on the answer's first line rather than above it.
+    cellLabelColumn: {
+      lineHeight: typography.body.lineHeight,
+      flexBasis: '30%',
+    },
+    cellAnswers: {
+      gap: spacing.xs,
+    },
+    // Side by side only: the rest of the row. (Stacked, flex: 1 in an
+    // auto-height column would collapse the cell.)
+    cellAnswersColumn: {
+      flex: 1,
+    },
+    answer: {
+      ...typography.body,
+      color: c.textPrimary,
     },
     // Their words, set apart by a rule rather than quote marks (which hang on
     // a wrapped note) — the design system's inline-quote form.

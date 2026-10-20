@@ -19,7 +19,8 @@
  */
 
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
-import { Linking } from 'react-native';
+import * as ReactNative from 'react-native';
+import { Linking, StyleSheet } from 'react-native';
 
 import { googleMapsPinUrl, wazePinUrl } from '@/shared/lib';
 import { SAFETY_NOTICE_BODY, ToastProvider } from '@/shared/ui';
@@ -541,8 +542,8 @@ describe('the evidence', () => {
     const at = (text: string) => texts.indexOf(text);
     // An older report (no "asked about" record): the seen ones, no total.
     expect(at('Your marks they could see')).toBeGreaterThan(-1);
-    expect(at('Your marks they could see')).toBeLessThan(at('What was it doing?'));
-    expect(at('What was it doing?')).toBeLessThan(at('In their words'));
+    expect(at('Your marks they could see')).toBeLessThan(at('Doing'));
+    expect(at('Doing')).toBeLessThan(at('In their words'));
   });
 
   it('⚠️ lists ALL the marks they were asked about, ticking the ones they saw', async () => {
@@ -655,7 +656,7 @@ describe('the evidence', () => {
     expect(view.getByText(SAFETY_NOTICE_BODY)).toBeTruthy();
   });
 
-  it('⚠️ shows each question asked with the chips they chose — read, never tapped', async () => {
+  it('⚠️ sets the answers out as a table — a short label, then plain answers', async () => {
     ready(
       sighting({
         contextFlags: ['parked', 'damage_visible', 'plate_changed'],
@@ -664,32 +665,78 @@ describe('the evidence', () => {
       }),
     );
     const view = await renderScreen();
-    // The wizard's own questions, the chips they tapped as chips.
-    expect(view.getByText('What was it doing?')).toBeTruthy();
-    expect(view.getByText('Parked')).toBeTruthy();
-    expect(view.getByText('Anyone in or near it?')).toBeTruthy();
-    expect(view.getByText('Its condition')).toBeTruthy();
-    // One statement per question for a screen reader…
-    expect(view.getByTestId('seen-condition').props.accessibilityLabel).toMatch(
-      // A break after a question not phrased as one — never "condition Damage".
-      /^Its condition: .+, .+$/,
+    expect(view.getByTestId('sighting-answers')).toBeTruthy();
+    expect(view.getByText('Doing')).toBeTruthy();
+    expect(view.getByText('People')).toBeTruthy();
+    expect(view.getByText('Condition')).toBeTruthy();
+    // A state's follow-up shares its line; conditions take a line each.
+    expect(view.getByText(/^Parked · /)).toBeTruthy();
+    expect(view.getByText('Damage visible')).toBeTruthy();
+    expect(view.getByText('Plate changed or missing')).toBeTruthy();
+    // One statement per row for a screen reader…
+    expect(view.getByTestId('seen-condition').props.accessibilityLabel).toBe(
+      'Condition: Damage visible, Plate changed or missing',
     );
     // …and nothing here is a control.
     expect(view.queryByRole('radio')).toBeNull();
     expect(view.queryByRole('checkbox')).toBeNull();
   });
 
+  it('⚠️ stacks each row — label over answers — at large text', async () => {
+    const dimensions = jest
+      .spyOn(ReactNative.Dimensions, 'get')
+      .mockReturnValue({ width: 360, height: 780, scale: 3, fontScale: 2 });
+    try {
+      ready(sighting({ contextFlags: ['parked'], peoplePresence: 'nearby' }));
+      const view = await renderScreen();
+      const row = StyleSheet.flatten(view.getByTestId('seen-state').props.style);
+      expect(row.flexDirection).toBe('column');
+      // ⚠️ No flex: 1 when stacked — in an auto-height column it collapses
+      // the answers cell.
+      const cell = StyleSheet.flatten(view.getByTestId('seen-state-answers').props.style);
+      expect(cell.flex).toBeUndefined();
+      expect(view.getByTestId('seen-people')).toBeTruthy();
+    } finally {
+      dimensions.mockRestore();
+    }
+  });
+
+  it('sits side by side at normal text', async () => {
+    // Explicit: React Native's Jest setup reports fontScale 2 by default.
+    const dimensions = jest
+      .spyOn(ReactNative.Dimensions, 'get')
+      .mockReturnValue({ width: 360, height: 780, scale: 3, fontScale: 1 });
+    try {
+      const view = await renderScreen();
+      const row = StyleSheet.flatten(view.getByTestId('seen-state').props.style);
+      expect(row.flexDirection).toBe('row');
+      // Side by side, the answers take the rest of the row.
+      const cell = StyleSheet.flatten(view.getByTestId('seen-state-answers').props.style);
+      expect(cell.flex).toBe(1);
+    } finally {
+      dimensions.mockRestore();
+    }
+  });
+
+  it('shows no table at all when no question was answered', async () => {
+    ready(
+      sighting({ contextFlags: [], parkedLikelihood: null, peoplePresence: null, direction: null }),
+    );
+    const view = await renderScreen();
+    expect(view.queryByTestId('sighting-answers')).toBeNull();
+  });
+
   it('leaves out a question they skipped — never an empty one', async () => {
     ready(sighting({ contextFlags: ['parked'], parkedLikelihood: null, peoplePresence: null }));
     const view = await renderScreen();
-    expect(view.getByText('What was it doing?')).toBeTruthy();
-    expect(view.queryByText('Anyone in or near it?')).toBeNull();
-    expect(view.queryByText('Its condition')).toBeNull();
+    expect(view.getByText('Doing')).toBeTruthy();
+    expect(view.queryByText('People')).toBeNull();
+    expect(view.queryByText('Condition')).toBeNull();
   });
 
   it('labels what they saw, sets their note apart, and lists your marks they could see', async () => {
     const view = await renderScreen();
-    expect(view.getByLabelText('What was it doing? Parked, Looks parked up')).toBeTruthy();
+    expect(view.getByLabelText('Doing: Parked, Looks parked up')).toBeTruthy();
     expect(view.getByText('In their words')).toBeTruthy();
     expect(view.getByText('Outside the Tesco on Deansgate')).toBeTruthy();
     expect(view.getByText('Dent on the rear door')).toBeTruthy();
