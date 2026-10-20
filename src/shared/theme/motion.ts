@@ -98,6 +98,18 @@ export const motion = {
   autoAdvanceAfterPicker: 300,
   /** One cycle of a calm loading pulse (PhotoGridPicker's uploading tile). */
   loaderLoop: 1200,
+  /** The opening screen's mark — ONE HALF of its slow breathe (dim, then back),
+   *  so a whole breath is ~1.6s. Ambient, like progressWorking: alive, not
+   *  urgent (2026-10-20, owner's pick: "mark only, gentle pulse"). */
+  splashPulse: 800,
+  /** How long the opening screen waits before admitting a start is SLOW and
+   *  showing its progress line. Most starts lift well inside it, so most
+   *  people never see the line at all. */
+  splashSlowAfter: 2000,
+  /** One pass of the opening screen's progress line, left to right. An ambient
+   *  loop, so a sanctioned exception to the 200–300ms scale, like
+   *  loaderShimmer. */
+  splashProgressSweep: 1400,
   /** BrandLoader: dwell time per waiting phrase before it rotates — long
    *  enough to read twice, short enough to prove the app is alive. */
   loaderPhraseRotate: 2800,

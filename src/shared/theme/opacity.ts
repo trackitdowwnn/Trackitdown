@@ -16,6 +16,10 @@ export const opacity = {
   /** Floor of the loader dots' wave/pulse — dimmer than inactive so the
    *  rise reads clearly at a slow tempo. */
   loaderRest: 0.35,
+  /** The faintest the opening screen's mark gets mid-breath (BrandSplash).
+   *  Shallower than loaderRest: the mark is the whole screen, and a deep dip
+   *  reads as flicker rather than breath. */
+  splashBreathLow: 0.6,
 } as const;
 
 export type OpacityToken = keyof typeof opacity;

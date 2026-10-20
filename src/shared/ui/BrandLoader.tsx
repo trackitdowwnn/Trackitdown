@@ -1,10 +1,11 @@
 /**
  * WHAT:  BrandLoader — THE app's one loading visual: the "T" monogram with a
  *        calm rotating phrase beneath it, lit by a highlight that sweeps left
- *        to right through the letters. Every blocking wait shows this same
- *        face — the cold-start splash (BrandSplash) and the in-app
- *        FullscreenLoader both render it — so loading always looks like the
- *        app opening, never like a component buffering.
+ *        to right through the letters. Every in-app blocking wait shows this
+ *        same face (FullscreenLoader renders it), so loading always looks like
+ *        the app, never like a component buffering. The OPENING screen is no
+ *        longer one of them (2026-10-20): BrandSplash is the native splash's
+ *        continuation — the mark alone, breathing — and has its own face.
  * WHY:   Spinners and dot-waves say "machine busy"; the line says the same
  *        thing in the product's own voice. The shimmer is what carries the
  *        liveness signal BETWEEN phrase swaps (2026-08-06, at the owner's
@@ -21,8 +22,8 @@
  *        message shimmers just the same. The phrase pool is deliberately
  *        small, calm, and on-register: watchful and hopeful, never jokey
  *        (this app exists because something bad happened to the user).
- * LINKS: src/features/auth/components/BrandSplash.tsx and
- *        src/shared/ui/FullscreenLoader.tsx (the two consumers);
+ * LINKS: src/shared/ui/FullscreenLoader.tsx (the consumer);
+ *        src/features/auth/components/BrandSplash.tsx (the opening screen);
  *        src/shared/ui/BrandMark.tsx (the monogram);
  *        docs/DESIGN_SYSTEM.md (Loading, Motion, Tone).
  *

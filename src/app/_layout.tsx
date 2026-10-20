@@ -1,8 +1,9 @@
 /**
  * WHAT:  Root layout for the app — sets up the Expo Router navigation stack,
  *        mounts the app-wide palette, gesture, bottom-sheet and toast
- *        providers, and derives the navigation theme + status bar from the
- *        EFFECTIVE colour scheme (the user's System/Light/Dark choice resolved).
+ *        providers, and derives the navigation theme from the EFFECTIVE
+ *        colour scheme (the user's System/Light/Dark choice resolved). The
+ *        root status bar lives in AuthGate (it follows the opening screen).
  * WHY:   Every screen renders inside this layout; it is the single entry
  *        point Expo Router mounts. GestureHandlerRootView is required once at
  *        the root for react-native-gesture-handler,
@@ -29,7 +30,6 @@ import {
   useSegments,
 } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { useCallback, useEffect, useMemo } from 'react';
 import { Platform, StyleSheet } from 'react-native';
@@ -254,11 +254,9 @@ function RootLayoutContent() {
                   bookmark raised it. Inert until an intent is raised. */}
               <CollectionPickerSheet />
             </AuthGate>
-            {/* Explicit from the EFFECTIVE scheme, never "auto": auto follows
-                the DEVICE, so it would put dark icons on a dark app whenever
-                someone picks Dark on a light phone. ("light" here means light
-                ICONS, for our dark surfaces.) */}
-            <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+            {/* The root StatusBar lives in AuthGate now (2026-10-20): its icons
+                follow the opening screen's scheme while that is up, and only
+                the gate knows when it is. */}
           </BottomSheetModalProvider>
         </ToastProvider>
       </NavigationThemeProvider>
