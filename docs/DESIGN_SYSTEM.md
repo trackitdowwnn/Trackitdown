@@ -887,7 +887,13 @@ to use.
   `primary` dot on an owner's "Confirmed" / "Credited" sighting answer
   (`StatusPill`'s `primary` tone on `SightingDetailScreen`; the same filled
   dot on the owner's timeline cards) — a settled status, not success green,
-  which stays reserved for payout moments.
+  which stays reserved for payout moments. The third is the owner's sighting
+  page's ANSWER chips (`SightingSeenSection`, 2026-10-19): the spotter's
+  chosen answers drawn in `ChoiceChips`' selected style, token for token,
+  because the owner asked to read the report "just like" it was filled in.
+  They are plain text in a box (no role, nothing to press, one statement per
+  question for a screen reader); the only nearby CTA, the "Is this your
+  car?" bar, is pinned below the scroll and shows only while undecided.
 - Sighting timeline cards (owner, `SightingEntryCard`, 2026-10-09): flat
   `cardSurface` at the house `spacing.lg` padding, photo first
   (`sizes.timelineThumb`), the place in `cardTitle`, the clock time in

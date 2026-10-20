@@ -63,6 +63,7 @@ import type { WizardStepProps } from '@/shared/wizard';
 
 import {
   CONDITION_OPTIONS,
+  CONTEXT_QUESTIONS,
   FLAG_LABELS,
   PARKED_LIKELIHOOD_LABELS,
   PEOPLE_OPTIONS,
@@ -443,7 +444,7 @@ export function ContextStep({ answers, setAnswers }: StepProps) {
         </Text>
 
         <View>
-          <QuestionHead title="What was it doing?" />
+          <QuestionHead title={CONTEXT_QUESTIONS.state} />
           <ChoiceChips
             options={[
               ...STATE_OPTIONS.map((value) => ({ value, label: FLAG_LABELS[value] })),
@@ -451,7 +452,7 @@ export function ContextStep({ answers, setAnswers }: StepProps) {
             ]}
             value={shown('state', state)}
             onSelect={selectState}
-            accessibilityLabel="What was it doing?"
+            accessibilityLabel={CONTEXT_QUESTIONS.state}
             clearable
             testID="context-state"
           />
@@ -514,7 +515,7 @@ export function ContextStep({ answers, setAnswers }: StepProps) {
         </View>
 
         <View>
-          <QuestionHead title="Anyone in or near it?" />
+          <QuestionHead title={CONTEXT_QUESTIONS.people} />
           <ChoiceChips
             options={[
               ...PEOPLE_OPTIONS.map((value) => ({ value, label: PEOPLE_PRESENCE_LABELS[value] })),
@@ -522,7 +523,7 @@ export function ContextStep({ answers, setAnswers }: StepProps) {
             ]}
             value={shown('people', answers.peoplePresence)}
             onSelect={selectPeople}
-            accessibilityLabel="Anyone in or near it?"
+            accessibilityLabel={CONTEXT_QUESTIONS.people}
             clearable
             testID="context-people"
           />
@@ -547,12 +548,12 @@ export function ContextStep({ answers, setAnswers }: StepProps) {
         </View>
 
         <View>
-          <QuestionHead title="Its condition" hint="Any that apply." />
+          <QuestionHead title={CONTEXT_QUESTIONS.condition} hint="Any that apply." />
           <ChoiceChipsMulti
             options={CONDITION_OPTIONS.map((value) => ({ value, label: FLAG_LABELS[value] }))}
             value={conditions}
             onChange={changeConditions}
-            accessibilityLabel="Its condition"
+            accessibilityLabel={CONTEXT_QUESTIONS.condition}
             testID="context-condition"
           />
         </View>

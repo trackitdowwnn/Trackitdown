@@ -1,11 +1,11 @@
 /**
  * WHAT:  The one vocabulary for a sighting's structured context: the labels
  *        for every flag, follow-up and presence answer; the option lists the
- *        context step renders as chips; contextReviewRows(), the answers as
- *        labelled rows for the check-and-send step, and sightingDetailRows(),
- *        the same rows under the same labels for the owner's sighting page
- *        ("What they saw"); and contextDetailCount(), how many details a
- *        report carries.
+ *        context step renders as chips, and its questions (CONTEXT_QUESTIONS);
+ *        contextReviewRows(), the answers as labelled rows for the
+ *        check-and-send step, and sightingAnswerGroups(), the same answers per
+ *        question for the owner's sighting page ("What they saw", drawn as
+ *        chips); and contextDetailCount(), how many details a report carries.
  * WHY:   The context step, the confirm step and the owner's sighting page all
  *        describe the same facts. One module keeps
  *        the words identical everywhere: the step used to keep its own copies,
@@ -19,7 +19,7 @@
  * LINKS: src/features/sightings/types.ts (the vocabularies);
  *        src/features/sightings/components/sightingSteps.tsx (ContextStep),
  *        components/ConfirmStep.tsx (contextReviewRows),
- *        components/SightingSeenSection.tsx (sightingDetailRows).
+ *        components/SightingSeenSection.tsx (sightingAnswerGroups).
  */
 
 import {
@@ -102,25 +102,49 @@ export interface ContextReviewRow {
   value: string;
 }
 
+type ContextQuestionKey = 'state' | 'people' | 'condition';
+
 /**
- * The questions' row labels, ONE copy: the spotter checks their answers under
- * these words (contextReviewRows) and the owner reads them under the same ones
- * (sightingDetailRows) — what they check is what the owner reads.
+ * The questions' row labels for the check-and-send step's "What you saw"
+ * (contextReviewRows) — a summary, so statements, not questions.
  */
-const CONTEXT_ROW_LABELS = {
+const CONTEXT_ROW_LABELS: Record<ContextQuestionKey, string> = {
   state: 'What it was doing',
   people: 'Anyone in or near it',
   condition: 'Its condition',
-} as const;
+};
 
 /**
- * What the car was doing, who was with it, and its condition, as labelled
- * rows — only the questions that were answered ("Not sure" stores nothing,
- * so it never appears). Shared by both sides of a sighting.
+ * The context step's questions, word for word, ONE copy: the spotter is asked
+ * them (sightingSteps' ContextStep) and the owner reads the answers under
+ * them (sightingAnswerGroups) — the owner sees what was actually asked.
  */
-function answeredContextRows(source: ContextSummarySource): ContextReviewRow[] {
+export const CONTEXT_QUESTIONS: Record<ContextQuestionKey, string> = {
+  state: 'What was it doing?',
+  people: 'Anyone in or near it?',
+  condition: 'Its condition',
+};
+
+/** One question the spotter answered, and their answers to it in the words
+ *  of the chips they tapped (the state's follow-up rides with it). */
+export interface ContextAnswerGroup {
+  key: ContextQuestionKey;
+  question: string;
+  answers: string[];
+}
+
+/**
+ * What the car was doing, who was with it, and its condition — the answers as
+ * the chips' own labels, per question, only the questions that were answered
+ * ("Not sure" stores nothing, so it never appears). The one reading both
+ * sides of a sighting build on.
+ *
+ * Legacy rows are shown as stored, never guessed at: two state flags (from
+ * the old multi-select) list both; the old `people_nearby` flag stands in for
+ * the 3-way answer only when that is absent.
+ */
+function answeredContext(source: ContextSummarySource): Record<ContextQuestionKey, string[]> {
   const flags = source.contextFlags ?? [];
-  const rows: ContextReviewRow[] = [];
 
   const state: string[] = [];
   for (const flag of flags) {
@@ -131,9 +155,6 @@ function answeredContextRows(source: ContextSummarySource): ContextReviewRow[] {
     }
     if (flag === 'driving' && source.direction) state.push(directionLabel(source.direction));
   }
-  if (state.length > 0) {
-    rows.push({ key: 'state', label: CONTEXT_ROW_LABELS.state, value: state.join(' · ') });
-  }
 
   // The 3-way answer; the legacy people_nearby flag only when it's absent.
   const people = source.peoplePresence
@@ -141,37 +162,49 @@ function answeredContextRows(source: ContextSummarySource): ContextReviewRow[] {
     : flags.includes('people_nearby')
       ? FLAG_LABELS.people_nearby
       : null;
-  if (people) rows.push({ key: 'people', label: CONTEXT_ROW_LABELS.people, value: people });
 
   const condition = flags
     .filter((flag) => (CONDITION_FLAGS as readonly string[]).includes(flag))
     .map((flag) => FLAG_LABELS[flag]);
-  if (condition.length > 0) {
-    rows.push({
-      key: 'condition',
-      label: CONTEXT_ROW_LABELS.condition,
-      value: condition.join(' · '),
-    });
-  }
-  return rows;
+
+  return { state, people: people ? [people] : [], condition };
+}
+
+const QUESTION_ORDER: readonly ContextQuestionKey[] = ['state', 'people', 'condition'];
+
+/** The check-and-send step's rows: each answered question, one line. */
+function answeredContextRows(source: ContextSummarySource): ContextReviewRow[] {
+  const answered = answeredContext(source);
+  return QUESTION_ORDER.filter((key) => answered[key].length > 0).map((key) => ({
+    key,
+    label: CONTEXT_ROW_LABELS[key],
+    value: answered[key].join(' · '),
+  }));
 }
 
 /**
- * The owner's "What they saw" on the sighting page (2026-10-08): the same
- * labelled rows the spotter checked before sending, in place of the one dense
- * "Parked · Heading north · 2 people" line the page used to print. The marks
- * and the note have sections of their own there.
+ * The owner's "What they saw" on the sighting page: each question the spotter
+ * answered, in the context step's own words, with their answers as the labels
+ * of the chips they tapped — the page draws those as chips (owner,
+ * 2026-10-19: the answers "just like" the report; only what was chosen, so a
+ * skipped question isn't there at all). The marks and the note have blocks
+ * of their own.
  */
-export function sightingDetailRows(source: ContextSummarySource): ContextReviewRow[] {
-  return answeredContextRows(source);
+export function sightingAnswerGroups(source: ContextSummarySource): ContextAnswerGroup[] {
+  const answered = answeredContext(source);
+  return QUESTION_ORDER.filter((key) => answered[key].length > 0).map((key) => ({
+    key,
+    question: CONTEXT_QUESTIONS[key],
+    answers: answered[key],
+  }));
 }
 
 /**
  * Everything the spotter said, as labelled rows for the check-and-send step:
  * the state with its follow-up, the people, the condition, the marks they
- * saw, and the note. The SAME rows as sightingDetailRows (what they check is
- * what the owner reads); only answered questions appear, and "Not sure"
- * appears nowhere (it stores nothing). The marks keep the owner's order.
+ * saw, and the note. The SAME answers the owner reads (sightingAnswerGroups);
+ * only answered questions appear, and "Not sure" appears nowhere (it stores
+ * nothing). The marks keep the owner's order.
  */
 export function contextReviewRows(answers: Partial<ReportSightingAnswers>): ContextReviewRow[] {
   const rows = answeredContextRows(answers);
