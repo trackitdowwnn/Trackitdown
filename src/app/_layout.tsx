@@ -1,9 +1,10 @@
 /**
  * WHAT:  Root layout for the app — sets up the Expo Router navigation stack,
  *        mounts the app-wide palette, gesture, bottom-sheet and toast
- *        providers, and derives the navigation theme from the EFFECTIVE
- *        colour scheme (the user's System/Light/Dark choice resolved). The
- *        root status bar lives in AuthGate (it follows the opening screen).
+ *        providers, and derives the navigation theme + status bar from the
+ *        EFFECTIVE colour scheme (the user's System/Light/Dark choice
+ *        resolved). The native splash stays up until that choice is in
+ *        effect, so the first painted frame is already in the user's theme.
  * WHY:   Every screen renders inside this layout; it is the single entry
  *        point Expo Router mounts. GestureHandlerRootView is required once at
  *        the root for react-native-gesture-handler,
@@ -30,6 +31,7 @@ import {
   useSegments,
 } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { useCallback, useEffect, useMemo } from 'react';
 import { Platform, StyleSheet } from 'react-native';
@@ -41,7 +43,7 @@ import { useApplyUpdateOnLaunch } from '@/shared/lib/useApplyUpdateOnLaunch';
 // share of the tree and its tests, and this module reaches AppState, the
 // Supabase client and expo-constants. Same call as ThemeProvider below.
 import { installTelemetrySink } from '@/shared/lib/telemetry';
-import { usePalette, useThemeControls, type Palette } from '@/shared/theme';
+import { usePalette, useThemeControls, useThemeReady, type Palette } from '@/shared/theme';
 // Direct path, not the theme barrel: this module reaches AsyncStorage and
 // Appearance, and the barrel is imported by ~139 files and nearly every test —
 // exporting it from there made 91 suites fail to load on a null AsyncStorage.
@@ -128,6 +130,7 @@ export default function RootLayout() {
 function RootLayoutContent() {
   const palette = usePalette();
   const { scheme } = useThemeControls();
+  const themeReady = useThemeReady();
 
   // The root view BEHIND the React tree. Without this the window keeps its
   // native default (light) and shows through during navigation transitions and
@@ -163,20 +166,27 @@ function RootLayoutContent() {
   // an effect can fire a frame before the view is drawn, which is long enough
   // to flash the background between the two.
   const onLayoutRootView = useCallback(() => {
-    if (fontsLoaded || fontError) {
+    if ((fontsLoaded || fontError) && themeReady) {
       // Fonts BLOCK first paint by design (the null return below), so this is
       // the first phase of the boot that anyone waits on. Marked here rather
       // than in an effect for the same reason the splash handover is: this
-      // fires when the tree has actually drawn.
+      // fires when the tree has actually drawn. Since 2026-10-20 it also
+      // waits for the saved theme (useThemeReady) — normally the same few ms,
+      // up to THEME_READY_MAX_MS — so a slow mark here is not always fonts.
       markStartup('fonts_ready');
       void SplashScreen.hideAsync().catch(() => {});
     }
-  }, [fontsLoaded, fontError]);
+  }, [fontsLoaded, fontError, themeReady]);
 
   // Hold first paint the (few ms) the faces take — a load FAILURE renders
   // anyway on the system font rather than blanking the app. The OS splash is
   // still covering the screen here, so this null is never seen.
-  if (!fontsLoaded && !fontError) {
+  //
+  // Hold it, too, until the saved Light/Dark choice is in effect (owner,
+  // 2026-10-20: the opening screen must follow the app's theme, not the
+  // phone's). Painting earlier would draw it in the phone's scheme and flip it
+  // a moment later. Bounded by ThemeProvider's THEME_READY_MAX_MS.
+  if ((!fontsLoaded && !fontError) || !themeReady) {
     return null;
   }
 
@@ -254,9 +264,11 @@ function RootLayoutContent() {
                   bookmark raised it. Inert until an intent is raised. */}
               <CollectionPickerSheet />
             </AuthGate>
-            {/* The root StatusBar lives in AuthGate now (2026-10-20): its icons
-                follow the opening screen's scheme while that is up, and only
-                the gate knows when it is. */}
+            {/* Explicit from the EFFECTIVE scheme, never "auto": auto follows
+                the DEVICE, so it would put dark icons on a dark app whenever
+                someone picks Dark on a light phone. ("light" here means light
+                ICONS, for our dark surfaces.) */}
+            <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
           </BottomSheetModalProvider>
         </ToastProvider>
       </NavigationThemeProvider>

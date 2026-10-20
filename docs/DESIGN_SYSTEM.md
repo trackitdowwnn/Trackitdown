@@ -869,10 +869,10 @@ to use.
   its job is to be the native splash's continuation, not a loader: the mark
   ALONE, at the native splash's size (`NATIVE_SPLASH_MARK_DP`, ≈59dp, pinned
   by test to app.json's `imageWidth` × markSpec's splash `fill`) and centre,
-  on the background of the scheme the phone LAUNCHED in (`launchScheme`, not
-  the in-app preference, which the native splash cannot see), in the PNG's own
-  ink (`MARK_INK`/`MARK_INK_DARK` — the one in-app mark that is not
-  `primary`), with the status-bar icons to match while it is up. It breathes
+  in the APP's theme (the user's Light/Dark choice — owner, 2026-10-20; the
+  native splash is held until that choice is in effect, so it never paints in
+  the phone's and flips), in the PNG's own ink (`MARK_INK`/`MARK_INK_DARK` —
+  the one in-app mark that is not `primary`). It breathes
   (opacity 1 → `opacity.splashBreathLow`, `motion.splashPulse` per half,
   starting a beat after mount so the mark is whole at the handover). A start
   still going after `motion.splashSlowAfter` (2s) gains a
@@ -884,7 +884,7 @@ to use.
   of the accessibility tree, from its first frame. No spinner, no phrases, no
   words. Reduced motion: mark still, bar resting mid-track on `borderStrong`
   (at rest the track must read on its own), and the dissolve kept — it moves
-  nothing, and a cut would flash when phone and app themes differ.
+  nothing, and a cut would jar.
   In-app blocking waits show ONE face — `BrandLoader` (the mark + a rotating
   waiting phrase), via `FullscreenLoader`. The
   phrase is lit by a highlight sweeping left to right through its letters

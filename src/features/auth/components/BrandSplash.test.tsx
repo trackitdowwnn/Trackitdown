@@ -17,6 +17,7 @@ import { StyleSheet } from 'react-native';
 import { MARK_INK, MARK_INK_DARK } from '@/shared/brand/markGeometry';
 import { motion } from '@/shared/theme';
 import { colors, darkColors } from '@/shared/theme/colors';
+import { PaletteContext, ThemeControlsContext } from '@/shared/theme/paletteContext';
 
 import appJson from '../../../../app.json';
 import {
@@ -28,11 +29,6 @@ import {
 
 // Jest's CommonJS module scope; the app tsconfig carries no node types.
 declare const __dirname: string;
-
-let mockScheme: 'light' | 'dark' = 'light';
-jest.mock('../lib/launchScheme', () => ({
-  launchScheme: () => mockScheme,
-}));
 
 type JsonNode = { type: string; props: Record<string, unknown>; children: unknown };
 
@@ -80,7 +76,6 @@ const splashPlugin = () =>
 
 beforeEach(() => {
   jest.useFakeTimers();
-  mockScheme = 'light';
 });
 
 afterEach(() => {
@@ -209,17 +204,24 @@ describe('Reduce Motion', () => {
 });
 
 describe('the scheme', () => {
-  it('⚠️ paints in the scheme the phone LAUNCHED in, in the native splash’s ink', async () => {
-    // The test tree has no ThemeProvider, so the app's palette is light: a
-    // dark screen here can only have come from the launch scheme.
-    mockScheme = 'dark';
-    const dark = await render(<BrandSplash visible onHidden={jest.fn()} />);
+  /** Render inside the app's theme, as ThemeProvider supplies it. */
+  const inAppTheme = (scheme: 'light' | 'dark') => (
+    <ThemeControlsContext.Provider value={{ preference: scheme, scheme, setPreference: jest.fn() }}>
+      <PaletteContext.Provider value={scheme === 'dark' ? darkColors : colors}>
+        <BrandSplash visible onHidden={jest.fn()} />
+      </PaletteContext.Provider>
+    </ThemeControlsContext.Provider>
+  );
+
+  it('⚠️ follows the theme set in the app, in the native splash’s ink', async () => {
+    // Owner, 2026-10-20: "adhere to whatever theme the user has set up" — the
+    // app's choice, never the phone's.
+    const dark = await render(inAppTheme('dark'));
     expect(paint(dark)).toBe(darkColors.background);
     expect(ink(dark)).toBe(argb(MARK_INK_DARK));
     await dark.unmount();
 
-    mockScheme = 'light';
-    const light = await render(<BrandSplash visible onHidden={jest.fn()} />);
+    const light = await render(inAppTheme('light'));
     expect(paint(light)).toBe(colors.background);
     // The PNG's black, not `primary` — the designer's value, not UI.
     expect(ink(light)).toBe(argb(MARK_INK));
