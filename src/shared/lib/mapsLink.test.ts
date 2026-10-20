@@ -10,7 +10,7 @@
 
 import { Platform } from 'react-native';
 
-import { mapPinUrl } from './mapsLink';
+import { googleMapsPinUrl, mapPinUrl, wazePinUrl } from './mapsLink';
 
 describe('mapPinUrl on iOS', () => {
   beforeAll(() => {
@@ -78,5 +78,41 @@ describe('mapPinUrl label handling', () => {
     const url = mapPinUrl(1, 2, 'x'.repeat(200));
 
     expect(url.length).toBeLessThan(80);
+  });
+});
+
+// 2026-10-20: the owner's sighting page opens the point in Google Maps or
+// Waze by name. Both must stay a PIN (SECURITY_AND_TRUST §1).
+describe('googleMapsPinUrl and wazePinUrl', () => {
+  it('opens Google Maps on a search pin at the point', () => {
+    expect(googleMapsPinUrl(53.4794, -2.2453)).toBe(
+      'https://www.google.com/maps/search/?api=1&query=53.479400,-2.245300',
+    );
+  });
+
+  it('opens Waze on the place — never starting a drive', () => {
+    expect(wazePinUrl(53.4794, -2.2453)).toBe('waze://?ll=53.479400,-2.245300');
+  });
+
+  it('⚠️ opens Waze through its app scheme — never the web link that falls back to directions', () => {
+    // waze.com/ul without the app redirects to waze.com/live-map/directions.
+    expect(wazePinUrl(1, 2)).not.toMatch(/^https?:/);
+  });
+
+  it('rounds to six places and carries no label — nothing about the car or the person', () => {
+    const urls = [
+      googleMapsPinUrl(51.123456789, -0.987654321),
+      wazePinUrl(51.123456789, -0.987654321),
+    ];
+    for (const url of urls) {
+      expect(url).toContain('51.123457,-0.987654');
+      expect(url).not.toMatch(/[()]|q=.*[a-zA-Z]{3,}/);
+    }
+  });
+
+  it('⚠️ never emits a navigation form (§1: a pin, never directions)', () => {
+    for (const url of [googleMapsPinUrl(1, 2), wazePinUrl(1, 2)]) {
+      expect(url).not.toMatch(/navigate=|daddr=|google\.navigation|\/dir\b|\/dir\//);
+    }
   });
 });

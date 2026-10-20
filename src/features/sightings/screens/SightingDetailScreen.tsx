@@ -8,8 +8,9 @@
  *          "Change" for "Not my car", and "Got your car back?" under a
  *          confirmation); "What they saw" (ALL the owner's marks, the ones the
  *          spotter could see ticked — the wizard's list read back; their
- *          answers as labelled rows; their note); "Where" (the map, how
- *          exact it is, the safety notice, Open in Maps); "Spotted by" (their
+ *          answers as chips; their note); "Where" (the street address, the
+ *          map, the safety notice, then [Google Maps] [Waze] — each behind
+ *          the same don't-approach confirm, each a pin); "Spotted by" (their
  *          record, and Message — always there);
  *        - pinned to the bottom, ONLY while undecided: "Is this your car?".
  * WHY:   Redesigned 2026-10-19 (owner: evidence first, a calm page once
@@ -64,7 +65,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { z } from 'zod';
 
 import { useNow, useTimeAgo } from '@/shared/hooks';
-import { formatDateTimeLabel, mapPinUrl, spokenAgo } from '@/shared/lib';
+import { formatDateTimeLabel, googleMapsPinUrl, spokenAgo, wazePinUrl } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import {
   opacity,
@@ -93,8 +94,9 @@ import { SightingDecisionBar } from '../components/SightingDecisionBar';
 import { SightingDetailHero } from '../components/SightingDetailHero';
 import { hasSeenDetails, SightingSeenSection } from '../components/SightingSeenSection';
 import { SightingSpotterCard } from '../components/SightingSpotterCard';
-import { SightingWhereSection } from '../components/SightingWhereSection';
+import { SightingWhereSection, type MapsApp } from '../components/SightingWhereSection';
 import { usePostSightings } from '../hooks/usePostSightings';
+import { useSightingAddress } from '../hooks/useSightingAddress';
 import { useSightingPost, type RecoveryDoor } from '../hooks/useSightingPost';
 import { markChecklist } from '../lib/markChecklist';
 import {
@@ -298,22 +300,36 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
 
   const locatedPhoto =
     sighting?.photos.find((photo) => photo.lat !== null && photo.lng !== null) ?? null;
+  const point = locatedPhoto
+    ? { lat: locatedPhoto.lat as number, lng: locatedPhoto.lng as number }
+    : null;
+  const areaShown = sighting && !sighting.locationUnavailable ? sighting.areaLabel : null;
+  // The street address under "Where" (owner, 2026-10-20) — the stored area
+  // until the device lookup answers, or if it can't.
+  const address = useSightingAddress(point, areaShown);
 
-  // Hand the captured point to whatever maps app the device has. A device can
-  // genuinely have none (stripped Android builds), and openURL then rejects —
-  // so this is a toast, never an unhandled rejection.
+  // Which app the owner picked — read by the confirm's label and its action.
+  const [mapsApp, setMapsApp] = useState<MapsApp>('google');
+  const mapsAppName = mapsApp === 'google' ? 'Google Maps' : 'Waze';
+
+  // Open the captured point as a PIN in the app the owner picked (§1: never
+  // directions — mapsLink.ts). Google Maps: an https link the app claims, or
+  // the browser shows. Waze: its app scheme, which has no web fallback (the
+  // web one lands on a directions page). openURL can reject, so this is a
+  // toast, never an unhandled rejection.
   const openInMaps = async () => {
-    if (!locatedPhoto) return;
-    const url = mapPinUrl(
-      locatedPhoto.lat as number,
-      locatedPhoto.lng as number,
-      'Car sighted here',
-    );
+    if (!point) return;
+    const url =
+      mapsApp === 'google'
+        ? googleMapsPinUrl(point.lat, point.lng)
+        : wazePinUrl(point.lat, point.lng);
     try {
       await Linking.openURL(url);
-      log.info('sighting_map_opened', { postId, sightingId });
+      log.info('sighting_map_opened', { postId, sightingId, app: mapsApp });
     } catch {
-      toast.show('We couldn’t open your maps app.', 'error');
+      // Google Maps' https link always has the browser to fall back on; Waze's
+      // app link has none (mapsLink.ts), so this is mostly "not installed".
+      toast.show(`We couldn’t open ${mapsAppName}. Is it installed?`, 'error');
     }
   };
 
@@ -380,20 +396,17 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
               ) : null}
 
               {/* The safety notice lives here, beside the exact point and
-                  above Open in Maps (SightingWhereSection). */}
+                  above the maps buttons (SightingWhereSection). */}
               <Section title="Where">
                 <SightingWhereSection
-                  point={
-                    locatedPhoto
-                      ? {
-                          lat: locatedPhoto.lat as number,
-                          lng: locatedPhoto.lng as number,
-                          accuracyM: locatedPhoto.accuracyM,
-                        }
-                      : null
-                  }
-                  areaLabel={sighting.locationUnavailable ? null : sighting.areaLabel}
-                  onOpenMaps={() => mapsConfirmRef.current?.open()}
+                  point={point}
+                  address={address}
+                  areaLabel={areaShown}
+                  // Either app asks first — the same confirm, the same notice.
+                  onOpenMaps={(app) => {
+                    setMapsApp(app);
+                    mapsConfirmRef.current?.open();
+                  }}
                 />
               </Section>
 
@@ -449,7 +462,7 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
         ref={mapsConfirmRef}
         title="Opening the map — please don’t approach"
         body={SAFETY_NOTICE_BODY}
-        confirmLabel="Open in Maps"
+        confirmLabel={`Open in ${mapsAppName}`}
         onConfirm={() => void openInMaps()}
       />
     </View>

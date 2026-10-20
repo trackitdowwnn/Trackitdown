@@ -1,6 +1,8 @@
 /**
  * WHAT:  mapPinUrl — drops a PIN at a coordinate in the platform's own maps
- *        app, with an optional caption. It does NOT start navigation.
+ *        app, with an optional caption — and googleMapsPinUrl / wazePinUrl,
+ *        the same pin in a named app (the owner's sighting page, 2026-10-20).
+ *        None of them starts navigation.
  * WHY:   The owner reading where their car was sighted has, until now, had no
  *        way out of our static map — the only route to a real maps app was
  *        reading coordinates off a screen that doesn't display any.
@@ -64,11 +66,7 @@ function safeLabel(label: string): string {
  * because a device CAN have no maps app at all (a stripped Android build), and
  * that is a "we couldn't open it" toast, not a crash.
  */
-export function mapPinUrl(
-  latitude: number,
-  longitude: number,
-  label?: string,
-): string {
+export function mapPinUrl(latitude: number, longitude: number, label?: string): string {
   const coords = `${latitude},${longitude}`;
   const trimmed = label ? safeLabel(label) : undefined;
 
@@ -87,4 +85,36 @@ export function mapPinUrl(
   return trimmed
     ? `geo:0,0?q=${coords}(${encodeURIComponent(trimmed)})`
     : `geo:${coords}?q=${coords}`;
+}
+
+/** Six decimal places (~0.1 m): the point as captured, no more digits. */
+const coordsOf = (latitude: number, longitude: number) =>
+  `${latitude.toFixed(6)},${longitude.toFixed(6)}`;
+
+/**
+ * Google Maps, opened ON A PIN — its documented cross-platform "search" link,
+ * which the app claims when installed and the browser shows when not. The
+ * owner chose Google Maps or Waze by name for the sighting page (2026-10-20).
+ *
+ * ⚠️ `search`, never `dir`: `/maps/dir/` is directions (§1). No label — the
+ * point alone is the query, so nothing about the car or the person is sent.
+ */
+export function googleMapsPinUrl(latitude: number, longitude: number): string {
+  return `https://www.google.com/maps/search/?api=1&query=${coordsOf(latitude, longitude)}`;
+}
+
+/**
+ * Waze, opened ON A PLACE — its own app link, which shows the point on a
+ * place card and offers a drive the user must choose.
+ *
+ * ⚠️ THE APP SCHEME, NOT THE https LINK (security review, 2026-10-20). With
+ * Waze not installed, `https://waze.com/ul?ll=` falls back to the browser and
+ * redirects to waze.com/live-map/DIRECTIONS?to=… — a directions page, which
+ * §1 bans. `waze://` has no web fallback: without Waze, openURL rejects and
+ * the screen says so.
+ * ⚠️ NEVER `navigate=yes`: that starts turn-by-turn on open — the live
+ * navigation toward a sighted car §1 bans. The test pins its absence.
+ */
+export function wazePinUrl(latitude: number, longitude: number): string {
+  return `waze://?ll=${coordsOf(latitude, longitude)}`;
 }

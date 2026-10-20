@@ -64,30 +64,40 @@ commenting standards.
     `OnboardingScreen.test.tsx`), and since 2026-09-30 the report safety sheet
     (`ReportSafetySheet.test.tsx`, plus `ReportSightingScreen.test.tsx` for the
     deep-link path), and since 2026-10-08 the sighting detail page
-    (`SightingDetailScreen.test.tsx` — the notice, and Open in Maps behind its
-    confirm). **Post sightings still has no test asserting the notice
+    (`SightingDetailScreen.test.tsx` — the notice, and both maps buttons,
+    Google Maps and Waze, behind its confirm). **Post sightings still has no test asserting the notice
     renders** — one surface unguarded. Stated rather than glossed; closing it
     is a one-line assertion.
 - We never build features that facilitate pursuit: no live navigation
   toward a sighted car, no "car is moving" live tracking, no directions
   from spotter to vehicle.
   - **The OWNER may open a sighting's point in their maps app** (2026-08-08).
-    Exactly one control, on the owner-only sighting detail screen. It does not
-    bend the rule above, and the boundaries are load-bearing rather than
-    incidental:
-    - It drops a **pin**, never turn-by-turn. `mapPinUrl` emits only the
-      *show me this place* forms (`ll=` / `geo:?q=`) and never the navigation
-      forms (`daddr=` / `google.navigation:`), so the app cannot produce live
-      navigation even by accident. The function is named for what it emits.
-    - It reads **"Open in Maps"**, not "Directions" — a place, not a journey.
-    - It sits **below the SafetyNotice** and behind a **confirm that restates
-      that notice verbatim** (the copy is imported from the component, not
-      retyped, so the two cannot drift). Since the 2026-10-08 redesign the
-      notice sits in the same "Where" section as the map and the link
+    Only on the owner-only sighting detail screen — since 2026-10-20 (owner's
+    request) as two buttons side by side, **Google Maps** and **Waze**, in
+    place of one "Open in Maps" link. It does not bend the rule above, and
+    the boundaries are load-bearing rather than incidental:
+    - It drops a **pin**, never turn-by-turn. `googleMapsPinUrl` emits Google's
+      *search* link (never `/maps/dir/`), a pin in the app and in the
+      browser alike; `wazePinUrl` emits Waze's APP scheme `waze://?ll=` (a
+      place card) and **never `navigate=yes`**, which would start a drive on
+      open. Not Waze's https `ul?ll=` link: with Waze not installed it falls
+      back to the browser and redirects to waze.com/live-map/**directions**
+      (checked 2026-10-20) — the app scheme has no web fallback, so without
+      Waze the screen just says it couldn't open it. Neither emits the navigation forms (`daddr=` /
+      `google.navigation:`), so the app cannot produce live navigation even by
+      accident; the functions are named for what they emit, and
+      `mapsLink.test.ts` pins the absence of every navigation form. (The
+      platform-chooser `mapPinUrl` remains, unused by this screen.)
+    - Each button is **named for the app** ("Open in Google Maps", "Open in
+      Waze"), never "Directions" — a place, not a journey.
+    - Both sit **below the SafetyNotice** and behind the **same confirm that
+      restates that notice verbatim** (the copy is imported from the component,
+      not retyped, so the two cannot drift). Since the 2026-10-08 redesign the
+      notice sits in the same "Where" section as the map and the buttons
       (`SightingWhereSection.tsx`), not sections further down the page: the
       exact point is where an owner is most tempted to act.
-    - The caption handed to the third-party maps app is a fixed, non-identifying
-      string — never the plate, the car, or the spotter.
+    - Nothing but the point is handed to the third-party app — no caption, so
+      never the plate, the car, or the spotter.
 
     The ban above is *spotter→vehicle* and against *live* navigation; recovery
     itself is "for the owner and police" (below), and the police ask "where".
@@ -390,7 +400,10 @@ commenting standards.
   answers (`placeLabels`, ≤20 points, ~10m keys) and the map-centre read-ahead
   (`useDefaultMapCentre`, 2 minutes), and the reward guidance per ~1km cell
   (`bountyGuidanceApi`, 5 minutes, keyed per account). The first two are
-  memory only and never sent anywhere; the guidance is asked for — snapped to
+  memory only and never sent to us — a reverse geocode itself goes to the
+  OS geocoder (Google on Android, Apple on iOS), as does the owner's
+  sighting-page street address (`useSightingAddress`, 2026-10-20: the exact
+  point, owner-only, nothing stored or logged); the guidance is asked for — snapped to
   the RPC's own 0.01° grid, never the raw pin — once the owner CONFIRMS the
   last-seen point (the map step's Next), as it always was before the reward
   step. All three are **forgotten on a deliberate sign-out or account deletion**

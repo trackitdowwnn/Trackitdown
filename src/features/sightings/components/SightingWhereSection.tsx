@@ -1,30 +1,34 @@
 /**
- * WHAT:  "Where" on the owner's sighting page: the exact captured point on a
- *        non-interactive map card, an "Approximate — within about N m" line
- *        when the phone's fix was rough, the safety notice, and — below it —
- *        the quiet "Open in Maps" link. Or one line saying the location
- *        couldn't be captured (the notice still shows).
- * WHY:   The owner needs to know HOW SURE the point is before acting on it,
- *        and used to get a pin with no word on its accuracy (the field was
- *        loaded and never shown). Precision is right here: this is an
- *        owner-only surface; the public face never sees coordinates.
+ * WHAT:  "Where" on the owner's sighting page: the street address in a chip
+ *        (as the listing page shows its place), the exact captured point on a
+ *        non-interactive map card, the safety notice, and — below it — two
+ *        buttons side by side, [Google Maps] [Waze], each with the app's own
+ *        mark. Or one line saying the location couldn't be captured (the
+ *        notice still shows, and there is nothing to open).
+ * WHY:   The owner asked for all three on 2026-10-20: the address under the
+ *        title, no "Approximate — within about N m" line under the map (added
+ *        2026-10-08; the owner found it noise), and the two apps by name
+ *        instead of one quiet "Open in Maps" link.
  *
- *        ⚠️ THE NOTICE SITS WITH THE POINT, AND THE LINK BELOW THE NOTICE
- *        (SECURITY_AND_TRUST "Open in Maps"; review of #145). The exact spot
- *        is where an owner is most tempted to act; a notice several sections
- *        further down did not stand beside it. "Open in Maps" stays quiet and
- *        behind the screen's confirm (which repeats the notice): a pin, never
- *        directions — §1 bans pursuit features.
- * LINKS: src/features/sightings/screens/SightingDetailScreen.tsx;
- *        src/shared/ui/AppMap.tsx; src/shared/ui/SafetyNotice.tsx;
+ *        ⚠️ THE NOTICE SITS WITH THE POINT, AND THE BUTTONS BELOW THE NOTICE
+ *        (SECURITY_AND_TRUST §1; review of #145). The exact spot is where an
+ *        owner is most tempted to act; a notice several sections further down
+ *        did not stand beside it. Each button goes through the screen's
+ *        confirm (which repeats the notice) and opens a PIN in that app —
+ *        never directions, never Waze's navigate=yes (mapsLink.ts): §1 bans
+ *        pursuit features.
+ * LINKS: src/features/sightings/screens/SightingDetailScreen.tsx (the
+ *          confirm, the URLs); ./MapsAppLogos.tsx; src/shared/ui/AppMap.tsx;
+ *        src/shared/ui/SafetyNotice.tsx; src/shared/lib/mapsLink.ts;
  *        docs/SECURITY_AND_TRUST.md.
  */
 
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import type { ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import {
+  listRowStackFontScale,
   motion,
-  opacity,
   radii,
   sizes,
   spacing,
@@ -35,44 +39,80 @@ import {
 import { SafetyNotice } from '@/shared/ui';
 import { AppMap, AppMapMarker } from '@/shared/ui/AppMap';
 
+import { GoogleMapsLogo, WazeLogo } from './MapsAppLogos';
+
 /** Same ~1.4-mile preview span as the post page's last-seen map. */
 const PREVIEW_DELTA = 0.02;
-/** Past this, the fix is rough enough to say so (metres). */
-const APPROXIMATE_FROM_M = 50;
+
+/** The maps apps the owner can open the point in. */
+export type MapsApp = 'google' | 'waze';
 
 export interface SightingWhereSectionProps {
   /** The first photo that carried a location, or null. */
-  point: { lat: number; lng: number; accuracyM: number | null } | null;
+  point: { lat: number; lng: number } | null;
+  /** The street address (or the stored area) — under the title, in a chip. */
+  address: string | null;
   /** The area, for the map's spoken label. */
   areaLabel: string | null;
-  onOpenMaps: () => void;
+  /** Asks first — the screen's safety confirm — then opens the pin. */
+  onOpenMaps: (app: MapsApp) => void;
 }
 
-/** "Approximate — within about 120 m": rounded, because a number to the metre
- *  promises a precision the fix doesn't have. Null when the fix is good. */
-export function approximateLine(accuracyM: number | null): string | null {
-  if (accuracyM === null || accuracyM <= APPROXIMATE_FROM_M) return null;
-  const rounded =
-    accuracyM < 1000 ? Math.round(accuracyM / 10) * 10 : Math.round(accuracyM / 100) * 100;
-  return `Approximate — within about ${rounded.toLocaleString('en-GB')} m`;
-}
-
-/** The map, how exact it is, the notice and Open in Maps — see the header. */
-export function SightingWhereSection({ point, areaLabel, onOpenMaps }: SightingWhereSectionProps) {
+/** The address, the map, the notice and the two apps — see the header. */
+export function SightingWhereSection({
+  point,
+  address,
+  areaLabel,
+  onOpenMaps,
+}: SightingWhereSectionProps) {
   const styles = useThemedStyles(makeStyles);
+  const { fontScale } = useWindowDimensions();
+  // At large text the pair stacks, as the decision bar's does, rather than
+  // squeezing two names and two logos into half a screen each.
+  const stacked = (fontScale ?? 1) > listRowStackFontScale;
+
+  // The listing page's place chip, the same look (PostDetailBody).
+  const addressChip = address ? (
+    <View
+      style={styles.addressChip}
+      accessible
+      accessibilityLabel={`Address: ${address}`}
+      testID="sighting-address"
+    >
+      <Text style={styles.addressText}>{address}</Text>
+    </View>
+  ) : null;
 
   if (!point) {
     return (
       <View style={styles.root}>
+        {addressChip}
         <Text style={styles.missing}>Location couldn’t be captured for this sighting.</Text>
         <SafetyNotice />
       </View>
     );
   }
 
-  const approximate = approximateLine(point.accuracyM);
+  const google = (
+    <MapsAppButton
+      label="Google Maps"
+      logo={<GoogleMapsLogo />}
+      onPress={() => onOpenMaps('google')}
+      testID="sighting-open-google-maps"
+    />
+  );
+  const waze = (
+    <MapsAppButton
+      label="Waze"
+      logo={<WazeLogo />}
+      onPress={() => onOpenMaps('waze')}
+      testID="sighting-open-waze"
+    />
+  );
+
   return (
     <View style={styles.root}>
+      {addressChip}
       <View
         style={styles.mapCard}
         accessible
@@ -104,18 +144,51 @@ export function SightingWhereSection({ point, areaLabel, onOpenMaps }: SightingW
           </AppMapMarker>
         </AppMap>
       </View>
-      {approximate ? <Text style={styles.approximate}>{approximate}</Text> : null}
       <SafetyNotice />
-      <Pressable
-        onPress={onOpenMaps}
-        accessibilityRole="button"
-        accessibilityHint="Shows a safety reminder first"
-        style={({ pressed }) => [styles.mapsLink, pressed && styles.pressed]}
-        testID="sighting-open-maps"
-      >
-        <Text style={styles.mapsLinkLabel}>Open in Maps</Text>
-      </Pressable>
+      {stacked ? (
+        <View style={styles.stack}>
+          {google}
+          {waze}
+        </View>
+      ) : (
+        <View style={styles.pair}>
+          <View style={styles.half}>{google}</View>
+          <View style={styles.half}>{waze}</View>
+        </View>
+      )}
     </View>
+  );
+}
+
+/** One maps app: its mark and its name, in the secondary button's look. A
+ *  Pressable of its own because Button's icon slot takes a Feather glyph, not
+ *  a brand mark. */
+function MapsAppButton({
+  label,
+  logo,
+  onPress,
+  testID,
+}: {
+  label: string;
+  logo: ReactNode;
+  onPress: () => void;
+  testID: string;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      // The visible words first (Button's rule), so voice control matches.
+      accessibilityLabel={label}
+      accessibilityHint={`Opens the place in ${label}, after a safety reminder`}
+      style={({ pressed }) => [styles.appButton, pressed && styles.pressed]}
+      testID={testID}
+    >
+      {logo}
+      {/* Wraps at large text, never truncates — Button's own label rule. */}
+      <Text style={styles.appLabel}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -123,6 +196,19 @@ const makeStyles = (c: Palette) =>
   StyleSheet.create({
     root: {
       gap: spacing.md,
+    },
+    // PostDetailBody's place chip, token for token.
+    addressChip: {
+      alignSelf: 'flex-start',
+      backgroundColor: c.surfaceSubtle,
+      borderRadius: radii.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    addressText: {
+      ...typography.label,
+      color: c.textPrimary,
+      includeFontPadding: false,
     },
     mapCard: {
       height: sizes.mapPreview,
@@ -140,28 +226,43 @@ const makeStyles = (c: Palette) =>
       borderWidth: sizes.mapPinRing,
       borderColor: c.surface,
     },
-    // Body size: "how sure is this point" is a fact the owner acts on.
-    approximate: {
-      ...typography.body,
-      color: c.textSecondary,
-    },
     missing: {
       ...typography.body,
       color: c.textSecondary,
     },
-    // A text link with a real 44pt box.
-    mapsLink: {
-      alignSelf: 'flex-start',
+    // SightingDecisionBar's pair / stack.
+    pair: {
+      flexDirection: 'row',
+      gap: spacing.md,
+    },
+    half: {
+      flex: 1,
+    },
+    stack: {
+      gap: spacing.md,
+    },
+    // Button's `secondary` variant, token for token (an ink outline, ink
+    // label, grey when pressed), with the app's mark before its name.
+    // Horizontal padding `lg`, not Button's `xl`: each sits in half a row.
+    appButton: {
+      minHeight: sizes.control,
+      flexDirection: 'row',
+      alignItems: 'center',
       justifyContent: 'center',
-      minHeight: sizes.touchTarget,
-      minWidth: sizes.touchTarget,
+      gap: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      borderRadius: radii.md,
+      borderWidth: 1,
+      borderColor: c.primary,
     },
     pressed: {
-      opacity: opacity.pressed,
+      backgroundColor: c.surfaceSubtle,
     },
-    mapsLinkLabel: {
+    appLabel: {
       ...typography.label,
-      color: c.textPrimary,
-      textDecorationLine: 'underline',
+      color: c.primary,
+      flexShrink: 1,
+      textAlign: 'center',
     },
   });
