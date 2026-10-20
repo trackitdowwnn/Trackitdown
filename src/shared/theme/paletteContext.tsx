@@ -63,6 +63,22 @@ export const ThemeControlsContext = createContext<ThemeControls>({
   },
 });
 
+/**
+ * Whether the saved Light/Dark preference has been read and APPLIED — so the
+ * palette is the one the user chose, not the phone's stand-in. It latches: once
+ * true it never goes back, even while a later change is in flight.
+ *
+ * The root layout holds the native splash until this is true, so the first
+ * thing the app paints (the opening screen) is already in the user's theme.
+ * Defaults to true: with no provider (tests), there is nothing to wait for.
+ */
+export const ThemeReadyContext = createContext<boolean>(true);
+
+/** True once the saved theme preference is in effect. See ThemeReadyContext. */
+export function useThemeReady(): boolean {
+  return useContext(ThemeReadyContext);
+}
+
 /** The active palette. Safe anywhere — light when no provider is above. */
 export function usePalette(): Palette {
   return useContext(PaletteContext);

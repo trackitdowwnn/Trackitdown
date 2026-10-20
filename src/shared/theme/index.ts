@@ -18,7 +18,12 @@ export { paletteFor, type ColorToken, type Palette } from './colors';
 // is imported by ~139 files and nearly every test — exporting them from here
 // made 91 suites fail to load on a null AsyncStorage native module. Import
 // ThemeProvider directly from './ThemeProvider' (only src/app/_layout.tsx does).
-export { usePalette, useThemeControls, type ThemeControls } from './paletteContext';
+export {
+  usePalette,
+  useThemeControls,
+  useThemeReady,
+  type ThemeControls,
+} from './paletteContext';
 export type { ThemePreference } from './themePreferenceTypes';
 export { useThemedStyles } from './useThemedStyles';
 export { mapStyle, mapStyleDark, mapStyleFor } from './mapStyle';

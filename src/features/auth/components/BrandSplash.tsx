@@ -4,20 +4,21 @@
  *        only if the start is slow, and it fades into the app when AuthGate
  *        lifts it.
  * WHY:   Launch is two screens — the OS splash (baked into the APK) and this —
- *        and they must read as ONE. So this one paints the native splash's
- *        background, in the scheme the phone launched in, with the mark at the
- *        native splash's size and centre: the handover is invisible, and the
+ *        and they should read as ONE. So this one is drawn in the native
+ *        splash's likeness (its backgrounds; the mark's size, centre and the
+ *        PNG's own ink), and the
  *        first thing that moves is the breath. (2026-10-20 redesign — before
  *        it the mark jumped from 59dp to 56dp at a different height, gained a
  *        spinner and phrases, and the screen cut out in one frame.)
  *
- *        The scheme is the one the phone LAUNCHED in (launchScheme), read
- *        before ThemeProvider can push a saved Light/Dark preference into
- *        Appearance. The native splash cannot see that preference, so a
- *        phone in dark with the app set to light used to flash: dark splash,
- *        light screen, app. Now this screen stays in the phone's scheme (its
- *        mark in the PNG's own ink, its status bar to match — AuthGate) and
- *        its fade-out IS the crossfade into the app's (ADR-0013).
+ *        Its scheme is the APP's — the user's Light/Dark choice — not the
+ *        phone's (owner, 2026-10-20: "adhere to whatever theme the user has
+ *        set up"). The root layout holds the native splash until that choice
+ *        is in effect, so this never paints in the wrong one. The native
+ *        splash itself cannot see the choice (it is drawn before any of our
+ *        code runs), so a phone and app that disagree still change scheme at
+ *        the handover — the one step left, and it needs a native build to
+ *        remove (ADR-0013).
  *
  *        AuthGate owns WHEN this lifts and caps how long it can hold; this only
  *        owns how it looks and how it leaves.
@@ -42,11 +43,17 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { MARK_ASPECT, MARK_INK, MARK_INK_DARK } from '@/shared/brand/markGeometry';
-import { motion, opacity, paletteFor, radii, sizes, spacing } from '@/shared/theme';
+import {
+  motion,
+  opacity,
+  radii,
+  sizes,
+  spacing,
+  usePalette,
+  useThemeControls,
+} from '@/shared/theme';
 import { easeOut, linear } from '@/shared/theme/motionEasing';
 import { BrandMark } from '@/shared/ui';
-
-import { launchScheme } from '../lib/launchScheme';
 
 /** The native splash image's width in dp — app.json, expo-splash-screen's
  *  `imageWidth`. */
@@ -77,8 +84,8 @@ export interface BrandSplashProps {
 /** The opening screen: covers the app, in the native splash's likeness, until
  *  `visible` turns false — then dissolves and calls `onHidden`. */
 export function BrandSplash({ visible, onHidden }: BrandSplashProps) {
-  const scheme = launchScheme();
-  const palette = paletteFor(scheme);
+  const palette = usePalette();
+  const { scheme } = useThemeControls();
   // The PNG's ink, not `primary`: the mark must be the native splash's mark.
   const ink = scheme === 'dark' ? MARK_INK_DARK : MARK_INK;
   const reduceMotion = useReducedMotion();
@@ -114,10 +121,9 @@ export function BrandSplash({ visible, onHidden }: BrandSplashProps) {
   }, [visible]);
 
   // The exit: a dissolve, under Reduce Motion too — an opacity change moves
-  // nothing, and cutting instead would turn the crossfade into the app's theme
-  // into a one-frame flash whenever the phone and the app disagree. A JS
-  // timer, not the animation's callback, says when it is over: the screen
-  // must come off even if the animation never reports back.
+  // nothing, and a cut from a full-screen mark to the feed jars. A JS timer,
+  // not the animation's callback, says when it is over: the screen must come
+  // off even if the animation never reports back.
   useEffect(() => {
     if (visible) return;
     // ReduceMotion.Never: Reanimated otherwise follows the system setting and
@@ -209,8 +215,8 @@ function ProgressLine({ track, bar }: { track: string; bar: string }) {
   );
 }
 
-// Static: the colours come from the LAUNCH palette above, never the app's, so
-// useThemedStyles (which follows the app's preference) is deliberately unused.
+// Static: every colour here is passed in from the palette above (and the mark's
+// ink is the PNG's, not a token), so there is nothing for useThemedStyles to do.
 const styles = StyleSheet.create({
   root: {
     alignItems: 'center',

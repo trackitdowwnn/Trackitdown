@@ -3,9 +3,7 @@
  *        session + onboarding flag restore, sends a first launch to
  *        onboarding, lands everyone else — member or guest — in the tabs,
  *        and then fires the native startup permission prompts (no custom
- *        permissions UI — the OS dialogs are the ask). Also owns the root
- *        StatusBar: its icons follow the splash's (launch) scheme while the
- *        splash is up, then the app's.
+ *        permissions UI — the OS dialogs are the ask).
  * WHY:   Guest-first (Airbnb's deferred-auth pattern): browsing is open, so the
  *        gate no longer polices sign-in state or profile completeness — gated
  *        ACTIONS do, via useRequireAuth + AuthSheet. Rendering the splash over
@@ -16,15 +14,12 @@
  */
 
 import { useGlobalSearchParams, useRouter, useSegments } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 
 import { useStartupPermissionRequests } from '@/features/permissions';
 import { useContentReady } from '@/shared/lib/appReady';
-import { useThemeControls } from '@/shared/theme';
 
 import { useAuthGate } from '../hooks/useAuthGate';
-import { launchScheme } from '../lib/launchScheme';
 import { BrandSplash } from './BrandSplash';
 
 /** Longest the splash will wait for content before showing the app regardless.
@@ -112,25 +107,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
   const removeSplash = useCallback(() => setMounted(false), []);
 
-  // Explicit, never "auto": auto follows the DEVICE, so it would put dark icons
-  // on a dark app whenever someone picks Dark on a light phone. ("light" means
-  // light ICONS, for dark surfaces.) While the splash is mounted the icons
-  // follow ITS scheme — the phone's at launch — not the app's, or a phone and
-  // app that disagree leave the clock invisible for the whole hold. Here
-  // rather than in the root layout, because only the gate knows the splash is
-  // up, and the root's StatusBar mounted after this one would win the stack.
-  const { scheme } = useThemeControls();
-  const iconsFor = mounted ? launchScheme() : scheme;
-
   // Always render the navigator (Expo Router requires it mounted); cover it with
   // the splash while restoring, so the wrong screen never flashes underneath.
   return (
     <>
       {children}
-      {mounted ? (
-        <BrandSplash key={raises} visible={up} onHidden={removeSplash} />
-      ) : null}
-      <StatusBar style={iconsFor === 'dark' ? 'light' : 'dark'} />
+      {mounted ? <BrandSplash key={raises} visible={up} onHidden={removeSplash} /> : null}
     </>
   );
 }

@@ -41,20 +41,6 @@ jest.mock('expo-router', () => ({
   useGlobalSearchParams: () => mockParams,
 }));
 
-let mockLaunchScheme: 'light' | 'dark' = 'light';
-jest.mock('../lib/launchScheme', () => ({
-  launchScheme: () => mockLaunchScheme,
-}));
-
-// The last style the gate asked the status bar for.
-let mockStatusStyle: string | undefined;
-jest.mock('expo-status-bar', () => ({
-  StatusBar: ({ style }: { style: string }) => {
-    mockStatusStyle = style;
-    return null;
-  },
-}));
-
 const child = <Text>the app</Text>;
 
 /** AuthGate's backstop — mirrored, as the gate keeps it private. */
@@ -79,8 +65,6 @@ beforeEach(() => {
   mockRoute = 'loading';
   mockSegments = ['(tabs)'];
   mockParams = {};
-  mockLaunchScheme = 'light';
-  mockStatusStyle = undefined;
 });
 
 afterEach(() => {
@@ -238,25 +222,6 @@ describe('onboarding', () => {
     // The old one's exit timer died with it: the new one stays up.
     await finishFade();
     expect(view.getByTestId('brand-splash').props.pointerEvents).toBe('auto');
-  });
-});
-
-describe('the status bar', () => {
-  it('⚠️ matches the splash’s scheme while it is up, then the app’s', async () => {
-    // A dark phone, the app set to Light: the splash is dark, so its icons
-    // must be light — or the clock vanishes for the whole hold.
-    mockLaunchScheme = 'dark';
-    mockRoute = 'app';
-    const view = await act(async () => render(<AuthGate>{child}</AuthGate>));
-    expect(mockStatusStyle).toBe('light');
-
-    await act(async () => {
-      markContentReady();
-    });
-    await finishFade();
-    expect(view.queryByTestId('brand-splash')).toBeNull();
-    // No ThemeProvider here, so the app's scheme is light → dark icons.
-    expect(mockStatusStyle).toBe('dark');
   });
 });
 

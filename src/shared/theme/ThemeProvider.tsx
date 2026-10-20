@@ -1,6 +1,8 @@
 /**
  * WHAT:  ThemeProvider — resolves the System/Light/Dark preference into the
- *        active palette and supplies both contexts to the app.
+ *        active palette and supplies the palette, controls and READY contexts
+ *        to the app. READY gates launch: the root layout keeps the native
+ *        splash up until the saved choice is in effect (≤ THEME_READY_MAX_MS).
  * WHY:   NOT exported from the theme barrel, and imported by exactly one file
  *        (src/app/_layout.tsx). It reaches AsyncStorage and Appearance, and the
  *        barrel is pulled in by ~139 source files and nearly every test — when
@@ -26,9 +28,15 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Appearance, useColorScheme } from 'react-native';
 
 import { paletteFor } from './colors';
-import { PaletteContext, ThemeControlsContext } from './paletteContext';
+import { PaletteContext, ThemeControlsContext, ThemeReadyContext } from './paletteContext';
 import { loadThemePreference, saveThemePreference } from './themePreferenceStorage';
 import type { ThemePreference } from './themePreferenceTypes';
+
+/** The longest launch waits for the saved preference to take effect before
+ *  showing the app anyway. Storage answers in a few ms and the scheme follows
+ *  in the same render, so this only ever fires if storage never answers or the
+ *  OS does not take the override. */
+export const THEME_READY_MAX_MS = 1000;
 
 /**
  * Push a preference at the OS-level override.
@@ -41,10 +49,11 @@ function applyPreference(preference: ThemePreference): void {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  // Starts at 'system' and is corrected once storage answers. The window this
-  // risks is one frame at cold start for someone who chose an override — the
-  // same frame the native splash is still covering.
+  // Starts at 'system' and is corrected once storage answers. The native
+  // splash covers that window: the layout waits for `ready` below.
   const [preference, setPreferenceState] = useState<ThemePreference>('system');
+  // Whether storage has answered (see `ready` below).
+  const [loaded, setLoaded] = useState(false);
 
   // Appearance.setColorScheme does NOT survive a restart, so the stored
   // preference is re-applied on every boot, not only when it changes.
@@ -54,6 +63,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       setPreferenceState(stored);
       applyPreference(stored);
+      setLoaded(true);
     });
     return () => {
       cancelled = true;
@@ -74,6 +84,27 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const reported = useColorScheme();
   const scheme: 'light' | 'dark' = reported === 'dark' ? 'dark' : 'light';
 
+  // READY once the stored preference has been read AND `scheme` reflects it.
+  // Appearance.setColorScheme updates the JS-side scheme synchronously, so this
+  // normally lands in the very render that applies the stored choice; the
+  // `applied` check only holds launch if the OS does not take the override
+  // (then the backstop decides). The root layout holds the native
+  // splash until this is true, so the opening screen's first frame is already
+  // in the user's theme (owner, 2026-10-20). Latched: a later change in flight
+  // must never read as "not ready" — the layout would unmount the app.
+  const [gaveUp, setGaveUp] = useState(false);
+  const [ready, setReady] = useState(false);
+  const applied = preference === 'system' || scheme === preference;
+  if (!ready && ((loaded && applied) || gaveUp)) setReady(true);
+
+  // The backstop: the splash must never wait on a read or an event that does
+  // not come. Past this, the app shows in whatever scheme it has.
+  useEffect(() => {
+    if (ready) return;
+    const timer = setTimeout(() => setGaveUp(true), THEME_READY_MAX_MS);
+    return () => clearTimeout(timer);
+  }, [ready]);
+
   const palette = useMemo(() => paletteFor(scheme), [scheme]);
   const controls = useMemo(
     () => ({ preference, scheme, setPreference }),
@@ -81,8 +112,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <ThemeControlsContext.Provider value={controls}>
-      <PaletteContext.Provider value={palette}>{children}</PaletteContext.Provider>
-    </ThemeControlsContext.Provider>
+    <ThemeReadyContext.Provider value={ready}>
+      <ThemeControlsContext.Provider value={controls}>
+        <PaletteContext.Provider value={palette}>{children}</PaletteContext.Provider>
+      </ThemeControlsContext.Provider>
+    </ThemeReadyContext.Provider>
   );
 }

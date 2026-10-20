@@ -153,12 +153,15 @@ provider and no edits — the same reasoning as `useOptionalToast`.
 - **The cold-start splash follows the DEVICE, not the preference.** A user who
   picks Dark on a light phone gets a light splash for the moment before JS
   boots. Native splashes cannot see an in-app preference; accepted.
-  *Update 2026-10-20:* the JS opening screen (`BrandSplash`) now follows the
-  device too — the scheme read once at launch (`launchScheme`), before the
-  saved preference reaches Appearance — so the native splash hands over to
-  an identical screen, and its fade-out is the crossfade into the preferred
-  theme. Before, a dark phone with the app set to Light flashed dark → light
-  → app.
+  *Update 2026-10-20 (owner: "adhere to whatever theme the user has set
+  up"):* the JS opening screen (`BrandSplash`) follows the PREFERENCE. The
+  root layout holds the native splash until ThemeProvider reports `ready`
+  (the stored choice read and applied; bounded by `THEME_READY_MAX_MS`), so
+  the opening screen's first frame is already in the user's theme. Only the
+  native splash — drawn by Android before any app code runs — still follows
+  the phone; removing that last step needs a native build
+  (`UiModeManager.setApplicationNightMode`, API 31+, persists the choice for
+  the system splash).
 - The splash gains a `dark` variant (`#141414`). The splash image is still the
   Expo template's white mark — invisible on the light splash today and
   accidentally visible on the dark one. Unchanged here; tracked with the other
