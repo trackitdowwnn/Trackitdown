@@ -6,10 +6,10 @@
  *        state), "Not my car" straight away and reversible, the spinner on
  *        the answer given; the decision shown honestly afterwards (a rejected
  *        sighting is "Not your car", never "Marked helpful"), with when it was
- *        made; one toast whatever `counted` says; the sections (where, how
- *        exact, what they saw, the marks, the spotter); the safety notice
- *        beside the point and again before the map; Open in Maps dropping a
- *        pin; Message opening the thread.
+ *        made; one toast whatever `counted` says; the sections (what they
+ *        saw, the marks, where with its street address, the spotter); the
+ *        safety notice beside the point and again before the map; Google Maps
+ *        or Waze dropping a pin; Message opening the thread.
  * WHY:   This page had no test of its own, and shipped two bugs a test would
  *        have caught: the opposite label on a rejected sighting, and the
  *        irreversible "helpful" on one unconfirmed tap. It is also where
@@ -21,7 +21,7 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { Linking } from 'react-native';
 
-import { mapPinUrl } from '@/shared/lib';
+import { googleMapsPinUrl, wazePinUrl } from '@/shared/lib';
 import { SAFETY_NOTICE_BODY, ToastProvider } from '@/shared/ui';
 
 import type { OwnerSighting } from '../types';
@@ -107,6 +107,18 @@ const { SightingVerdictError } = jest.requireMock('../api/sightingApi') as {
 let mockDoor: { noReward: boolean; bounty: string } | null = null;
 let mockListingMarks: { id: string; description: string; photoUrl?: string }[] | null = null;
 const mockListingCall = jest.fn();
+// The street address — a device lookup, stood in for here (its rules are in
+// useSightingAddress.test). Null = the lookup hasn't answered: the hook then
+// hands back the fallback it was given, as the real one does.
+let mockAddress: string | null = null;
+const mockAddressCall = jest.fn();
+jest.mock('../hooks/useSightingAddress', () => ({
+  useSightingAddress: (point: unknown, fallback: string | null) => {
+    mockAddressCall(point, fallback);
+    return mockAddress ?? fallback;
+  },
+}));
+
 jest.mock('../hooks/useSightingPost', () => ({
   useSightingPost: (postId: string, enabled: boolean) => {
     mockListingCall(postId, enabled);
@@ -200,6 +212,7 @@ beforeEach(() => {
   ready();
   mockDoor = null;
   mockListingMarks = null;
+  mockAddress = null;
   mockCanGoBack.mockReturnValue(true);
   mockHelpful.mockResolvedValue({
     status: 'helpful',
@@ -615,21 +628,30 @@ describe('the evidence', () => {
     expect(await seenLabel([oldLibraryPhoto])).not.toBe(await seenLabel([live]));
   });
 
-  it('says when the location is only approximate', async () => {
-    ready(
-      sighting({
-        photos: [{ ...sighting().photos[0], accuracyM: 240 }],
-      }),
-    );
+  it('shows the street address under "Where", as the listing page shows its place', async () => {
+    mockAddress = 'Deansgate, Manchester, M3 2BW';
     const view = await renderScreen();
-    expect(view.getByText('Approximate — within about 240 m')).toBeTruthy();
+    expect(view.getByTestId('sighting-address')).toBeTruthy();
+    expect(view.getByText('Deansgate, Manchester, M3 2BW')).toBeTruthy();
+    // Looked up for the captured point, the stored area as the fallback.
+    expect(mockAddressCall).toHaveBeenLastCalledWith(
+      { lat: 53.4794, lng: -2.2453 },
+      'Deansgate, Manchester',
+    );
   });
 
-  it('says so when there is no location at all', async () => {
+  it('no longer says how approximate the point is (owner, 2026-10-20)', async () => {
+    ready(sighting({ photos: [{ ...sighting().photos[0], accuracyM: 240 }] }));
+    const view = await renderScreen();
+    expect(view.queryByText(/Approximate/)).toBeNull();
+  });
+
+  it('says so when there is no location at all — and offers nothing to open', async () => {
     ready(sighting({ locationUnavailable: true, areaLabel: null, photos: [sighting().photos[1]] }));
     const view = await renderScreen();
     expect(view.getByText('Location couldn’t be captured for this sighting.')).toBeTruthy();
-    expect(view.queryByTestId('sighting-open-maps')).toBeNull();
+    expect(view.queryByTestId('sighting-open-google-maps')).toBeNull();
+    expect(view.queryByTestId('sighting-open-waze')).toBeNull();
     expect(view.getByText(SAFETY_NOTICE_BODY)).toBeTruthy();
   });
 
@@ -683,23 +705,41 @@ describe('the evidence', () => {
 });
 
 describe('the actions', () => {
-  it('⚠️ the safety notice stands by the point — and again before the map opens', async () => {
-    const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
-    try {
-      const view = await renderScreen();
-      expect(view.getAllByText(SAFETY_NOTICE_BODY)).toHaveLength(1);
+  it.each([
+    ['sighting-open-google-maps', 'Open in Google Maps', googleMapsPinUrl(53.4794, -2.2453)],
+    ['sighting-open-waze', 'Open in Waze', wazePinUrl(53.4794, -2.2453)],
+  ])(
+    '⚠️ %s: the safety notice stands by the point — and again before that app opens',
+    async (testID, confirmLabel, url) => {
+      const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+      try {
+        const view = await renderScreen();
+        expect(view.getAllByText(SAFETY_NOTICE_BODY)).toHaveLength(1);
 
-      await press(view.getByTestId('sighting-open-maps'));
-      expect(openURL).not.toHaveBeenCalled();
-      expect(view.getByText('Opening the map — please don’t approach')).toBeTruthy();
-      expect(view.getAllByText(SAFETY_NOTICE_BODY)).toHaveLength(2);
+        await press(view.getByTestId(testID));
+        expect(openURL).not.toHaveBeenCalled();
+        expect(view.getByText('Opening the map — please don’t approach')).toBeTruthy();
+        expect(view.getAllByText(SAFETY_NOTICE_BODY)).toHaveLength(2);
 
-      // A pin — never directions (§1 bans pursuit features).
-      await press(last(view.getAllByRole('button', { name: 'Open in Maps' })));
-      expect(openURL).toHaveBeenCalledWith(mapPinUrl(53.4794, -2.2453, 'Car sighted here'));
-    } finally {
-      openURL.mockRestore();
-    }
+        // A pin in the app they picked — never directions (§1).
+        await press(last(view.getAllByRole('button', { name: confirmLabel })));
+        expect(openURL).toHaveBeenCalledWith(url);
+        expect(openURL).toHaveBeenCalledTimes(1);
+      } finally {
+        openURL.mockRestore();
+      }
+    },
+  );
+
+  it('offers both apps side by side, each by name', async () => {
+    const view = await renderScreen();
+    // Named by their visible words, so voice control matches them.
+    expect(view.getByRole('button', { name: 'Google Maps' })).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Waze' })).toBeTruthy();
+    expect(view.getByLabelText('Address: Deansgate, Manchester')).toBeTruthy();
+    // The marks are hidden from screen readers (the label names the app).
+    expect(view.getByTestId('google-maps-logo', { includeHiddenElements: true })).toBeTruthy();
+    expect(view.getByTestId('waze-logo', { includeHiddenElements: true })).toBeTruthy();
   });
 
   it.each(['unverified', 'not_mine', 'helpful', 'credited'] as const)(

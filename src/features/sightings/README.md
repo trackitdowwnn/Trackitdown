@@ -140,8 +140,12 @@ car today — the owner has them.").
     (`CONTEXT_QUESTIONS`), with what they chose as read-only chips in the
     wizard's selected style (`sightingAnswerGroups`; skipped questions
     aren't shown), then their note.
-  - **Where:** the map, "Approximate — within about N m", the safety notice
-    beside the point, then Open in Maps (behind the safety confirm).
+  - **Where:** the street address in a chip (`useSightingAddress`: a device
+    reverse geocode of the point, the stored area as the fallback), the map,
+    the safety notice beside the point, then [Google Maps] [Waze] side by
+    side with each app's mark (`MapsAppLogos`) — each behind the safety
+    confirm, each a pin (`googleMapsPinUrl` / `wazePinUrl`, never
+    navigation). No accuracy line since 2026-10-20 (owner).
   - **Spotted by:** one card — first name, one record line ("12 sightings ·
     4 confirmed by owners · since July 2026") and **Message** (by sighting
     id), in every state. No "View profile": its sheet only repeated the card.
