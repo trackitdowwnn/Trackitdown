@@ -456,11 +456,12 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
 
       {/* The §1 notice, restated at the one moment it is most likely to be
           ignored. The BODY is IMPORTED, never retyped: a hand-typed second copy
-          drifts, and this one already had. The title is this moment's, the
-          warning is the app's one canonical sentence — including 999. */}
+          drifts, and this one already had. The title is this moment's —
+          "Warning" (owner, 2026-10-20: short, and unmistakably a warning);
+          the warning itself is the app's one canonical sentence, 999 too. */}
       <ConfirmDialog
         ref={mapsConfirmRef}
-        title="Opening the map — please don’t approach"
+        title="Warning"
         body={SAFETY_NOTICE_BODY}
         confirmLabel={`Open in ${mapsAppName}`}
         onConfirm={() => void openInMaps()}
