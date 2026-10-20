@@ -528,8 +528,8 @@ describe('the evidence', () => {
     const at = (text: string) => texts.indexOf(text);
     // An older report (no "asked about" record): the seen ones, no total.
     expect(at('Your marks they could see')).toBeGreaterThan(-1);
-    expect(at('Your marks they could see')).toBeLessThan(at('What it was doing'));
-    expect(at('What it was doing')).toBeLessThan(at('In their words'));
+    expect(at('Your marks they could see')).toBeLessThan(at('What was it doing?'));
+    expect(at('What was it doing?')).toBeLessThan(at('In their words'));
   });
 
   it('⚠️ lists ALL the marks they were asked about, ticking the ones they saw', async () => {
@@ -633,9 +633,41 @@ describe('the evidence', () => {
     expect(view.getByText(SAFETY_NOTICE_BODY)).toBeTruthy();
   });
 
+  it('⚠️ shows each question asked with the chips they chose — read, never tapped', async () => {
+    ready(
+      sighting({
+        contextFlags: ['parked', 'damage_visible', 'plate_changed'],
+        parkedLikelihood: 'settled',
+        peoplePresence: 'nearby',
+      }),
+    );
+    const view = await renderScreen();
+    // The wizard's own questions, the chips they tapped as chips.
+    expect(view.getByText('What was it doing?')).toBeTruthy();
+    expect(view.getByText('Parked')).toBeTruthy();
+    expect(view.getByText('Anyone in or near it?')).toBeTruthy();
+    expect(view.getByText('Its condition')).toBeTruthy();
+    // One statement per question for a screen reader…
+    expect(view.getByTestId('seen-condition').props.accessibilityLabel).toMatch(
+      // A break after a question not phrased as one — never "condition Damage".
+      /^Its condition: .+, .+$/,
+    );
+    // …and nothing here is a control.
+    expect(view.queryByRole('radio')).toBeNull();
+    expect(view.queryByRole('checkbox')).toBeNull();
+  });
+
+  it('leaves out a question they skipped — never an empty one', async () => {
+    ready(sighting({ contextFlags: ['parked'], parkedLikelihood: null, peoplePresence: null }));
+    const view = await renderScreen();
+    expect(view.getByText('What was it doing?')).toBeTruthy();
+    expect(view.queryByText('Anyone in or near it?')).toBeNull();
+    expect(view.queryByText('Its condition')).toBeNull();
+  });
+
   it('labels what they saw, sets their note apart, and lists your marks they could see', async () => {
     const view = await renderScreen();
-    expect(view.getByLabelText('What it was doing, Parked · Looks parked up')).toBeTruthy();
+    expect(view.getByLabelText('What was it doing? Parked, Looks parked up')).toBeTruthy();
     expect(view.getByText('In their words')).toBeTruthy();
     expect(view.getByText('Outside the Tesco on Deansgate')).toBeTruthy();
     expect(view.getByText('Dent on the rear door')).toBeTruthy();

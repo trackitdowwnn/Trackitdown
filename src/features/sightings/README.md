@@ -131,11 +131,15 @@ car today — the owner has them.").
     back?** → /recover-post, only while the listing can be recovered
     (`useSightingPost`: one deferred listing read per focus,
     `canMarkRecovered`, the `bounty` param) — "Yes" itself pays no one.
-  - **What they saw:** FIRST, ALL the owner's marks ("Seen 1 of 3"), the ones the spotter could see ticked — the wizard's own
-    "Could you see any of these?" list read back in the same rows
-    (`MarkTile`, read-only; `markChecklist`; the full list is the listing's,
-    via `useSightingPost`). Then the spotter's answers as labelled rows, in
-    the same words they checked (`sightingDetailRows`), then their note.
+  - **What they saw:** FIRST, the owner's marks the spotter was asked about
+    ("Seen 1 of 3"), the seen ones ticked — the wizard's own "Could you see
+    any of these?" list read back in the same rows (`MarkTile`, read-only;
+    `markChecklist`; the marks are the listing's, via `useSightingPost`;
+    an older report with no `offered_feature_ids` shows the seen ones
+    alone). Then each question they answered, in the wizard's own words
+    (`CONTEXT_QUESTIONS`), with what they chose as read-only chips in the
+    wizard's selected style (`sightingAnswerGroups`; skipped questions
+    aren't shown), then their note.
   - **Where:** the map, "Approximate — within about N m", the safety notice
     beside the point, then Open in Maps (behind the safety confirm).
   - **Spotted by:** one card — first name, one record line ("12 sightings ·
