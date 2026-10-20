@@ -38,6 +38,12 @@ jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
   default: () => mockReported,
 }));
 
+// The per-app night mode handed to Android for the next launch's splash.
+const mockSetAppNightMode = jest.fn();
+jest.mock('./appNightMode', () => ({
+  setAppNightMode: (mode: string) => mockSetAppNightMode(mode),
+}));
+
 function Probe() {
   const ready = useThemeReady();
   const { scheme, setPreference } = useThemeControls();
@@ -53,6 +59,7 @@ const probe = (view: Awaited<ReturnType<typeof render>>) =>
 
 beforeEach(() => {
   jest.useFakeTimers();
+  mockSetAppNightMode.mockClear();
   mockReported = 'dark';
   osReportsOverrides = true;
   jest.spyOn(Appearance, 'setColorScheme').mockImplementation((scheme) => {
@@ -145,4 +152,38 @@ it('⚠️ stays ready while a later change is still landing', async () => {
     view.getByTestId('probe').props.onPress();
   });
   expect(probe(view)).toMatch(/^ready/);
+});
+
+describe('the next launch’s splash', () => {
+  // Android draws the launch splash before any JS runs; the per-app night
+  // mode is the only thing it can see. Owner, 2026-10-20: a dark phone with
+  // the app on Light opened black, then turned white.
+  it('⚠️ hands the saved choice to Android on every launch', async () => {
+    await render(
+      <ThemeProvider>
+        <Probe />
+      </ThemeProvider>,
+    );
+    await act(async () => {
+      mockAnswerStorage('light');
+    });
+    expect(mockSetAppNightMode).toHaveBeenLastCalledWith('light');
+  });
+
+  it('…and every change made in the app', async () => {
+    const view = await render(
+      <ThemeProvider>
+        <Probe />
+      </ThemeProvider>,
+    );
+    await act(async () => {
+      mockAnswerStorage('system');
+    });
+    expect(mockSetAppNightMode).toHaveBeenLastCalledWith('system');
+
+    await act(async () => {
+      view.getByTestId('probe').props.onPress(); // → Dark
+    });
+    expect(mockSetAppNightMode).toHaveBeenLastCalledWith('dark');
+  });
 });

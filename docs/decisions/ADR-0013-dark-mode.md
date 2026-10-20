@@ -157,11 +157,20 @@ provider and no edits — the same reasoning as `useOptionalToast`.
   up"):* the JS opening screen (`BrandSplash`) follows the PREFERENCE. The
   root layout holds the native splash until ThemeProvider reports `ready`
   (the stored choice read and applied; bounded by `THEME_READY_MAX_MS`), so
-  the opening screen's first frame is already in the user's theme. Only the
-  native splash — drawn by Android before any app code runs — still follows
-  the phone; removing that last step needs a native build
-  (`UiModeManager.setApplicationNightMode`, API 31+, persists the choice for
-  the system splash).
+  the opening screen's first frame is already in the user's theme.
+  *And the native splash (same day, first native module —
+  `modules/app-night-mode`):* every applied preference is also handed to
+  `UiModeManager.setApplicationNightMode` (Android 12+), which persists a
+  per-app night mode that Android applies to the app — launch splash
+  included — from the next cold start. 'system' maps to `MODE_NIGHT_AUTO`,
+  which for one app means "no override". Limits: Android 11 and below keep
+  the phone's theme on the native splash; the first launch after installing
+  can still show it (Android only learns the choice once the app has run);
+  and APKs built before this get the JS by OTA with the module absent, a
+  no-op (`src/shared/theme/appNightMode.ts`). Side effect, intended: the
+  per-app mode covers EVERY screen in the package, so third-party ones (the
+  payment sheet, the ID check, WebView's `prefers-color-scheme`) now follow
+  the in-app choice too, not the phone's.
 - The splash gains a `dark` variant (`#141414`). The splash image is still the
   Expo template's white mark — invisible on the light splash today and
   accidentally visible on the dark one. Unchanged here; tracked with the other

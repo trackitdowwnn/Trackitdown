@@ -15,10 +15,9 @@
  *        phone's (owner, 2026-10-20: "adhere to whatever theme the user has
  *        set up"). The root layout holds the native splash until that choice
  *        is in effect, so this never paints in the wrong one. The native
- *        splash itself cannot see the choice (it is drawn before any of our
- *        code runs), so a phone and app that disagree still change scheme at
- *        the handover — the one step left, and it needs a native build to
- *        remove (ADR-0013).
+ *        splash is drawn before any of our code runs; it follows the choice
+ *        through Android's per-app night mode (ThemeProvider →
+ *        appNightMode, Android 12+, builds from 2026-10-20 on — ADR-0013).
  *
  *        AuthGate owns WHEN this lifts and caps how long it can hold; this only
  *        owns how it looks and how it leaves.

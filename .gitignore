@@ -34,6 +34,10 @@ expo-env.d.ts
 # Generated native projects (created by prebuild / EAS)
 /ios
 /android
+# Build output of the local native modules (modules/*) — the source is
+# committed, what Gradle makes from it is not.
+modules/*/android/build/
+modules/*/android/.gradle/
 
 # ---------------------------------------------------------------------------
 # Metro bundler

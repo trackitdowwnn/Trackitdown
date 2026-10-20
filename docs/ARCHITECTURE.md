@@ -48,6 +48,9 @@ trackitdown/
 │                             #   ⚠️ `confirm-recovery` was listed here until
 │                             #   2026-09-03 and has never existed; recovery is
 │                             #   claim_recovery (SQL) + refund-recovery.
+├── modules/                  # local Expo native modules (autolinked; any
+│                             #   change needs a new native build). First one:
+│                             #   app-night-mode (2026-10-20, ADR-0013)
 ├── docs/                     # the documents referenced by CLAUDE.md
 └── .claude/agents/           # Claude Code subagents
 ```
