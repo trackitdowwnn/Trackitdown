@@ -27,6 +27,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Appearance, useColorScheme } from 'react-native';
 
+import { setAppNightMode } from './appNightMode';
 import { paletteFor } from './colors';
 import { PaletteContext, ThemeControlsContext, ThemeReadyContext } from './paletteContext';
 import { loadThemePreference, saveThemePreference } from './themePreferenceStorage';
@@ -39,13 +40,19 @@ import type { ThemePreference } from './themePreferenceTypes';
 export const THEME_READY_MAX_MS = 1000;
 
 /**
- * Push a preference at the OS-level override.
+ * Push a preference at the OS-level override — twice, for two lifetimes:
  *
- * 'system' maps to 'unspecified' — that is how Appearance spells "stop
- * overriding"; passing null does nothing.
+ * - Appearance.setColorScheme: THIS run (AppCompat, in-process, forgotten on
+ *   restart). 'system' maps to 'unspecified' — that is how Appearance spells
+ *   "stop overriding"; passing null does nothing.
+ * - setAppNightMode: the NEXT launch's splash, which Android draws before any
+ *   JS runs (per-app night mode, Android 12+, persisted; a no-op on builds
+ *   without the native module). Owner, 2026-10-20: the splash opened black on
+ *   a dark phone with the app on Light.
  */
 function applyPreference(preference: ThemePreference): void {
   Appearance.setColorScheme(preference === 'system' ? 'unspecified' : preference);
+  setAppNightMode(preference);
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
