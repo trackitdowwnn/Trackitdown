@@ -52,6 +52,12 @@ export const colors = {
   success: '#4F8A5B',
   // Amber for pending/expiring — dot/icon/border only, never body text.
   warning: '#A9762A',
+  // A soft amber FILL that ink text sits on — the owner's "Needs your answer"
+  // tag (2026-10-20). White on `warning` fails AA, so the tag is this tint with
+  // `textPrimary` and a `warning` ring (≥ 3:1 on it). colors.test pins both.
+  // ⚠️ THE RING HAS ~3.16:1 HERE — barely over the floor: any darker tint
+  // breaks it, so re-run colors.test after touching this value.
+  warningSubtle: '#F5E4C4',
   // Clearer muted red for destructive/error UI — the one hue that survived the
   // monochrome swap for actions, so destructive actions stay unmistakably
   // distinct from the near-black primary (a destructive tap must never read as
@@ -162,6 +168,7 @@ export const darkColors = {
   borderStrong: '#6E6E6E',
   success: '#6FBF7F',
   warning: '#E0A64B',
+  warningSubtle: '#4A3818',
   danger: '#F2685C',
   dangerPressed: '#D9544A',
   // Near-BLACK on the near-white primary fill — the flip of light mode's white.
