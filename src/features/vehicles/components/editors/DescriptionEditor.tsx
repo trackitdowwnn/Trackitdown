@@ -38,9 +38,9 @@ export function DescriptionEditor({
       onSave={() => saveDescription(post.id, text)}
     >
       <TextField
-        label="Description"
+        label="Details"
         variant="multiline"
-        placeholder="Describe your car — anything that helps a spotter recognise it."
+        placeholder="Anything else spotters should know — like what's usually inside it or if the plates may have been swapped."
         value={text}
         onChangeText={setText}
         maxLength={1000}
