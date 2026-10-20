@@ -108,6 +108,13 @@ describe.each([
     expect(contrast(palette.textOnPrimary, palette.danger)).toBeGreaterThanOrEqual(4.5);
   });
 
+  // 2026-10-20: the owner's "Needs your answer" tag — ink on the soft amber,
+  // with the amber ring that keeps it a different SHAPE from "answered".
+  it('reads ink on the amber tag at AA, and its ring at 3:1', () => {
+    expect(contrast(palette.textPrimary, palette.warningSubtle)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(palette.warning, palette.warningSubtle)).toBeGreaterThanOrEqual(3);
+  });
+
   it('separates the card surface from the page', () => {
     // Not a WCAG rule — the hierarchy itself. Identical values would flatten
     // every card into the background, which is how "dark mode" ends up as one

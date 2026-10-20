@@ -1,22 +1,26 @@
 /**
  * WHAT:  Tests for SightingEntryCard — the owner's photo-first timeline card:
  *        the in-app photo leads, "+N" for the rest, an empty box while a link
- *        is on its way and a frame mark with no photos; the place (or the
- *        honest "Location couldn't be captured"); the time — the in-app
- *        photo's clock time, or when it was sent if the phone's clock is
- *        implausible; the status for every state, "Needs your answer" while
- *        undecided; nothing else on the card (no context pills, no spotter);
- *        one spoken label; the tap.
- * WHY:   The card was redesigned (2026-10-09) because it was too busy and
- *        never said which sightings were waiting on the owner. These pin both
- *        halves: what it shows, and what it no longer shows.
+ *        is on its way and a frame mark with no photos; the place alone (no
+ *        "Seen near"), or the honest "Location couldn't be captured"; the
+ *        clock time alone (no "ago" on screen) — the in-app photo's, or when
+ *        it was sent if the phone's clock is implausible; "Saw N of M marks"
+ *        only when known; "Needs your answer" as an amber tag, answered
+ *        states as a quiet line; the chevron; nothing else on the card (no
+ *        context pills, no note, no spotter); one spoken label; the tap.
+ * WHY:   Redesigned 2026-10-09 (too busy, never said what was waiting on the
+ *        owner) and again 2026-10-20 at the owner's request (cleaner, an
+ *        amber tag, the marks seen). These pin both halves: what it shows,
+ *        and what it no longer shows.
  * LINKS: src/features/sightings/components/SightingEntryCard.tsx;
  *        docs/TESTING.md.
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 import { formatClock } from '@/shared/lib';
+import { paletteFor } from '@/shared/theme';
 
 import type { OwnerSighting } from '../types';
 import { SightingEntryCard } from './SightingEntryCard';
@@ -119,11 +123,12 @@ describe('the photo', () => {
 });
 
 describe('the time', () => {
-  it('is when the in-app photo was taken — the clock only, the rail names the day', async () => {
+  it('is when the in-app photo was taken — the clock alone, the rail names the day', async () => {
     const view = await renderCard();
-    // Taken 09:55, sent 10:00: the card says 09:55.
-    expect(view.getByText(new RegExp(` · ${formatClock(livePhoto.capturedAt)}$`))).toBeTruthy();
+    // Taken 09:55, sent 10:00: the card says 09:55 — and no "2h ago" beside it.
+    expect(view.getByText(formatClock(livePhoto.capturedAt))).toBeTruthy();
     expect(view.queryByText(new RegExp(formatClock('2026-10-08T10:00:00Z')))).toBeNull();
+    expect(view.queryByText(/ago/)).toBeNull();
     expect(view.queryByText(/Today|Yesterday/)).toBeNull();
   });
 
@@ -131,14 +136,37 @@ describe('the time', () => {
     const view = await renderCard(
       sighting({ photos: [{ ...livePhoto, capturedAt: '2026-10-01T09:55:00Z' }] }),
     );
-    expect(view.getByText(new RegExp(` · ${formatClock('2026-10-08T10:00:00Z')}$`))).toBeTruthy();
+    expect(view.getByText(formatClock('2026-10-08T10:00:00Z'))).toBeTruthy();
+  });
+});
+
+describe('the marks they saw', () => {
+  const dent = { id: 'm1', description: 'Dent' };
+  const box = { id: 'm2', description: 'Roof box' };
+
+  it('says "Saw 2 of 3 marks" beside the time when the report recorded what it asked', async () => {
+    const view = await renderCard(
+      sighting({ confirmedFeatures: [dent, box], offeredFeatureIds: ['m1', 'm2', 'm3'] }),
+    );
+    expect(view.getByText(`${formatClock(livePhoto.capturedAt)} · Saw 2 of 3 marks`)).toBeTruthy();
+  });
+
+  it.each<[string, string[] | null]>([
+    ['an older report (unknown)', null],
+    ['a report that showed no marks', []],
+  ])('⚠️ claims no count for %s', async (_, offered) => {
+    const view = await renderCard(
+      sighting({ confirmedFeatures: [dent], offeredFeatureIds: offered }),
+    );
+    expect(view.queryByText(/marks/)).toBeNull();
   });
 });
 
 describe('the words', () => {
-  it('leads with where it was seen', async () => {
+  it('leads with the place — no "Seen near" on every card', async () => {
     const view = await renderCard();
-    expect(view.getByText('Seen near Deansgate, Manchester')).toBeTruthy();
+    expect(view.getByText('Deansgate, Manchester')).toBeTruthy();
+    expect(view.queryByText(/Seen near/)).toBeNull();
   });
 
   it('says honestly when the location couldn’t be captured', async () => {
@@ -155,6 +183,16 @@ describe('the words', () => {
     const view = await renderCard(sighting({ status }));
     expect(view.getByTestId('timeline-entry-status-s1')).toBeTruthy();
     expect(view.getByText(label)).toBeTruthy();
+  });
+
+  it('⚠️ "Needs your answer" is an amber TAG; an answered status is a quiet line', async () => {
+    const waiting = await renderCard();
+    const tag = StyleSheet.flatten(waiting.getByTestId('timeline-entry-status-s1').props.style);
+    expect(tag.backgroundColor).toBe(paletteFor('light').warningSubtle);
+
+    const answered = await renderCard(sighting({ status: 'helpful' }));
+    const line = StyleSheet.flatten(answered.getByTestId('timeline-entry-status-s1').props.style);
+    expect(line.backgroundColor).toBeUndefined();
   });
 
   it('⚠️ never says "helpful" — the old tag’s word for a confirmation', async () => {
@@ -176,10 +214,29 @@ describe('the card', () => {
     const card = view.getByTestId('timeline-entry-s1');
     expect(card.props.accessibilityRole).toBe('button');
     expect(card.props.accessibilityLabel).toMatch(
-      /^Seen near Deansgate, Manchester, .+, Needs your answer\. Sighting 1 of 4\. Opens details\.$/,
+      /^Deansgate, Manchester, .+, Needs your answer\. Sighting 1 of 4\. Opens details\.$/,
     );
-    // Spoken in words — "5m" reads as "five metres".
+    // Spoken in words — "5m" reads as "five metres". And the "ago" IS spoken:
+    // a screen reader hears no day stop.
     expect(card.props.accessibilityLabel).not.toMatch(/\d+[mhdw] ago/);
+  });
+
+  it('speaks the marks they saw when it knows them', async () => {
+    const view = await renderCard(
+      sighting({
+        confirmedFeatures: [{ id: 'm1', description: 'Dent' }],
+        offeredFeatureIds: ['m1', 'm2'],
+      }),
+    );
+    expect(view.getByTestId('timeline-entry-s1').props.accessibilityLabel).toContain(
+      'saw 1 of 2 marks, Needs your answer.',
+    );
+  });
+
+  it('shows a chevron — the cue that the card opens — hidden from screen readers', async () => {
+    const view = await renderCard();
+    const chevron = view.getByTestId('timeline-entry-chevron-s1', { includeHiddenElements: true });
+    expect(chevron.props.accessibilityElementsHidden).toBe(true);
   });
 
   it('opens the sighting', async () => {

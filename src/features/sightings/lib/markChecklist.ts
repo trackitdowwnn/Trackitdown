@@ -2,7 +2,9 @@
  * WHAT:  markChecklist — the owner's marks as the sighting page lists them:
  *        the marks this spotter was ASKED about, in the owner's order, each
  *        flagged seen or not by the spotter's ticks — plus whether that list
- *        is complete ("Seen 1 of 3") or only the seen ones.
+ *        is complete ("Seen 1 of 3") or only the seen ones. And
+ *        marksSeenSummary — the same count for the owner's sighting CARD
+ *        ("Saw 2 of 3 marks", 2026-10-20), from the sighting alone.
  * WHY:   The owner asked to read the marks the way the spotter answered them
  *        (2026-10-19): the whole "Could you see any of these?" list with the
  *        seen ones ticked — what was NOT seen says something too.
@@ -27,7 +29,28 @@
  *        supabase/migrations (sightings.offered_feature_ids).
  */
 
-import type { ConfirmableFeature } from '../types';
+import type { ConfirmableFeature, OwnerSighting } from '../types';
+
+/**
+ * "Saw 2 of 3 marks" for the owner's sighting CARD (2026-10-20) — the count
+ * alone, from the sighting itself (no listing read): of the marks the spotter
+ * was ASKED about, how many they could see. Null when that isn't known — an
+ * older report (null offered) or one that showed no marks (empty) — so the
+ * card never claims a total it doesn't have (the page's "Seen 1 of 3" rule).
+ * A seen mark outside the offered set is not counted.
+ */
+export function marksSeenSummary(
+  sighting: Pick<OwnerSighting, 'confirmedFeatures' | 'offeredFeatureIds'>,
+): { seen: number; of: number } | null {
+  const offered = sighting.offeredFeatureIds;
+  if (!offered || offered.length === 0) return null;
+  const asked = new Set(offered);
+  // Distinct ids on both sides, so a repeated id can never read "3 of 2".
+  const seen = new Set(
+    sighting.confirmedFeatures.map((mark) => mark.id).filter((id) => asked.has(id)),
+  );
+  return { seen: seen.size, of: asked.size };
+}
 
 export interface MarkCheck {
   mark: ConfirmableFeature;

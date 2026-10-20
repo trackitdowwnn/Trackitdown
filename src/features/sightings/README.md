@@ -190,9 +190,11 @@ One visual language (`SightingTimeline`: sage rail, day groups, newest dot
 emphasised, NEWEST-FIRST — a live theft reads most-recent-down), two depths:
 
 - **Owner:** photo-first cards (`SightingEntryCard`, redesigned 2026-10-09
-  — the old card was "too busy"): the in-app photo ("+N" for the rest),
-  "Seen near …", the clock time it was seen, and a status — **"Needs your
-  answer"** (a warning ring) until the owner decides, then "Confirmed" /
+  — the old card was "too busy" — and again 2026-10-20, cleaner): the
+  in-app photo at 72 ("+N" for the rest), the place alone, the clock time
+  it was seen with "· Saw 2 of 3 marks" when known (`marksSeenSummary`), a
+  chevron, and a status — an amber **"Needs your answer"** tag until the
+  owner decides (the one "new" signal), then a quiet "Confirmed" /
   "Credited" / "Not your car". The order, the day stops and the cards all
   use one time, `sightingSeenAt` (the sighting page's rule): the in-app
   photo's capture time, believed only within the hour before the server

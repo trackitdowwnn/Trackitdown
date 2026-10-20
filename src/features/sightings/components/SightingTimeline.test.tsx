@@ -147,13 +147,13 @@ describe('owner face', () => {
       />,
     );
     const lines = view
-      .getAllByText(/^(Today|Yesterday|\w{3} \d{1,2} \w{3}|Seen near Street s\d)$/)
+      .getAllByText(/^(Today|Yesterday|\w{3} \d{1,2} \w{3}|Street s\d)$/)
       .map((node) => node.props.children as string);
     expect(lines).toEqual([
       timelineDayLabel(local(24, 8, 0)),
-      'Seen near Street s8',
+      'Street s8',
       timelineDayLabel(local(23, 23, 50)),
-      'Seen near Street s9',
+      'Street s9',
     ]);
   });
 

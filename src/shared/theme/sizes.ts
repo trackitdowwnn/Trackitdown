@@ -157,6 +157,10 @@ export const sizes = {
    *  own token, not `avatarXl`/`avatarLg`: those are sized for faces. Above
    *  listRowStackFontScale it takes its own row and the words the width. */
   timelineThumb: 88,
+  /** The OWNER's sighting card's photo since 2026-10-20 (owner: a cleaner
+   *  card) — smaller than the spotter's ReportCard (timelineThumb), so the
+   *  place keeps more of a narrow phone's width beside it and a chevron. */
+  timelineThumbCompact: 72,
   /** Map-pin family (drawn geometry; the PRESSABLE around a tappable pin is
    *  padded up to touchTarget — same rule as sliderThumb). */
   mapPin: 14,

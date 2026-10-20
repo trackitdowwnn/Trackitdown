@@ -32,6 +32,7 @@ tokens; it never hard-codes hex values, pixel sizes, or font names.
 | `borderStrong` | `#8F8F8F` | small elements that must stay visible (progress tracks) |
 | `success` | `#4F8A5B` | affirmative states — recovery confirmed, payout complete (fill/dot/icon, not body text). Not "ownership verified": that check was removed (ADR-0007), so nothing may claim it |
 | `warning` | `#A9762A` | pending verification, expiring posts (dot/icon/border only — never body text; clears 3:1 as a graphic) |
+| `warningSubtle` | `#F5E4C4` | a soft amber FILL that ink sits on — the owner's "Needs your answer" tag (2026-10-20); `textPrimary` on it ≥ 4.5:1, a `warning` ring on it ≥ 3:1 (pinned in colors.test) |
 | `danger` | `#C0281E` | destructive actions, errors (clear red, kept distinct from the near-black primary) |
 | `dangerPressed` | `#A21F16` | pressed state of danger |
 | `textOnPrimary` | `#FFFFFF` | text/icons on `primary` and `danger` fills |
@@ -71,7 +72,9 @@ stroke only — a translucent ink at 10% is nowhere near a text contrast ratio.
 ### Contrast (WCAG AA on the near-white `#F7F7F7` background)
 
 Every token used as TEXT clears AA (4.5:1). `success` is dot/fill only by
-design; `warning` is dot/icon/border only. The near-black `primary`/`accent`
+design; `warning` is dot/icon/border only — its one FILL is the separate,
+paler `warningSubtle`, ink on top (the sighting card's "Needs your answer"
+tag, 2026-10-20). The near-black `primary`/`accent`
 clear AAA both as text and as a fill under white. (Monochrome swap 2026-07-24;
 structure per `docs/decisions/ADR-0005-airbnb-orange-theme.md`.)
 
@@ -129,6 +132,7 @@ near-white and `textOnPrimary` becomes near-black.
 | `borderStrong` | `#8F8F8F` | `#6E6E6E` | 3.6 ≥3 | 3.3 ≥3 |
 | `success` | `#4F8A5B` | `#6FBF7F` | 8.3 | 7.5 |
 | `warning` | `#A9762A` | `#E0A64B` | 8.5 | 7.7 |
+| `warningSubtle` | `#F5E4C4` | `#4A3818` | fill — ink on it 12.7 / 9.6; `warning` ring on it 3.2 / 5.2 | — |
 | `danger` | `#C0281E` | `#F2685C` | 6.1 AA | 5.5 |
 | `surfaceInverse` | `#222222` | `#EDEDED` | inverts | — |
 | `overlay` | `rgba(0,0,0,0.45)` | `rgba(0,0,0,0.65)` | — | — |
@@ -890,18 +894,24 @@ to use.
   which stays reserved for payout moments. (A third — the owner's sighting
   page's filled ANSWER chips, 2026-10-19 — was retired the next day, when
   the owner moved the answers to a plain-text label | answers table.)
-- Sighting timeline cards (owner, `SightingEntryCard`, 2026-10-09): flat
-  `cardSurface` at the house `spacing.lg` padding, photo first
-  (`sizes.timelineThumb`), the place in `cardTitle`, the clock time in
-  caption (the rail's day stop names the day), and a bare marker + label
-  status — nothing else, no chevron. A bare marker, NOT `StatusPill`: the
-  pill's `surface` fill showed as a white box on the pressed card (ReportCard
-  records the same trap). "Needs your answer" is a `warning` RING with its
-  label in full ink — a ring so it differs from the answered states in
-  shape, not only hue; the answered states are filled dots with
-  `textSecondary` labels. Above `listRowStackFontScale` the photo takes its
-  own row. The rail-to-card gap is `spacing.lg` (40px offset with the 24px
-  node column); the rail's dot follows the first line at every text size.
+- Sighting timeline cards (owner, `SightingEntryCard`; 2026-10-09, redone
+  2026-10-20 at the owner's request): flat `cardSurface` at the house
+  `spacing.lg` padding, photo first at `sizes.timelineThumbCompact` (72 —
+  the spotter's ReportCard keeps `timelineThumb` 88), the place alone in
+  `cardTitle` (no "Seen near" — the section is sightings), the clock time in
+  caption (the rail's day stop names the day) with "· Saw 2 of 3 marks" only
+  when the report recorded what it asked, then the status, and a
+  `chevron-right` in `textSecondary` at the top-right as the tap cue.
+  "Needs your answer" is the one "new" signal: a TAG — `warningSubtle` fill,
+  `textPrimary` label, and a `warning` RING before it (white on `warning`
+  fails AA; the ring keeps it a different SHAPE from "answered" in
+  greyscale). The answered states are a quiet `textSecondary` caption, no
+  dot. Not `StatusPill`: its `surface` fill showed as a white box on the
+  pressed card (ReportCard records the same trap). No context, note or
+  spotter on the card — the sighting page has them. Above
+  `listRowStackFontScale` the photo takes its own row. The rail-to-card gap
+  is `spacing.lg` (40px offset with the 24px node column); the rail's dot
+  follows the first line at every text size.
 - Spotter report cards ("My sightings", `ReportCard`, 2026-10-09): the same
   family as the owner's — `cardSurface` at `spacing.lg`, the spotter's own
   photo at `sizes.timelineThumb` (an empty `surfaceSubtle` frame while it

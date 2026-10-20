@@ -3,14 +3,16 @@
  *        the listing's order, ticked where seen ("Seen N of M"); never "not
  *        seen" for a mark that wasn't offered (added later, an older report,
  *        a wizard whose marks didn't load); the seen ones alone, with no
- *        total, while either list is unknown.
+ *        total, while either list is unknown. And marksSeenSummary, the
+ *        card's "Saw N of M marks": only marks asked about, never a total it
+ *        doesn't know, never a repeated id counted twice.
  * WHY:   The owner reads the spotter's answer through this list — a mark
  *        called "not seen" that the spotter was never shown misreports the
  *        evidence (code review, 2026-10-19).
  * LINKS: src/features/sightings/lib/markChecklist.ts.
  */
 
-import { markChecklist } from './markChecklist';
+import { markChecklist, marksSeenSummary } from './markChecklist';
 
 const dent = { id: 'm1', description: 'Dent on the rear door' };
 const roofBox = { id: 'm2', description: 'Roof box' };
@@ -75,4 +77,38 @@ it('takes the LISTING’s copy of a mark (it carries the photo)', () => {
   expect(markChecklist([withPhoto], [dent], ['m1']).checks[0].mark.photoUrl).toBe(
     'https://x/m1.jpg',
   );
+});
+
+describe('marksSeenSummary — the card’s "Saw 2 of 3 marks"', () => {
+  it('counts the marks they saw out of the ones they were asked about', () => {
+    expect(
+      marksSeenSummary({
+        confirmedFeatures: [dent, sticker],
+        offeredFeatureIds: ['m1', 'm2', 'm3'],
+      }),
+    ).toEqual({ seen: 2, of: 3 });
+  });
+
+  it('ignores a seen mark outside the asked set', () => {
+    expect(
+      marksSeenSummary({ confirmedFeatures: [sticker], offeredFeatureIds: ['m1', 'm2'] }),
+    ).toEqual({
+      seen: 0,
+      of: 2,
+    });
+  });
+
+  it.each<[string, string[] | null | undefined]>([
+    ['an older report (unknown)', null],
+    ['an absent field', undefined],
+    ['a report that showed no marks', []],
+  ])('⚠️ claims no total for %s', (_, offered) => {
+    expect(marksSeenSummary({ confirmedFeatures: [dent], offeredFeatureIds: offered })).toBeNull();
+  });
+});
+
+it('marksSeenSummary never counts a repeated id twice', () => {
+  expect(
+    marksSeenSummary({ confirmedFeatures: [dent, dent], offeredFeatureIds: ['m1', 'm1', 'm2'] }),
+  ).toEqual({ seen: 1, of: 2 });
 });
