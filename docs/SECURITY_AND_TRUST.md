@@ -254,8 +254,9 @@ commenting standards.
     only counts / whether there was a note, never the words. **Unmoderated**
     (§7), like the note. ⚠️ **Kept as long as the sighting row** — the
     90-day location purge clears coordinates only, and a damage note can
-    still name a place; the same open follow-up as the withdrawal note, and
-    it belongs in the privacy policy / Art. 30 record beside the note.
+    still name a place; the same open follow-up as the withdrawal note.
+    In the privacy policy ("What we collect", 2026-10-21) and the draft Art.
+    30 record (`docs/RECORD_OF_PROCESSING.md` 4.4).
     **Which parts are missing follow them too** (2026-10-21,
     `20261021120000_a_sighting_says_what_is_missing.sql`):
     `sightings.missing_parts` (a closed six-part list — only parts seen from
@@ -264,7 +265,8 @@ commenting standards.
     pinned to the same set by `supabase/tests/withdrawReasons.test.ts`), both
     only beside the `missing_parts` damage kind. Owner-only, never pushed or
     logged (counts only), **unmoderated**, ⚠️ **kept as long as the row** —
-    the same retention follow-up and the same privacy policy / Art. 30 line.
+    the same retention follow-up; in the privacy policy and the Art. 30
+    record beside the damage details (2026-10-21).
   - The visible push — title or body — may name make, colour and a
     **district-grain** locality. ⚠️ Deliberately field-agnostic since
     2026-09-22, when the copy pass moved the alert's locality and the
@@ -568,8 +570,9 @@ commenting standards.
   answer (never what was typed), exactly four digits (a column CHECK), read
   only by the account's owner (select-own RLS), written only by the
   service-role `record_bank_last4`, never logged, and gone with the profile.
-  The sort code and full number are still never stored. **Add it to the
-  privacy policy and the Art. 30 record** alongside the in-transit details.
+  The sort code and full number are still never stored. In the privacy
+  policy ("Bounty payouts", 2026-10-21) and the draft Art. 30 record
+  (`docs/RECORD_OF_PROCESSING.md` 4.12, with the legacy in-transit path).
 - **Two pricing modes since 2026-08-20 (ADR-0014), and the amount is
   server-authoritative in both.** A post is PRICED as either a bounty (escrowed)
   or a fixed £5 listing fee. *(Since 2026-10-05 a live fee listing can ADD a

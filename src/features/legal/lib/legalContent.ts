@@ -344,9 +344,15 @@ const PRIVACY: LegalDocument = {
   // 16 Oct: "a bounty in escrow" → "a bounty we are still holding" under
   // "Deleting your account" — wording only (see TERMS). Same day: "Who we
   // share it with" names the email address Stripe now gets for receipts.
+  // 21 Oct: "What we collect" names what a sighting can now say about the
+  // car's condition — the damage seen and which parts were missing, and the
+  // spotter's words about each (20261021100000, 20261021120000) — and the
+  // last four digits of a payout bank account we keep (20261015100000), both
+  // asked for by SECURITY_AND_TRUST §3. docs/RECORD_OF_PROCESSING.md is the
+  // Art. 30 record these lines must agree with.
   slug: 'privacy',
   title: 'Privacy policy',
-  lastUpdated: '16 October 2026',
+  lastUpdated: '21 October 2026',
   intro: [
     `${OPERATOR} is the controller of the personal data described here.`,
     'This app handles location, vehicle details, photographs and payments, so this policy is specific rather than generic. If something below is not clear, ask us before you use the service.',
@@ -358,9 +364,10 @@ const PRIVACY: LegalDocument = {
         '• Account: your email address, first name, the display name you choose, and a profile photo if you add one.',
         '• Vehicles: make, model, colour, year, body type, and photographs of vehicles you list or save.',
         '• Locations: where a listed vehicle was last seen; where a sighting was reported; and the centre of any alert area you set.',
-        '• Sightings: your photograph, notes, and the details you confirm about the vehicle.',
+        '• Sightings: your photograph, notes, and the details you confirm about the vehicle — including any damage you could see and which parts were missing, and anything you write about them. Only the vehicle’s owner sees what you write, and it is never put in a notification.',
         '• Messages: the content of messages between an owner and a spotter.',
         '• Payments: we do not see or store your card details. Stripe processes payments and holds that information.',
+        '• Bounty payouts: if you receive a bounty, we keep the last four digits of the bank account it is paid into, so the app can show you where your money went. Only you can see them. Stripe holds the rest of your bank details; we do not store them.',
         '• Device: a push notification token for each device you sign in on, so we can notify you.',
         '• Activity: counts of sightings reported, sightings marked helpful, and recoveries credited.',
         // ⚠️ ADDED 2026-08-24 with the in-app bug reporter, and WIDENED the same

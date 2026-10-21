@@ -68,6 +68,9 @@ worse than one that is merely late.
 3. If the change is material, tell users in-app before it takes effect (the
    Terms promise this).
 4. Re-publish the web copies so the two agree.
+5. Keep `docs/RECORD_OF_PROCESSING.md` (the draft UK GDPR Art. 30 record)
+   agreeing with the privacy policy. Its §5 lists where the policy and the
+   code disagree today — each one a decision still to make.
 
 ## Tables / Edge Functions
 
