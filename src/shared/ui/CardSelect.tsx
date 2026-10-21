@@ -41,6 +41,10 @@ export interface CardSelectOption<V extends string = string> {
   description?: string;
   /** A lucide icon component rendered on the left. */
   icon?: LucideIcon;
+  /** What a screen reader says instead of "label. description" — for an
+   *  option whose words lean on what's around it ("Not sure" → "Not sure
+   *  which way it went"). */
+  accessibilityLabel?: string;
 }
 
 export interface CardSelectProps<V extends string = string> {
@@ -57,6 +61,15 @@ export interface CardSelectProps<V extends string = string> {
    * is reachable by heading navigation but is never announced WITH the control.
    */
   accessibilityLabel?: string;
+  /**
+   * The caller clears the answer when the chosen card is tapped again (an
+   * optional question). This only TELLS screen readers so — "Double tap to
+   * clear" on the chosen card, as ChoiceChips does — since a radio is
+   * otherwise assumed to stay chosen.
+   */
+  clearable?: boolean;
+  /** On the group. */
+  testID?: string;
 }
 
 export function CardSelect<V extends string = string>({
@@ -64,6 +77,8 @@ export function CardSelect<V extends string = string>({
   value,
   onSelect,
   accessibilityLabel,
+  clearable = false,
+  testID,
 }: CardSelectProps<V>) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
@@ -73,6 +88,7 @@ export function CardSelect<V extends string = string>({
       style={styles.group}
       accessibilityRole="radiogroup"
       accessibilityLabel={accessibilityLabel}
+      testID={testID}
     >
       {options.map((option) => {
         const selected = option.value === value;
@@ -82,8 +98,10 @@ export function CardSelect<V extends string = string>({
             key={option.value}
             accessibilityRole="radio"
             accessibilityLabel={
-              option.description ? `${option.label}. ${option.description}` : option.label
+              option.accessibilityLabel ??
+              (option.description ? `${option.label}. ${option.description}` : option.label)
             }
+            accessibilityHint={clearable && selected ? 'Double tap to clear' : undefined}
             accessibilityState={{ checked: selected }}
             onPress={() => onSelect(option.value)}
             style={({ pressed }) => [

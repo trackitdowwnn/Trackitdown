@@ -57,6 +57,9 @@ export interface CardSelectMultiOption<V extends string = string> {
    * unticked and does not explain itself reads as a bug.
    */
   locked?: boolean;
+  /** What a screen reader says instead of "label. description" — for an
+   *  option whose words lean on what's around it. */
+  accessibilityLabel?: string;
 }
 
 export interface CardSelectMultiProps<V extends string = string> {
@@ -66,12 +69,19 @@ export interface CardSelectMultiProps<V extends string = string> {
   /** Receives the full next selection (the card's toggle is applied for you).
    *  Locked options never appear in a change — they cannot be toggled off. */
   onChange: (next: V[]) => void;
+  /** The QUESTION these options answer, when it sits in a separate heading
+   *  (see CardSelect's note: a heading is never read WITH the control). */
+  accessibilityLabel?: string;
+  /** On the group. */
+  testID?: string;
 }
 
 export function CardSelectMulti<V extends string = string>({
   options,
   value,
   onChange,
+  accessibilityLabel,
+  testID,
 }: CardSelectMultiProps<V>) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
@@ -83,7 +93,7 @@ export function CardSelectMulti<V extends string = string>({
   };
 
   return (
-    <View style={styles.group}>
+    <View style={styles.group} accessibilityLabel={accessibilityLabel} testID={testID}>
       {options.map((option) => {
         // A locked card reads as checked whether or not the caller passed it in
         // `value`, so the control can never show the required choice as off.
@@ -94,7 +104,8 @@ export function CardSelectMulti<V extends string = string>({
             key={option.value}
             accessibilityRole="checkbox"
             accessibilityLabel={
-              option.description ? `${option.label}. ${option.description}` : option.label
+              option.accessibilityLabel ??
+              (option.description ? `${option.label}. ${option.description}` : option.label)
             }
             accessibilityState={{ checked: selected, disabled: Boolean(option.locked) }}
             disabled={option.locked}
