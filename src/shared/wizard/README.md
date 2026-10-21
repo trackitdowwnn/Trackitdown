@@ -56,6 +56,20 @@ doing you a favour.
   required step the answers no longer satisfy (changing the make clears the
   model) before returning to review, still on the spur: Done again, and Back
   cancels the whole edit.
+- **…and to a step that belongs with it (`editContinuesTo`, 2026-10-20).** A
+  step can name a follow-up for Done on a spur to visit next — the report's
+  "what was it doing?" continues to "which way?" when it is now Moving, which
+  Done would otherwise skip (it is optional) and `editStep([a, b])` can't reach
+  (a fallback list, not a sequence). Only a VISIBLE target is followed, only
+  from the step the edit opened (no chains, no loops), and a broken required
+  step is visited instead when there is one; the follow-up keeps the spur.
+- **`cancelAdvanceSoon` (2026-10-20).** Drops a pending auto-advance — for a
+  later pick on the same step that must keep the screen up (the report's
+  people step: "People near it" tapped inside the beat after "No one seen"
+  stays to show "Don't approach").
+- **Progress counts only the screens the walk stops on (2026-10-20):** the bar,
+  the spoken "Step X of Y" and the percentage leave out steps whose `when` is
+  walking past them, so nothing stalls short and then jumps.
 - **A step can claim Next (`claimNext`, 2026-10-12).** For one more question on
   the way out — the colour step's paint-finish sheet. The step registers a
   handler in an effect (the call returns its release); a VALID Next then calls

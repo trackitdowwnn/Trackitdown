@@ -10,6 +10,10 @@
  *        themselves (`advanceSoon`), and an edit from review visits any
  *        answer it broke before returning (2026-10-08). A step can claim Next
  *        to ask one more thing on the way out (`claimNextAt`, 2026-10-12).
+ *        An edit can continue to a step that belongs with the one it opened
+ *        (`editContinuesTo`), a step can drop its own pending auto-advance
+ *        (`cancelAdvanceSoon`), and progress counts only the screens the walk
+ *        stops on (`visible`, 2026-10-20).
  * WHY:   A thin React shell over the pure logic in navigation.ts, so screens
  *        and chrome stay dumb. The answers object is a single serializable
  *        value and exits funnel through one place, deliberately: that is the
@@ -160,6 +164,10 @@ export function useWizardController<TAnswers>(
   // Answers as they were when a review edit began; backing out of the edit
   // restores this, so "Back" truly cancels instead of leaving a half-edit.
   const editSnapshotRef = useRef<Partial<TAnswers> | null>(null);
+  // The screen an edit spur OPENED on. Only it may continue to a follow-up
+  // (WizardStep.editContinuesTo) — so two steps naming each other, or a
+  // chain, can never keep Done from returning to review.
+  const editOriginRef = useRef<number | null>(null);
   // ⚠️ A REF, NOT THE `answers` STATE, for requestExit's save (review #19).
   // requestExit is memoised and is handed to a header button AND to the Android
   // back handler; taking `answers` as a dependency would rebuild it on every
@@ -312,13 +320,27 @@ export function useWizardController<TAnswers>(
     const blocking = invalid
       ? screens.map((screen) => screen.kind === 'step' && invalid.has(screen.step.id))
       : undefined;
-    // The same target the reducer will pick (pendingEditTarget): only a spur
-    // that is actually continuing keeps its snapshot.
-    if (!blocking || pendingEditTarget(blocking, nav.index) === -1) {
+    // A step that belongs with this one (WizardStep.editContinuesTo): resolved
+    // here to a VISIBLE screen, so the reducer only ever sees a real target.
+    let continueTo: number | undefined;
+    const here = screens[nav.index];
+    const fromOrigin = editing && editOriginRef.current === nav.index;
+    const onwardId =
+      fromOrigin && here?.kind === 'step' ? here.step.editContinuesTo?.(answers) : undefined;
+    if (onwardId) {
+      const at = screens.findIndex(
+        (screen) => screen.kind === 'step' && screen.step.id === onwardId,
+      );
+      if (at !== -1 && at !== nav.index && visible[at]) continueTo = at;
+    }
+    // The same targets the reducer will pick (pendingEditTarget, then
+    // continueTo): only a spur that is actually continuing keeps its snapshot.
+    const pending = blocking ? pendingEditTarget(blocking, nav.index) !== -1 : false;
+    if (!pending && continueTo === undefined) {
       // Completing an edit commits it — the snapshot is no longer a fallback.
       editSnapshotRef.current = null;
     }
-    move({ type: 'next', visible, blocking });
+    move({ type: 'next', visible, blocking, continueTo });
   }, [move, visible, nav.returnToIndex, nav.index, flow, answers, screens]);
   const next = useCallback(() => {
     // Not mid-move, and not under a lookup: its own move is coming.
@@ -338,6 +360,7 @@ export function useWizardController<TAnswers>(
     (targetIndex: number) => {
       if (lockRef.current) return;
       editSnapshotRef.current = answers;
+      editOriginRef.current = targetIndex;
       move({ type: 'editStep', targetIndex, reviewIndex: nav.index });
     },
     [move, answers, nav.index],
@@ -598,6 +621,10 @@ export function useWizardController<TAnswers>(
     canGoNext,
     /** Move on after a short beat — see the auto-advance note above. */
     advanceSoon,
+    /** Drop a pending advanceSoon (WizardStepProps.cancelAdvanceSoon). */
+    cancelAdvanceSoon: cancelAutoAdvance,
+    /** Per screen: false where the walk steps past it (its `when`). */
+    visible,
     /** Register a step's claim on Next for the screen at `index` (see
      *  WizardStepProps.claimNext); returns its release. */
     claimNextAt,
@@ -621,7 +648,7 @@ export function useWizardController<TAnswers>(
     ctaLabel: ctaLabel(flow, screens, nav, answers),
     /** Fill fraction (0–1) per phase segment. Held where it was while on an
      *  edit spur: a detour from review is not progress lost (2026-10-08). */
-    progress: phaseProgress(flow, nav.returnToIndex ?? nav.index),
+    progress: phaseProgress(flow, nav.returnToIndex ?? nav.index, visible),
     /** +1 sliding forward, -1 sliding back — drives the transition. */
     direction: nav.direction,
   };

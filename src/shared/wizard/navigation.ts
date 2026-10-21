@@ -96,7 +96,14 @@ export type WizardNavAction =
    * `blocking[i]` is true for a REQUIRED step the answers no longer satisfy:
    * an edit spur visits those before it returns (see the reducer).
    */
-  | { type: 'next'; visible: readonly boolean[]; blocking?: readonly boolean[] }
+  | {
+      type: 'next';
+      visible: readonly boolean[];
+      blocking?: readonly boolean[];
+      /** On an edit spur: the screen this step continues to before returning
+       *  (WizardStep.editContinuesTo), already resolved to a visible index. */
+      continueTo?: number;
+    }
   /** Go back one screen; during a review edit, cancel back to review. */
   | { type: 'back'; visible: readonly boolean[] }
   /** Jump from the review screen to a step to edit it. */
@@ -156,6 +163,12 @@ export function wizardReducer(
         const pending = action.blocking ? pendingEditTarget(action.blocking, state.index) : -1;
         if (pending !== -1) {
           return { ...state, index: pending, direction: pending > state.index ? 1 : -1 };
+        }
+        // A step that belongs with this one (editContinuesTo): still on the
+        // spur, so its Done returns and Back cancels the whole edit.
+        const onward = action.continueTo;
+        if (onward !== undefined && onward !== state.index && action.visible[onward] !== false) {
+          return { ...state, index: onward, direction: onward > state.index ? 1 : -1 };
         }
         return { ...state, index: state.returnToIndex, returnToIndex: null, direction: 1 };
       }
@@ -239,11 +252,19 @@ export function transitionKind<TAnswers>(
  * screens are its intro plus its steps (intros count toward progress); the
  * current screen counts as filled, so the bar moves on every advance.
  * The review screen sits past every phase, filling all segments.
+ *
+ * `visible` (2026-10-20): count only the screens the walk will stop on. A step
+ * being walked past (its `when`) otherwise still took a share of its segment,
+ * so the bar stalled short and then jumped — the report's follow-ups, a post
+ * paid by fee. Omitted, every screen counts (the old maths).
  */
 export function phaseProgress<TAnswers>(
   flow: WizardFlow<TAnswers>,
   currentIndex: number,
+  visible?: readonly boolean[],
 ): number[] {
+  // The current screen always counts, even if its own `when` has turned false.
+  const counts = (index: number) => visible?.[index] !== false || index === currentIndex;
   let start = 0;
   return flow.phases.map((phase) => {
     const count = (phase.intro ? 1 : 0) + phase.steps.length;
@@ -254,7 +275,14 @@ export function phaseProgress<TAnswers>(
     } else if (currentIndex > end) {
       fill = 1;
     } else {
-      fill = (currentIndex - start + 1) / count;
+      let shown = 0;
+      let reached = 0;
+      for (let index = start; index <= end; index += 1) {
+        if (!counts(index)) continue;
+        shown += 1;
+        if (index <= currentIndex) reached += 1;
+      }
+      fill = shown === 0 ? 1 : reached / shown;
     }
     start = end + 1;
     return fill;

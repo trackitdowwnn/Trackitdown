@@ -73,6 +73,13 @@ export interface WizardStepProps<TAnswers> {
    * can never claim the screen arriving after it.
    */
   claimNext?: (handler: (proceed: () => void) => void) => () => void;
+  /**
+   * Cancel a pending `advanceSoon` (2026-10-20). Any move cancels one anyway;
+   * this is for a later pick on the SAME step that must keep the screen up —
+   * the report's people step: "No one seen" moves on, but "People near it"
+   * tapped inside the beat must stay to show "Don't approach".
+   */
+  cancelAdvanceSoon?: () => void;
 }
 
 export interface WizardStep<TAnswers> {
@@ -134,6 +141,22 @@ export interface WizardStep<TAnswers> {
    * invisible dead end possible in the first place.
    */
   when?: (answers: Partial<TAnswers>) => boolean;
+  /**
+   * On an edit spur, where Done goes NEXT instead of back to review — the id
+   * of a step that belongs with this one (2026-10-20). The report's "what was
+   * it doing?" continues to its follow-up, so changing Parked to Moving asks
+   * which way it went: Done on a spur otherwise skips optional steps, and
+   * `editStep([a, b])` is a fallback list, not a sequence.
+   *
+   * Only followed when that step is VISIBLE (its `when`), is not this one, and
+   * this is the step the edit OPENED on — so a chain or two steps naming each
+   * other can never keep Done from returning. The continued-to step keeps the
+   * spur: its Done returns to review, and Back from it cancels the whole edit.
+   * A required step the edit broke is visited INSTEAD (it takes priority; the
+   * follow-up is then not shown). Read only fields this step sets directly: a
+   * patch from its own `onContinue` is not seen when this is resolved.
+   */
+  editContinuesTo?: (answers: Partial<TAnswers>) => string | undefined;
   /**
    * Optional async action run when the user advances from this step (after
    * the schema passes). Use it for a server round-trip the answer depends on

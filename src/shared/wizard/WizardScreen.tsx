@@ -372,20 +372,31 @@ export function WizardScreen<TAnswers>({
   // A spur from review keeps saying where the owner came from.
   const progressIndex = controller.isEditingFromReview ? controller.screens.length - 1 : screenIndex;
   const progressScreen = controller.screens[progressIndex] ?? screen;
+  /** A screen the walk stops on — and the one being described always counts,
+   *  even if its own `when` has turned false ("Step 0 of N" otherwise). */
+  const counted = (index: number) =>
+    controller.visible[index] !== false || index === progressIndex;
   const progressLabel = (() => {
     if (progressScreen.kind === 'review') return 'Review';
     const phase = progressScreen.phaseIndex;
     if (flow.phases.length > 1) {
       return `${flow.phases[phase].title}, part ${phase + 1} of ${flow.phases.length}`;
     }
+    // Only the screens the walk will stop on (2026-10-20, as the bar): a step
+    // being walked past would otherwise make "Step 3 of 9" skip to "5 of 9".
     const inPhase = controller.screens.filter(
-      (candidate) => candidate.kind !== 'review' && candidate.phaseIndex === phase,
+      (candidate, index) =>
+        candidate.kind !== 'review' && candidate.phaseIndex === phase && counted(index),
     );
     return `Step ${inPhase.indexOf(progressScreen) + 1} of ${inPhase.length}`;
   })();
   // Screens done, not an average of the phases: a long first phase would
-  // otherwise read far behind.
-  const progressPercent = Math.round(((progressIndex + 1) / controller.screens.length) * 100);
+  // otherwise read far behind. Visible screens only, as above.
+  const shownScreens = controller.visible.filter((_, index) => counted(index)).length;
+  const shownReached = controller.visible
+    .slice(0, progressIndex + 1)
+    .filter((_, index) => counted(index)).length;
+  const progressPercent = Math.round((shownReached / Math.max(shownScreens, 1)) * 100);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -490,6 +501,9 @@ export function WizardScreen<TAnswers>({
                         // and must not flip to a placeholder as it goes.
                         settled={leaving ? true : controller.settled}
                         advanceSoon={controller.advanceSoon}
+                        // Not for the copy drawn for its exit: it must not
+                        // cancel the arriving step's auto-advance.
+                        cancelAdvanceSoon={leaving ? undefined : controller.cancelAdvanceSoon}
                         claimNext={leaving ? undefined : claimNext}
                       />
                     </LayoutAnimationConfig>
