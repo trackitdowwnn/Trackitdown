@@ -14,6 +14,7 @@ import {
   UNSURE,
   changeConditions,
   conditionShowsSafetyLine,
+  damageShowsSafetyLine,
   conditionsOf,
   hasMarks,
   isMoving,
@@ -191,6 +192,16 @@ describe('its condition', () => {
   it('⚠️ SAFETY: "Being stripped" brings up the line — people are working on the car', () => {
     expect(conditionShowsSafetyLine({ contextFlags: ['being_stripped'] })).toBe(true);
     expect(conditionShowsSafetyLine({ contextFlags: ['damage_visible'] })).toBe(false);
+  });
+
+  it('⚠️ SAFETY: "Fire damage" brings up the line — the car may still be burning', () => {
+    expect(
+      damageShowsSafetyLine({ contextFlags: ['damage_visible'], damageKinds: ['fire_damage'] }),
+    ).toBe(true);
+    expect(
+      damageShowsSafetyLine({ contextFlags: ['damage_visible'], damageKinds: ['smashed_window'] }),
+    ).toBe(false);
+    expect(damageShowsSafetyLine({})).toBe(false);
   });
 });
 

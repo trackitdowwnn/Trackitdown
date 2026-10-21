@@ -597,7 +597,9 @@ badges"):
   retyped) shows under the cards for people "near it", "in it" and "Not sure";
   for a crime in progress — "Being loaded or towed", "Being stripped" — it
   shows with `SAFETY_999_LINE` under it, and those picks never move on by
-  themselves: `cardTitle` ink (never `danger`)
+  themselves; "Fire damage" shows it with `SAFETY_FIRE_999_LINE` ("If the
+  car is currently on fire, call 999.") — the damage may be old, so it asks
+  about now: `cardTitle` ink (never `danger`)
   after SafetyNotice's `slash` glyph at `iconSm` (top-aligned on the first
   line), and announced (queued) with `announceForAccessibility` as it
   appears, since VoiceOver ignores live regions.

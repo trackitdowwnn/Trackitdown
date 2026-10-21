@@ -285,6 +285,13 @@ export function stateShowsSafetyLine(answers: Answers): boolean {
   return stateOf(answers) === 'being_loaded';
 }
 
+/** SAFETY: the damage that brings up "Don't approach" with the FIRE 999 line —
+ *  a car may still be burning; the damage may also be old, so the line asks
+ *  "if the car is currently on fire" (owner, 2026-10-21). */
+export function damageShowsSafetyLine(answers: Answers): boolean {
+  return (answers.damageKinds ?? []).includes('fire_damage');
+}
+
 /** SAFETY: the condition that brings up "Don't approach" — a car being
  *  stripped has people working on it (owner, 2026-10-20). NEW, not
  *  extracted from the one-page step: the condition step's own rule. */
