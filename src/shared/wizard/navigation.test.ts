@@ -347,6 +347,11 @@ describe('phaseProgress', () => {
     expect(phaseProgress(flow, 1, ALL_VISIBLE)).toEqual([2 / 3, 0]); // same as without
   });
 
+  it('always counts the screen being shown, even if its own `when` has turned false', () => {
+    const nameHidden = ALL_VISIBLE.map((_, index) => index !== 1);
+    expect(phaseProgress(flow, 1, nameHidden)).toEqual([2 / 3, 0]);
+  });
+
   it('shows every segment full on the review screen', () => {
     expect(phaseProgress(flow, REVIEW_INDEX)).toEqual([1, 1]);
   });

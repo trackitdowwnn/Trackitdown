@@ -263,7 +263,8 @@ export function phaseProgress<TAnswers>(
   currentIndex: number,
   visible?: readonly boolean[],
 ): number[] {
-  const counts = (index: number) => visible?.[index] !== false;
+  // The current screen always counts, even if its own `when` has turned false.
+  const counts = (index: number) => visible?.[index] !== false || index === currentIndex;
   let start = 0;
   return flow.phases.map((phase) => {
     const count = (phase.intro ? 1 : 0) + phase.steps.length;

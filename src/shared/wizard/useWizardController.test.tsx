@@ -392,6 +392,29 @@ describe('an edit that continues to the step that belongs with it', () => {
     expect(result.current.screen.kind).toBe('review');
   });
 
+  it('⚠️ two steps naming each other can never trap Done — only the opened step continues', async () => {
+    const [state, heading] = seenFlow.phases[0].steps;
+    const loopFlow: WizardFlow<SeenAnswers> = {
+      ...seenFlow,
+      phases: [{ ...seenFlow.phases[0], steps: [state, { ...heading, editContinuesTo: () => 'state' }] }],
+    };
+    const { result } = await renderHook(() =>
+      useWizardController<SeenAnswers>(loopFlow, {
+        onExit: jest.fn(),
+        initialAnswers: { state: 'parked' },
+      }),
+    );
+    while (result.current.screen.kind !== 'review') {
+      await act(async () => result.current.next());
+    }
+    await act(async () => result.current.editStep(0));
+    await act(async () => result.current.setAnswers({ state: 'moving' }));
+    await act(async () => result.current.next()); // → heading
+    expect(result.current.screenIndex).toBe(1);
+    await act(async () => result.current.next()); // heading names state — ignored
+    expect(result.current.screen.kind).toBe('review');
+  });
+
   it('counts only the steps that will be shown', async () => {
     const { result } = await renderHook(() =>
       useWizardController<SeenAnswers>(seenFlow, { onExit: jest.fn() }),

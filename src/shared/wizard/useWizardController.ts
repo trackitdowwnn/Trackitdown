@@ -10,6 +10,10 @@
  *        themselves (`advanceSoon`), and an edit from review visits any
  *        answer it broke before returning (2026-10-08). A step can claim Next
  *        to ask one more thing on the way out (`claimNextAt`, 2026-10-12).
+ *        An edit can continue to a step that belongs with the one it opened
+ *        (`editContinuesTo`), a step can drop its own pending auto-advance
+ *        (`cancelAdvanceSoon`), and progress counts only the screens the walk
+ *        stops on (`visible`, 2026-10-20).
  * WHY:   A thin React shell over the pure logic in navigation.ts, so screens
  *        and chrome stay dumb. The answers object is a single serializable
  *        value and exits funnel through one place, deliberately: that is the
@@ -160,6 +164,10 @@ export function useWizardController<TAnswers>(
   // Answers as they were when a review edit began; backing out of the edit
   // restores this, so "Back" truly cancels instead of leaving a half-edit.
   const editSnapshotRef = useRef<Partial<TAnswers> | null>(null);
+  // The screen an edit spur OPENED on. Only it may continue to a follow-up
+  // (WizardStep.editContinuesTo) — so two steps naming each other, or a
+  // chain, can never keep Done from returning to review.
+  const editOriginRef = useRef<number | null>(null);
   // ⚠️ A REF, NOT THE `answers` STATE, for requestExit's save (review #19).
   // requestExit is memoised and is handed to a header button AND to the Android
   // back handler; taking `answers` as a dependency would rebuild it on every
@@ -316,8 +324,9 @@ export function useWizardController<TAnswers>(
     // here to a VISIBLE screen, so the reducer only ever sees a real target.
     let continueTo: number | undefined;
     const here = screens[nav.index];
+    const fromOrigin = editing && editOriginRef.current === nav.index;
     const onwardId =
-      editing && here?.kind === 'step' ? here.step.editContinuesTo?.(answers) : undefined;
+      fromOrigin && here?.kind === 'step' ? here.step.editContinuesTo?.(answers) : undefined;
     if (onwardId) {
       const at = screens.findIndex(
         (screen) => screen.kind === 'step' && screen.step.id === onwardId,
@@ -351,6 +360,7 @@ export function useWizardController<TAnswers>(
     (targetIndex: number) => {
       if (lockRef.current) return;
       editSnapshotRef.current = answers;
+      editOriginRef.current = targetIndex;
       move({ type: 'editStep', targetIndex, reviewIndex: nav.index });
     },
     [move, answers, nav.index],

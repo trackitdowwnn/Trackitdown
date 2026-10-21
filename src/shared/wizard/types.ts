@@ -148,10 +148,13 @@ export interface WizardStep<TAnswers> {
    * which way it went: Done on a spur otherwise skips optional steps, and
    * `editStep([a, b])` is a fallback list, not a sequence.
    *
-   * Only followed when that step is VISIBLE (its `when`) and is not this one.
-   * The continued-to step keeps the spur — its Done returns to review, and Back
-   * from it cancels the whole edit. Required steps an edit broke are still
-   * visited first. Don't chain: the target should declare none of its own.
+   * Only followed when that step is VISIBLE (its `when`), is not this one, and
+   * this is the step the edit OPENED on — so a chain or two steps naming each
+   * other can never keep Done from returning. The continued-to step keeps the
+   * spur: its Done returns to review, and Back from it cancels the whole edit.
+   * A required step the edit broke is visited INSTEAD (it takes priority; the
+   * follow-up is then not shown). Read only fields this step sets directly: a
+   * patch from its own `onContinue` is not seen when this is resolved.
    */
   editContinuesTo?: (answers: Partial<TAnswers>) => string | undefined;
   /**
