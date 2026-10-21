@@ -354,6 +354,12 @@ describe('its condition', () => {
     expect(advanceSoon).not.toHaveBeenCalled();
   });
 
+  it('shows its cards title-only — no sub-text (owner, 2026-10-21)', async () => {
+    const view = await renderStep(ConditionStep);
+    expect(box(view, 'Damage visible').props.accessibilityLabel).toBe('Damage visible');
+    expect(view.queryByText('Dents or broken glass')).toBeNull();
+  });
+
   it('"Looks intact" is exclusive, both ways', async () => {
     const view = await renderStep(ConditionStep);
     await press(box(view, 'Damage visible'));

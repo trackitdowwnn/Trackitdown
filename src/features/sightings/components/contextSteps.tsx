@@ -365,7 +365,6 @@ export function ConditionStep({ answers, setAnswers }: StepProps) {
           options={CONDITION_OPTIONS.map((value) => ({
             value,
             label: FLAG_LABELS[value],
-            description: CONTEXT_OPTION_DESCRIPTIONS.condition[value],
             icon: CONDITION_ICONS[value],
           }))}
           value={conditionsOf(answers)}

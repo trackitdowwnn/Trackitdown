@@ -572,8 +572,9 @@ badges"):
   never an inline drawer. Progress counts only the steps that will show.
 - **Cards, not chips.** `CardSelect` for a single answer, `CardSelectMulti`
   for "any that apply": an icon, the answer (`cardTitle`), and ONE short line
-  (≤ 6 words) of what it looks like from where the spotter stands. A spatial
-  answer (the compass) keeps its own control, centred.
+  (≤ 6 words) of what it looks like from where the spotter stands. The
+  condition cards are title-only (owner, 2026-10-21): their titles say it.
+  A spatial answer (the compass) keeps its own control, centred.
 - **An equal "Not sure"**, the LAST card of each single question: title and
   `CircleQuestionMark` only, never pre-selected. It stores nothing; only the
   UI remembers it — and it counts as answering ("Continue", not "Skip").
