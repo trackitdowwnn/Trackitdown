@@ -1,19 +1,21 @@
 /**
  * WHAT:  The rules of the report's optional context questions — what was it
  *        doing (and its follow-up), anyone in or near it, its condition (and
- *        what damage, after "Damage visible"), the owner's marks — as pure
+ *        what damage, after "Damage visible" — and which parts, after
+ *        "Missing panels or parts"), the owner's marks — as pure
  *        functions over the wizard's answers. Each
  *        `select…` returns the PATCH to apply; nothing here renders.
  * WHY:   The rules cross questions: a new state clears the old state's
  *        follow-up and its "Not sure"; "Looks intact" excludes every other
- *        condition; losing "Damage visible" clears the damage details;
+ *        condition; losing "Damage visible" clears the damage details, and
+ *        losing "Missing panels or parts" clears which parts;
  *        contextFlags is the state plus the conditions. While every
  *        question sat on one page, the step component could hold them. Split
  *        into a step per question (owner, 2026-10-20), no single component
  *        sees them all — so they live here, once, and every step calls them.
  *        What reaches create_sighting must not change by accident:
- *        sightingApi.test's golden payload pins it (the damage params were a
- *        deliberate addition, owner, 2026-10-21).
+ *        sightingApi.test's golden payload pins it (the damage and the
+ *        missing-parts params were deliberate additions, owner, 2026-10-21).
  * LINKS: src/features/sightings/components/contextSteps.tsx (the steps);
  *        src/features/sightings/lib/contextLabels.ts (the words);
  *        src/features/sightings/types.ts (ReportSightingAnswers).
@@ -26,6 +28,7 @@ import {
   type ContextQuestion,
   type DamageKind,
   type DrivingDirection,
+  type MissingPart,
   type ParkedLikelihood,
   type PeoplePresence,
   type ReportSightingAnswers,
@@ -62,6 +65,10 @@ export const isParked = (answers: Answers) => stateOf(answers) === 'parked';
 export const isMoving = (answers: Answers) => stateOf(answers) === 'driving';
 /** "Damage visible" was ticked: its "What damage?" follow-up applies. */
 export const hasDamage = (answers: Answers) => conditionsOf(answers).includes('damage_visible');
+/** "Missing panels or parts" was ticked (under "Damage visible"): its "What's
+ *  missing?" follow-up applies. */
+export const hasMissingParts = (answers: Answers) =>
+  hasDamage(answers) && (answers.damageKinds ?? []).includes('missing_parts');
 /** Whether the post has marks to offer (the seed; empty or absent = none). */
 export const hasMarks = (answers: Answers) => (answers.confirmableFeatures ?? []).length > 0;
 
@@ -159,7 +166,8 @@ export function selectPeople(answers: Answers, picked: MaybeUnsure<PeoplePresenc
  *  changed plate, so ticking it clears them and ticking any of them clears it.
  *  The damage details belong to "Damage visible" (owner, 2026-10-21): once it
  *  is gone — unticked, or cleared by "Looks intact" — so are they, as a new
- *  state clears the old one's follow-up (the server refuses them without it). */
+ *  state clears the old one's follow-up (the server refuses them without it).
+ *  Which parts are missing go with them: they hang off a damage kind. */
 export function changeConditions(answers: Answers, next: ConditionFlag[]): ContextPatch {
   const current = conditionsOf(answers);
   const added = next.find((flag) => !current.includes(flag));
@@ -174,18 +182,37 @@ export function changeConditions(answers: Answers, next: ConditionFlag[]): Conte
     contextFlags: [...(state ? [state] : []), ...resolved],
     ...(resolved.includes('damage_visible')
       ? {}
-      : { damageKinds: undefined, damageNote: undefined }),
+      : {
+          damageKinds: undefined,
+          damageNote: undefined,
+          missingParts: undefined,
+          missingPartsNote: undefined,
+        }),
   };
 }
 
 /** Ticks or unticks one kind of damage, kept in the order tapped (the server
- *  stores its own order). */
+ *  stores its own order). Unticking "Missing panels or parts" clears which
+ *  parts, as unticking "Damage visible" clears the damage (owner, 2026-10-21;
+ *  the server refuses parts without it). */
 export function toggleDamageKind(answers: Answers, kind: DamageKind): ContextPatch {
   const kinds = answers.damageKinds ?? [];
+  const removing = kinds.includes(kind);
   return {
-    damageKinds: kinds.includes(kind)
-      ? kinds.filter((existing) => existing !== kind)
-      : [...kinds, kind],
+    damageKinds: removing ? kinds.filter((existing) => existing !== kind) : [...kinds, kind],
+    ...(removing && kind === 'missing_parts'
+      ? { missingParts: undefined, missingPartsNote: undefined }
+      : {}),
+  };
+}
+
+/** Ticks or unticks one missing part, kept in the order tapped. */
+export function toggleMissingPart(answers: Answers, part: MissingPart): ContextPatch {
+  const parts = answers.missingParts ?? [];
+  return {
+    missingParts: parts.includes(part)
+      ? parts.filter((existing) => existing !== part)
+      : [...parts, part],
   };
 }
 
@@ -201,7 +228,15 @@ export function toggleMark(answers: Answers, id: string): ContextPatch {
 
 /** The report's context steps, one question each (reportSightingFlow). */
 export type ContextStepId =
-  'state' | 'staying' | 'direction' | 'people' | 'condition' | 'damage' | 'marks' | 'note';
+  | 'state'
+  | 'staying'
+  | 'direction'
+  | 'people'
+  | 'condition'
+  | 'damage'
+  | 'parts'
+  | 'marks'
+  | 'note';
 
 /** The context steps in the order the spotter meets them. */
 export const CONTEXT_STEP_IDS: readonly ContextStepId[] = [
@@ -211,6 +246,7 @@ export const CONTEXT_STEP_IDS: readonly ContextStepId[] = [
   'people',
   'condition',
   'damage',
+  'parts',
   'marks',
   'note',
 ];
@@ -236,6 +272,11 @@ export function stepTouched(answers: Answers, id: ContextStepId): boolean {
       // Blank-looking = what the payload sends as null (cleanSpotterWords).
       return (
         (answers.damageKinds ?? []).length > 0 || cleanSpotterWords(answers.damageNote) !== null
+      );
+    case 'parts':
+      return (
+        (answers.missingParts ?? []).length > 0 ||
+        cleanSpotterWords(answers.missingPartsNote) !== null
       );
     case 'marks':
       return (answers.confirmedFeatureIds ?? []).length > 0;
@@ -264,6 +305,7 @@ export function stepApplies(answers: Answers, id: ContextStepId): boolean {
   if (id === 'staying') return isParked(answers);
   if (id === 'direction') return isMoving(answers);
   if (id === 'damage') return hasDamage(answers);
+  if (id === 'parts') return hasMissingParts(answers);
   if (id === 'marks') return hasMarks(answers);
   return true;
 }

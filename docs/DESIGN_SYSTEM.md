@@ -572,7 +572,8 @@ badges"):
   never an inline drawer. Progress counts only the steps that will show.
   "Damage visible" opens "What damage can you see?" this way (2026-10-21):
   title-only multi-select cards, then an optional "Anything else?" box with
-  an n/300 counter; losing the answer it follows clears it.
+  an n/300 counter; losing the answer it follows clears it. "Missing panels
+  or parts" opens "What's missing?" the same way, one step further on.
 - **Cards, not chips.** `CardSelect` for a single answer, `CardSelectMulti`
   for "any that apply": an icon, the answer (`cardTitle`), and ONE short line
   (≤ 6 words) of what it looks like from where the spotter stands. The

@@ -85,6 +85,16 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
      Unticking Damage visible, or ticking Looks intact, clears both; neither
      is ever sent without the flag (the server refuses it). The funnel logs
      how many kinds and whether there are words — never the words.
+   - **What's missing?** (after Missing panels or parts only; owner,
+     2026-10-21): the damage step's shape — any that apply on title-only
+     cards (Bumpers · Bonnet · Doors · Lights · Wing mirrors · Number plates
+     = `missing_parts`; only what can be seen from where they stand, wheels
+     being their own damage kind), then **Anything else?** ≤ 300
+     (`missing_parts_note`). Unticking Missing panels or parts (or losing
+     Damage visible) clears both; never sent without that kind. Its Edit on
+     check-and-send is its own "What's missing" row; the condition's Edit
+     also carries on through the damage step to it (an edit's follow-ups
+     chain forward, the wizard's `editContinuesTo`).
    - **Could you see any of these?** (only when the post has marks): the
      post's distinctive marks as checkbox rows with the owner's photo
      (`confirmed_feature_ids`; the screen seeds `confirmableFeatures`, and the
@@ -166,9 +176,11 @@ car today — the owner has them.").
     with hairlines between rows — a state's follow-up on its line ("Parked ·
     Looks settled"), conditions a line each, the damage seen on its own
     ("Damage visible · Smashed window, Dents or scrapes"; a kind this app
-    doesn't know is skipped); skipped questions aren't shown, and rows stack
+    doesn't know is skipped), which parts in brackets on "Missing panels or
+    parts (Bumpers, Doors)"; skipped questions aren't shown, and rows stack
     at large text. Then their words about the damage as a short quote
-    ("About the damage", 2026-10-21), then their note.
+    ("About the damage", 2026-10-21) and about what's missing ("About what's
+    missing"), then their note.
   - **Where:** the street address in a chip (`useSightingAddress`: a device
     reverse geocode of the point, the stored area as the fallback), the map,
     the safety notice beside the point, then [Google Maps] [Waze] side by

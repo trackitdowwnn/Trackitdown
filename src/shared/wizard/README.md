@@ -60,9 +60,11 @@ doing you a favour.
   step can name a follow-up for Done on a spur to visit next — the report's
   "what was it doing?" continues to "which way?" when it is now Moving, which
   Done would otherwise skip (it is optional) and `editStep([a, b])` can't reach
-  (a fallback list, not a sequence). Only a VISIBLE target is followed, only
-  from the step the edit opened (no chains, no loops), and a broken required
-  step is visited instead when there is one; the follow-up keeps the spur.
+  (a fallback list, not a sequence). Only a VISIBLE target is followed, from
+  the step the edit opened or one it continued to — and after the first hop
+  only FORWARD (2026-10-21: condition → what damage → which parts), so no
+  loops. A broken required step is visited instead when there is one; the
+  follow-up keeps the spur.
 - **`cancelAdvanceSoon` (2026-10-20).** Drops a pending auto-advance — for a
   later pick on the same step that must keep the screen up (the report's
   people step: "People near it" tapped inside the beat after "No one seen"

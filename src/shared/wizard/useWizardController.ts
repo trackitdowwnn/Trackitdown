@@ -164,10 +164,13 @@ export function useWizardController<TAnswers>(
   // Answers as they were when a review edit began; backing out of the edit
   // restores this, so "Back" truly cancels instead of leaving a half-edit.
   const editSnapshotRef = useRef<Partial<TAnswers> | null>(null);
-  // The screen an edit spur OPENED on. Only it may continue to a follow-up
-  // (WizardStep.editContinuesTo) — so two steps naming each other, or a
-  // chain, can never keep Done from returning to review.
+  // The screen on an edit spur that may continue to a follow-up
+  // (WizardStep.editContinuesTo): the one the edit OPENED on, then each
+  // screen it continued to. Once it has continued (editChainedRef), only a
+  // LATER screen may follow, so the walk only moves forward and always ends —
+  // two steps naming each other can never keep Done from returning to review.
   const editOriginRef = useRef<number | null>(null);
+  const editChainedRef = useRef(false);
   // ⚠️ A REF, NOT THE `answers` STATE, for requestExit's save (review #19).
   // requestExit is memoised and is handed to a header button AND to the Android
   // back handler; taking `answers` as a dependency would rebuild it on every
@@ -331,7 +334,8 @@ export function useWizardController<TAnswers>(
       const at = screens.findIndex(
         (screen) => screen.kind === 'step' && screen.step.id === onwardId,
       );
-      if (at !== -1 && at !== nav.index && visible[at]) continueTo = at;
+      const onward = !editChainedRef.current || at > nav.index;
+      if (at !== -1 && at !== nav.index && visible[at] && onward) continueTo = at;
     }
     // The same targets the reducer will pick (pendingEditTarget, then
     // continueTo): only a spur that is actually continuing keeps its snapshot.
@@ -339,6 +343,12 @@ export function useWizardController<TAnswers>(
     if (!pending && continueTo === undefined) {
       // Completing an edit commits it — the snapshot is no longer a fallback.
       editSnapshotRef.current = null;
+    }
+    if (!pending && continueTo !== undefined) {
+      // The follow-up may continue in turn, forward only (condition → what
+      // damage → which parts, 2026-10-21).
+      editOriginRef.current = continueTo;
+      editChainedRef.current = true;
     }
     move({ type: 'next', visible, blocking, continueTo });
   }, [move, visible, nav.returnToIndex, nav.index, flow, answers, screens]);
@@ -361,6 +371,7 @@ export function useWizardController<TAnswers>(
       if (lockRef.current) return;
       editSnapshotRef.current = answers;
       editOriginRef.current = targetIndex;
+      editChainedRef.current = false;
       move({ type: 'editStep', targetIndex, reviewIndex: nav.index });
     },
     [move, answers, nav.index],

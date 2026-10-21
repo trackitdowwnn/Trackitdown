@@ -80,6 +80,23 @@ export type DamageKind = (typeof DAMAGE_KINDS)[number];
  *  maxLength counts UTF-16 units, so it is never looser. */
 export const MAX_DAMAGE_NOTE_LENGTH = 300;
 
+/** Which parts are missing — the "What's missing?" step after "Missing panels
+ *  or parts" (owner, 2026-10-21). Only parts seen from where the spotter
+ *  stands; wheels are their own damage kind. Mirrors create_sighting's
+ *  whitelist, in ITS order (the server stores the parts in this order). */
+export const MISSING_PARTS = [
+  'bumpers',
+  'bonnet',
+  'doors',
+  'lights',
+  'wing_mirrors',
+  'number_plates',
+] as const;
+export type MissingPart = (typeof MISSING_PARTS)[number];
+
+/** The missing-parts note's limit — the damage note's, for the same reason. */
+export const MAX_MISSING_PARTS_NOTE_LENGTH = 300;
+
 /** One registered distinctive mark on the post, as the wizard offers it for
  *  confirmation ("Could you see the cracked wing mirror?"). */
 export interface ConfirmableFeature {
@@ -133,6 +150,12 @@ export interface ReportSightingAnswers {
   /** Their own words about the damage, ≤ MAX_DAMAGE_NOTE_LENGTH. The owner
    *  reads it in the app only; never logged. */
   damageNote?: string;
+  /** Which parts are missing — only beside the 'missing_parts' damage kind
+   *  (unticking it clears these, as losing "Damage visible" does). */
+  missingParts?: MissingPart[];
+  /** Their own words about what's missing, ≤ MAX_MISSING_PARTS_NOTE_LENGTH.
+   *  The owner reads it in the app only; never logged. */
+  missingPartsNote?: string;
   /** READ-ONLY seed (not submitted): the post's registered marks, fetched by
    *  the screen before the wizard mounts so the context step can offer them
    *  as checkmarks. Empty/absent = no marks section. */
@@ -175,6 +198,12 @@ export interface CreateSightingParams {
   /** Their words about the damage — cleaned and trimmed; null when blank or
    *  without 'damage_visible'. */
   p_damage_note: string | null;
+  /** Which parts are missing (2026-10-21) — null unless 'missing_parts' is
+   *  among the damage kinds sent and at least one part was picked. */
+  p_missing_parts: string[] | null;
+  /** Their words about what's missing — cleaned and trimmed; null when blank
+   *  or without 'missing_parts'. */
+  p_missing_parts_note: string | null;
 }
 
 export interface CreateSightingResult {
@@ -234,6 +263,12 @@ export interface OwnerSighting {
   /** Their own words about the damage, ≤300 characters, unmoderated — shown
    *  in the app only, never logged. */
   damageNote?: string | null;
+  /** Which parts they saw missing (2026-10-21), as stored — plain strings,
+   *  like damageKinds. null/absent = not answered. */
+  missingParts?: string[] | null;
+  /** Their own words about what's missing, ≤300 characters, unmoderated —
+   *  shown in the app only, never logged. */
+  missingPartsNote?: string | null;
   spotter: {
     firstName: string;
     sightingsReported: number;

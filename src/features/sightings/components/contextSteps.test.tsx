@@ -35,6 +35,7 @@ import {
   DirectionStep,
   MarksStep,
   NoteStep,
+  PartsStep,
   PeopleStep,
   StateStep,
   StayingStep,
@@ -514,6 +515,63 @@ describe('what damage can you see?', () => {
     });
     expect(view.getByText(SAFETY_LINE)).toBeTruthy();
     expect(view.getByText(FIRE_LINE_999)).toBeTruthy();
+  });
+});
+
+describe('what’s missing?', () => {
+  const missing: Answers = { contextFlags: ['damage_visible'], damageKinds: ['missing_parts'] };
+  const box = (view: View, title: string) => card(view, 'context-parts', title, 'checkbox');
+  const noteField = (view: View) => view.getByLabelText('Anything else?');
+  const type = async (view: View, text: string) => {
+    await act(async () => {
+      fireEvent.changeText(noteField(view), text);
+    });
+  };
+
+  it('offers the six parts as title-only cards, under the question', async () => {
+    const view = await renderStep(PartsStep, missing);
+    const names = within(view.getByTestId('context-parts'))
+      .getAllByRole('checkbox')
+      .map((node) => node.props.accessibilityLabel);
+    expect(names).toEqual([
+      'Bumpers',
+      'Bonnet',
+      'Doors',
+      'Lights',
+      'Wing mirrors',
+      'Number plates',
+    ]);
+    expect(view.getByTestId('context-parts').props.accessibilityLabel).toBe('What’s missing?');
+  });
+
+  it('stores the parts ticked, in the order ticked — and never moves on by itself', async () => {
+    const view = await renderStep(PartsStep, missing);
+    await press(box(view, 'Doors'));
+    await press(box(view, 'Bumpers'));
+    expect(latest.missingParts).toEqual(['doors', 'bumpers']);
+    expect(box(view, 'Doors')).toBeChecked();
+    await press(box(view, 'Doors'));
+    expect(latest.missingParts).toEqual(['bumpers']);
+    expect(advanceSoon).not.toHaveBeenCalled();
+  });
+
+  it('writes their words, counted against the 300 as the box limits them', async () => {
+    const view = await renderStep(PartsStep, missing);
+    expect(view.getByText('0/300', { includeHiddenElements: true })).toBeTruthy();
+    expect(noteField(view).props.accessibilityHint).toBe('Up to 300 characters');
+    expect(noteField(view).props.maxLength).toBe(300);
+    await type(view, 'Both mirrors gone');
+    expect(latest.missingPartsNote).toBe('Both mirrors gone');
+    expect(view.getByText('17/300', { includeHiddenElements: true })).toBeTruthy();
+    expect(advanceSoon).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ strips hidden characters as they arrive — the server would refuse them', async () => {
+    const view = await renderStep(PartsStep, missing);
+    const zeroWidth = String.fromCharCode(0x200b);
+    const rightToLeft = String.fromCharCode(0x202e);
+    await type(view, `No${zeroWidth} bonnet ${rightToLeft}at all`);
+    expect(latest.missingPartsNote).toBe('No bonnet at all');
   });
 });
 

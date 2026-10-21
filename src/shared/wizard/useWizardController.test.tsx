@@ -415,6 +415,69 @@ describe('an edit that continues to the step that belongs with it', () => {
     expect(result.current.screen.kind).toBe('review');
   });
 
+  it('a follow-up can continue in turn — forward only (2026-10-21)', async () => {
+    interface ChainAnswers {
+      a: string;
+      b: string;
+      c: string;
+    }
+    const optional = { component: () => null, optional: true } as const;
+    const chainFlow: WizardFlow<ChainAnswers> = {
+      id: 'chain-test',
+      finalCtaLabel: 'Send',
+      review: {},
+      phases: [
+        {
+          id: 'chain',
+          title: 'Chain',
+          steps: [
+            {
+              ...optional,
+              id: 'a',
+              question: 'A?',
+              schema: z.object({ a: z.string().optional() }),
+              editContinuesTo: (x) => (x.a ? 'b' : undefined),
+            },
+            {
+              ...optional,
+              id: 'b',
+              question: 'B?',
+              when: (x) => Boolean(x.a),
+              schema: z.object({ b: z.string().optional() }),
+              // Forward to c — and, once c is reached, c names a (backward).
+              editContinuesTo: (x) => (x.b ? 'c' : undefined),
+            },
+            {
+              ...optional,
+              id: 'c',
+              question: 'C?',
+              when: (x) => Boolean(x.b),
+              schema: z.object({ c: z.string().optional() }),
+              editContinuesTo: () => 'a',
+            },
+          ],
+        },
+      ],
+    };
+    const { result } = await renderHook(() =>
+      useWizardController<ChainAnswers>(chainFlow, { onExit: jest.fn() }),
+    );
+    while (result.current.screen.kind !== 'review') {
+      await act(async () => result.current.next());
+    }
+    await act(async () => result.current.editStep(0));
+    await act(async () => result.current.setAnswers({ a: 'yes' }));
+    await act(async () => result.current.next()); // a → b
+    expect(result.current.screenIndex).toBe(1);
+    await act(async () => result.current.setAnswers({ b: 'yes' }));
+    await act(async () => result.current.next()); // b → c, on from the follow-up
+    expect(result.current.screenIndex).toBe(2);
+    expect(result.current.ctaLabel).toBe('Done');
+    await act(async () => result.current.next()); // c names a — backward, ignored
+    expect(result.current.screen.kind).toBe('review');
+    expect(result.current.answers).toEqual({ a: 'yes', b: 'yes' });
+  });
+
   it('counts only the steps that will be shown', async () => {
     const { result } = await renderHook(() =>
       useWizardController<SeenAnswers>(seenFlow, { onExit: jest.fn() }),

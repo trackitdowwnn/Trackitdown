@@ -7,7 +7,8 @@
  *        the answer given; the decision shown honestly afterwards (a rejected
  *        sighting is "Not your car", never "Marked helpful"), with when it was
  *        made; one toast whatever `counted` says; the sections (what they
- *        saw, the marks, the damage seen and their words about it, where with
+ *        saw, the marks, the damage seen and their words about it, which
+ *        parts were missing and their words about that, where with
  *        its street address, the spotter); the
  *        safety notice beside the point and again before the map; Google Maps
  *        or Waze dropping a pin; Message opening the thread.
@@ -768,7 +769,10 @@ describe('the evidence', () => {
       }),
     );
     const view = await renderScreen();
-    expect(view.getByTestId('seen-damage-note')).toBeTruthy();
+    // One screen-reader stop, read as a statement.
+    expect(view.getByTestId('seen-damage-note').props.accessibilityLabel).toBe(
+      'About the damage: Scorched bonnet',
+    );
     const texts = textsInOrder(view);
     const at = (text: string) => texts.indexOf(text);
     expect(at('Condition')).toBeLessThan(at('About the damage'));
@@ -790,6 +794,45 @@ describe('the evidence', () => {
     expect(view.getByRole('header', { name: 'Details' })).toBeTruthy();
     expect(view.queryByTestId('sighting-answers')).toBeNull();
     expect(view.getByText('Mirror hanging off')).toBeTruthy();
+  });
+
+  it('names the missing parts in brackets, and quotes their words after the damage’s (2026-10-21)', async () => {
+    ready(
+      sighting({
+        contextFlags: ['parked', 'damage_visible'],
+        damageKinds: ['smashed_window', 'missing_parts'],
+        damageNote: 'Glass everywhere',
+        missingParts: ['bumpers', 'doors'],
+        missingPartsNote: '  Rear bumper on the pavement ',
+      }),
+    );
+    const view = await renderScreen();
+    expect(
+      view.getByText('Damage visible · Smashed window, Missing panels or parts (Bumpers, Doors)'),
+    ).toBeTruthy();
+    expect(view.getByTestId('seen-parts-note').props.accessibilityLabel).toBe(
+      'About what’s missing: Rear bumper on the pavement',
+    );
+    const texts = textsInOrder(view);
+    const at = (text: string) => texts.indexOf(text);
+    expect(at('Glass everywhere')).toBeLessThan(at('About what’s missing'));
+    expect(at('About what’s missing')).toBeLessThan(at('Rear bumper on the pavement'));
+    expect(at('Rear bumper on the pavement')).toBeLessThan(at('In their words'));
+  });
+
+  it('shows "Details" for their words about what’s missing alone', async () => {
+    ready(
+      sighting({
+        contextFlags: [],
+        parkedLikelihood: null,
+        peoplePresence: null,
+        note: null,
+        missingPartsNote: 'Both mirrors',
+      }),
+    );
+    const view = await renderScreen();
+    expect(view.getByRole('header', { name: 'Details' })).toBeTruthy();
+    expect(view.getByText('Both mirrors')).toBeTruthy();
   });
 
   it('shows no table at all when no question was answered', async () => {
