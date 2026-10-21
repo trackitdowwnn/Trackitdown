@@ -22,8 +22,11 @@
  *          someone in it, or "Not sure" keep the screen and bring up the fixed
  *          "Don't approach" line — announced as it appears — and cancel a
  *          beat already running (`cancelAdvanceSoon`), so a quick second tap
- *          can never carry the screen past it. "Being stripped" brings the
- *          same line up on the condition step (owner, 2026-10-20).
+ *          can never carry the screen past it.
+ *        - A crime in progress — "Being loaded or towed", "Being stripped" —
+ *          brings the same line up with the app's 999 line under it, and
+ *          never moves on by itself (owner, 2026-10-20), so "your report is
+ *          enough" can never read as "no need to call the police".
  *        - Nothing here asks the spotter to watch, follow or go closer: the
  *          heading is what they saw, and no card needs a close look.
  * LINKS: src/features/sightings/reportSightingFlow.tsx (the steps' config);
@@ -66,6 +69,7 @@ import {
 import {
   CardSelect,
   CardSelectMulti,
+  SAFETY_999_LINE,
   SAFETY_PRESENCE_LINE,
   TextField,
   type CardSelectOption,
@@ -84,6 +88,7 @@ import {
   selectState,
   selectStaying,
   setDirectionUnsure,
+  stateShowsSafetyLine,
   shownAnswer,
   stateOf,
   toggleMark,
@@ -147,18 +152,28 @@ const CONDITION_ICONS: Record<ConditionFlag, LucideIcon> = {
  *  regions, and a live region that mounts with its text isn't reliably read
  *  on Android either, so announce on both. Queued (iOS), so VoiceOver saying
  *  the card's "selected" can't cut it off; Android ignores the option. */
-function announceSafetyLine() {
-  AccessibilityInfo.announceForAccessibilityWithOptions(SAFETY_PRESENCE_LINE, { queue: true });
+function announceSafetyLine(crimeInProgress = false) {
+  AccessibilityInfo.announceForAccessibilityWithOptions(safetyWords(crimeInProgress), {
+    queue: true,
+  });
 }
+
+/** What the line says: "Don't approach" — and, where what was seen is a crime
+ *  happening now, the app's 999 line under it, so "your report is enough"
+ *  can never read as "no need to call the police" (owner, 2026-10-20). */
+const safetyWords = (crimeInProgress: boolean) =>
+  crimeInProgress ? `${SAFETY_PRESENCE_LINE} ${SAFETY_999_LINE}` : SAFETY_PRESENCE_LINE;
 
 /**
  * The fixed "Don't approach — your report is enough." under the cards that
- * call for it. SAFETY: imported copy, never a prop — the register reinforces
- * the safety gate's rule exactly where the temptation to linger lives. Firm
- * and unmissable: question weight, ink (never `danger`), SafetyNotice's rule
- * glyph. Fades in when it appears after the step has mounted.
+ * call for it, with "If a crime is in progress, call 999." under that for a
+ * car being loaded, towed or stripped. SAFETY: imported copy, never a prop —
+ * the register reinforces the safety gate's rule exactly where the temptation
+ * to linger lives. Firm and unmissable: question weight, ink (never
+ * `danger`), SafetyNotice's rule glyph. Fades in when it appears after the
+ * step has mounted.
  */
-function SafetyPresenceLine() {
+function SafetyPresenceLine({ crimeInProgress = false }: { crimeInProgress?: boolean }) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   return (
@@ -166,22 +181,29 @@ function SafetyPresenceLine() {
       entering={FadeIn.duration(motion.fast).reduceMotion(ReduceMotion.System)}
       style={styles.safetyBlock}
     >
-      <View style={styles.safetyRow} accessible accessibilityLabel={SAFETY_PRESENCE_LINE}>
+      <View style={styles.safetyRow} accessible accessibilityLabel={safetyWords(crimeInProgress)}>
         <Feather
           name="slash"
           size={sizes.iconSm}
           color={palette.textPrimary}
           style={styles.safetyGlyph}
         />
-        <Text style={styles.safetyText}>{SAFETY_PRESENCE_LINE}</Text>
+        <View style={styles.safetyLines}>
+          <Text style={styles.safetyText}>{SAFETY_PRESENCE_LINE}</Text>
+          {crimeInProgress ? <Text style={styles.safetyText}>{SAFETY_999_LINE}</Text> : null}
+        </View>
       </View>
     </Animated.View>
   );
 }
 
-/** What was it doing? — a pick moves on; a second tap clears and stays. */
-export function StateStep({ answers, setAnswers, advanceSoon }: StepProps) {
+/** What was it doing? — a pick moves on; a second tap clears and stays.
+ *  "Being loaded or towed" is a crime in progress: it shows the safety line
+ *  with 999 and stays (owner, 2026-10-20). */
+export function StateStep({ answers, setAnswers, advanceSoon, cancelAdvanceSoon }: StepProps) {
+  const styles = useThemedStyles(makeStyles);
   const shown = shownAnswer(answers, 'state', stateOf(answers));
+  const showing = stateShowsSafetyLine(answers);
   const options: CardSelectOption<MaybeUnsure<VehicleStateFlag>>[] = [
     ...STATE_OPTIONS.map((value) => ({
       value,
@@ -192,22 +214,33 @@ export function StateStep({ answers, setAnswers, advanceSoon }: StepProps) {
     NOT_SURE,
   ];
   return (
-    <CardSelect
-      options={options}
-      value={shown}
-      onSelect={(picked) => {
-        setAnswers(selectState(answers, picked));
-        if (picked !== shown) advanceSoon?.();
-      }}
-      accessibilityLabel={CONTEXT_STEP_QUESTIONS.state}
-      clearable
-      testID="context-state"
-    />
+    <LayoutAnimationConfig skipEntering>
+      <View style={styles.stack}>
+        <CardSelect
+          options={options}
+          value={shown}
+          onSelect={(picked) => {
+            const patch = selectState(answers, picked);
+            setAnswers(patch);
+            const lineNow = stateShowsSafetyLine({ ...answers, ...patch });
+            // A pick moves on; clearing it — even inside the beat — stays put,
+            // and so does an answer that brings up the safety line (SAFETY).
+            if (picked !== shown && !lineNow) advanceSoon?.();
+            else cancelAdvanceSoon?.();
+            if (!showing && lineNow) announceSafetyLine(true);
+          }}
+          accessibilityLabel={CONTEXT_STEP_QUESTIONS.state}
+          clearable
+          testID="context-state"
+        />
+        {showing ? <SafetyPresenceLine crimeInProgress /> : null}
+      </View>
+    </LayoutAnimationConfig>
   );
 }
 
 /** Did it look like it was staying? — only after Parked. */
-export function StayingStep({ answers, setAnswers, advanceSoon }: StepProps) {
+export function StayingStep({ answers, setAnswers, advanceSoon, cancelAdvanceSoon }: StepProps) {
   const shown = shownAnswer(answers, 'staying', answers.parkedLikelihood);
   const options: CardSelectOption<MaybeUnsure<ParkedLikelihood>>[] = [
     ...STAYING_OPTIONS.map((value) => ({
@@ -225,6 +258,7 @@ export function StayingStep({ answers, setAnswers, advanceSoon }: StepProps) {
       onSelect={(picked) => {
         setAnswers(selectStaying(answers, picked));
         if (picked !== shown) advanceSoon?.();
+        else cancelAdvanceSoon?.();
       }}
       accessibilityLabel={CONTEXT_STEP_QUESTIONS.staying}
       clearable
@@ -235,7 +269,7 @@ export function StayingStep({ answers, setAnswers, advanceSoon }: StepProps) {
 
 /** Which way was it heading? — only after Moving. The compass is spatial, so
  *  it stays; "Not sure" is a card under it. Either moves on after a beat. */
-export function DirectionStep({ answers, setAnswers, advanceSoon }: StepProps) {
+export function DirectionStep({ answers, setAnswers, advanceSoon, cancelAdvanceSoon }: StepProps) {
   const styles = useThemedStyles(makeStyles);
   const unsure = isUnsure(answers, 'direction');
   return (
@@ -245,11 +279,17 @@ export function DirectionStep({ answers, setAnswers, advanceSoon }: StepProps) {
         onChange={(direction) => {
           setAnswers(selectDirection(answers, direction));
           if (direction) advanceSoon?.();
+          else cancelAdvanceSoon?.();
         }}
         accessibilityLabel={CONTEXT_STEP_QUESTIONS.direction}
       />
       {/* Always there (a space when empty), so the card below never jumps. */}
-      <Text style={styles.heading}>
+      <Text
+        style={styles.heading}
+        // Empty, it only holds the space: no stop for a screen reader.
+        importantForAccessibility={answers.direction ? 'auto' : 'no'}
+        accessibilityElementsHidden={!answers.direction}
+      >
         {answers.direction ? directionLabel(answers.direction) : ' '}
       </Text>
       <View style={styles.fullWidth}>
@@ -262,6 +302,7 @@ export function DirectionStep({ answers, setAnswers, advanceSoon }: StepProps) {
             const on = next.length > 0;
             setAnswers(setDirectionUnsure(answers, on));
             if (on) advanceSoon?.();
+            else cancelAdvanceSoon?.();
           }}
           testID="context-direction-unsure"
         />
@@ -332,13 +373,14 @@ export function ConditionStep({ answers, setAnswers }: StepProps) {
             const patch = changeConditions(answers, next);
             setAnswers(patch);
             if (!showing && conditionShowsSafetyLine({ ...answers, ...patch })) {
-              announceSafetyLine();
+              announceSafetyLine(true);
             }
           }}
           accessibilityLabel={CONTEXT_STEP_QUESTIONS.condition}
           testID="context-condition"
         />
-        {showing ? <SafetyPresenceLine /> : null}
+        {/* Being stripped is a crime in progress: 999 under the line. */}
+        {showing ? <SafetyPresenceLine crimeInProgress /> : null}
       </View>
     </LayoutAnimationConfig>
   );
@@ -408,6 +450,10 @@ const makeStyles = (c: Palette) =>
     },
     // Top-aligned, the glyph centred on the FIRST line: at large text the line
     // wraps, and a centred glyph would float mid-block (SafetyNotice's fix).
+    safetyLines: {
+      flexShrink: 1,
+      gap: spacing.xs,
+    },
     safetyRow: {
       flexDirection: 'row',
       alignItems: 'flex-start',
@@ -420,5 +466,8 @@ const makeStyles = (c: Palette) =>
       ...typography.cardTitle,
       color: c.textPrimary,
       flexShrink: 1,
+      // As SafetyNotice: Satoshi's font padding would throw the glyph's
+      // first-line centring off on Android.
+      includeFontPadding: false,
     },
   });

@@ -37,9 +37,10 @@ import {
 import { PhotosStep } from './components/sightingSteps';
 import { derivePlaceLabels } from './lib/areaLabel';
 import {
-  hasMarks,
+  CONTEXT_STEP_IDS,
   isMoving,
   isParked,
+  stepApplies,
   stepTouched,
   type ContextStepId,
 } from './lib/contextAnswers';
@@ -60,10 +61,13 @@ const log = createLogger('sightings');
 const contextFlagsSchema = z.array(z.enum(SIGHTING_CONTEXT_FLAGS)).optional();
 
 /**
- * One optional context step: its question from contextLabels, "Skip" until
- * answered then "Continue", and a funnel line on the way out (Skip and
- * Continue are the same button, so both are counted — `answered: false` is a
- * skip). `rest` adds the step's own parts.
+ * One optional context step: its question from contextLabels, shown only
+ * where it applies (stepApplies — the one source "Add details" reads too),
+ * and "Skip" until answered then "Continue". `rest` adds the step's own parts.
+ *
+ * ⚠️ NO onContinue here: the wizard runs one as a busy action, so every Skip
+ * flashed a spinner and dropped Back for a frame — seven times in a row. The
+ * funnel reads ONE event instead, from the last step (see `note`).
  */
 function contextStep(
   id: ContextStepId,
@@ -73,10 +77,8 @@ function contextStep(
     id,
     question: CONTEXT_STEP_QUESTIONS[id],
     optional: true,
+    when: (answers) => stepApplies(answers, id),
     ctaLabel: (answers) => (stepTouched(answers, id) ? 'Continue' : 'Skip'),
-    onContinue: async (answers) => {
-      log.info('step_completed', { step: id, answered: stepTouched(answers, id) });
-    },
     ...rest,
   };
 }
@@ -174,12 +176,10 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
             isParked(answers) ? 'staying' : isMoving(answers) ? 'direction' : undefined,
         }),
         contextStep('staying', {
-          when: isParked,
           component: StayingStep,
           schema: z.object({ parkedLikelihood: z.enum(PARKED_LIKELIHOOD).optional() }),
         }),
         contextStep('direction', {
-          when: isMoving,
           helper: 'Tap where it went.',
           component: DirectionStep,
           schema: z.object({ direction: z.enum(DRIVING_DIRECTIONS).optional() }),
@@ -194,7 +194,6 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
           schema: z.object({ contextFlags: contextFlagsSchema }),
         }),
         contextStep('marks', {
-          when: hasMarks,
           helper: 'The owner’s marks. Tick any you could see from where you were.',
           component: MarksStep,
           schema: z.object({ confirmedFeatureIds: z.array(z.string()).optional() }),
@@ -203,14 +202,18 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
           helper: 'What you noticed. A line is plenty.',
           component: NoteStep,
           schema: z.object({ note: z.string().max(MAX_NOTE_LENGTH).optional() }),
-          // The old one-page step's summary, kept so its funnel still reads.
+          // The context's ONE funnel event (no per-step onContinue — see
+          // contextStep): the old one-page step's summary, plus which steps
+          // were answered ("Not sure" counts) and which were walked past.
           onContinue: async (answers) => {
-            log.info('step_completed', { step: 'note', answered: stepTouched(answers, 'note') });
             log.info('context_summary', {
               details: contextDetailCount(answers),
               flags: answers.contextFlags?.length ?? 0,
               hasNote: Boolean(answers.note?.trim()),
               unsure: answers.contextUnsure?.length ?? 0,
+              answered: CONTEXT_STEP_IDS.filter(
+                (id) => stepApplies(answers, id) && stepTouched(answers, id),
+              ),
             });
           },
         }),

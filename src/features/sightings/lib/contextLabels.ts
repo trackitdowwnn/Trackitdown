@@ -119,8 +119,8 @@ const CONTEXT_ROW_LABELS: Record<ContextQuestionKey, string> = {
 };
 
 /**
- * The context step's questions, word for word, ONE copy — the spotter is asked
- * them (sightingSteps' ContextStep).
+ * The three questions every summary shares, word for word, ONE copy — the
+ * spotter is asked them (CONTEXT_STEP_QUESTIONS reads them from here).
  */
 export const CONTEXT_QUESTIONS: Record<ContextQuestionKey, string> = {
   state: 'What was it doing?',
@@ -142,11 +142,11 @@ export const NOTE_QUESTION = 'A note for the owner';
 /** Every context step's question, by step id — the flow asks them, and the
  *  check-and-send step's "Add details" names the one it opens. */
 export const CONTEXT_STEP_QUESTIONS: Record<ContextStepId, string> = {
-  state: 'What was it doing?',
+  state: CONTEXT_QUESTIONS.state,
   staying: FOLLOW_UP_QUESTIONS.staying,
   direction: FOLLOW_UP_QUESTIONS.direction,
-  people: 'Anyone in or near it?',
-  condition: 'Its condition',
+  people: CONTEXT_QUESTIONS.people,
+  condition: CONTEXT_QUESTIONS.condition,
   marks: MARKS_QUESTION,
   note: NOTE_QUESTION,
 };
@@ -165,7 +165,8 @@ export const CONTEXT_OPTION_DESCRIPTIONS = {
   } satisfies Record<VehicleStateFlag, string>,
   staying: {
     settled: 'Settled, as if left there',
-    moving: 'Engine on or lights on',
+    // Seen from the pavement — not "engine on", which needs you close by.
+    moving: 'Lights on, or pulling out',
   } satisfies Partial<Record<ParkedLikelihood, string>>,
   people: {
     nobody: 'Nobody in or around it',

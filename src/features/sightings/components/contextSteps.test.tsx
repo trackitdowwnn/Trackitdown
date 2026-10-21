@@ -22,7 +22,7 @@ import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { useState, type ComponentType } from 'react';
 import { AccessibilityInfo } from 'react-native';
 
-import { SAFETY_PRESENCE_LINE } from '@/shared/ui';
+import { SAFETY_999_LINE, SAFETY_PRESENCE_LINE } from '@/shared/ui';
 import type { WizardStepProps } from '@/shared/wizard';
 
 import { DRIVING_DIRECTIONS, type ReportSightingAnswers } from '../types';
@@ -57,6 +57,8 @@ jest.mock('@gorhom/bottom-sheet', () =>
 
 /** The fixed inline safety register — pinned word-for-word (SAFETY copy). */
 const SAFETY_LINE = 'Don’t approach — your report is enough.';
+/** …and, for a crime in progress, the app's 999 line under it. */
+const LINE_999 = 'If a crime is in progress, call 999.';
 
 const MARKS = [
   {
@@ -146,6 +148,8 @@ describe('what was it doing?', () => {
     await press(card(view, 'context-state', 'Moving'));
     expect(latest.contextFlags).toEqual([]);
     expect(advanceSoon).toHaveBeenCalledTimes(1);
+    // Cleared inside the beat: the beat already running is dropped too.
+    expect(cancelAdvanceSoon).toHaveBeenCalledTimes(1);
   });
 
   it('"Not sure" stores nothing, shows as chosen, and drops any state and its follow-up', async () => {
@@ -171,6 +175,27 @@ describe('what was it doing?', () => {
     expect(latest.parkedLikelihood).toBeUndefined();
   });
 
+  it('⚠️ SAFETY: "Being loaded or towed" stays, shows the line with 999, and says it', async () => {
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibilityWithOptions');
+    announce.mockClear();
+    try {
+      const view = await renderStep(StateStep);
+      await press(card(view, 'context-state', 'Being loaded or towed'));
+      expect(advanceSoon).not.toHaveBeenCalled();
+      expect(cancelAdvanceSoon).toHaveBeenCalledTimes(1);
+      expect(view.getByText(SAFETY_LINE)).toBeTruthy();
+      expect(view.getByText(LINE_999)).toBeTruthy();
+      expect(announce).toHaveBeenCalledWith(`${SAFETY_LINE} ${LINE_999}`, { queue: true });
+
+      // Parked instead: the line goes, and the pick moves on.
+      await press(card(view, 'context-state', 'Parked'));
+      expect(view.queryByText(SAFETY_LINE)).toBeNull();
+      expect(advanceSoon).toHaveBeenCalledTimes(1);
+    } finally {
+      announce.mockRestore();
+    }
+  });
+
   it('tells screen readers the chosen card clears on a second tap', async () => {
     const view = await renderStep(StateStep, { contextFlags: ['parked'] });
     expect(card(view, 'context-state', 'Parked').props.accessibilityHint).toBe(
@@ -183,7 +208,7 @@ describe('what was it doing?', () => {
 describe('did it look like it was staying?', () => {
   it('stores the pick and moves on; "Not sure" stores nothing; a second tap clears', async () => {
     const view = await renderStep(StayingStep, { contextFlags: ['parked'] });
-    expect(view.getByText('Engine on or lights on')).toBeTruthy();
+    expect(view.getByText('Lights on, or pulling out')).toBeTruthy();
     await press(card(view, 'context-staying', 'Looks about to move'));
     expect(latest.parkedLikelihood).toBe('moving');
     expect(advanceSoon).toHaveBeenCalledTimes(1);
@@ -194,6 +219,7 @@ describe('did it look like it was staying?', () => {
 
     await press(card(view, 'context-staying', 'Not sure'));
     expect(latest.contextUnsure).toEqual([]);
+    expect(cancelAdvanceSoon).toHaveBeenCalledTimes(1); // the clear stays
   });
 });
 
@@ -224,9 +250,18 @@ describe('which way was it heading?', () => {
 
     await press(unsureBox(view));
     expect(latest.direction).toBeUndefined();
-    await press(unsureBox(view)); // off again: nothing chosen, no move
+    await press(unsureBox(view)); // off again: nothing chosen, and it stays
     expect(latest.contextUnsure).toEqual([]);
     expect(advanceSoon).toHaveBeenCalledTimes(3);
+    expect(cancelAdvanceSoon).toHaveBeenCalledTimes(1);
+  });
+
+  it('clearing the heading (a second tap on it) stays', async () => {
+    const view = await renderStep(DirectionStep, { contextFlags: ['driving'], direction: 'N' });
+    await press(view.getByTestId('compass-N'));
+    expect(latest.direction).toBeUndefined();
+    expect(advanceSoon).not.toHaveBeenCalled();
+    expect(cancelAdvanceSoon).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -295,8 +330,16 @@ describe('anyone in or near it?', () => {
     }
   });
 
-  it('SAFETY: the line is the shared constant, word for word', () => {
+  it('SAFETY: the lines are the shared constants, word for word', () => {
     expect(SAFETY_PRESENCE_LINE).toBe(SAFETY_LINE);
+    expect(SAFETY_999_LINE).toBe(LINE_999);
+  });
+
+  it('SAFETY: people near it is not a crime in itself — no 999 line there', async () => {
+    const view = await renderStep(PeopleStep);
+    await press(card(view, 'context-people', 'People near it'));
+    expect(view.getByText(SAFETY_LINE)).toBeTruthy();
+    expect(view.queryByText(LINE_999)).toBeNull();
   });
 });
 
@@ -329,7 +372,9 @@ describe('its condition', () => {
       expect(view.queryByText(SAFETY_LINE)).toBeNull();
       await press(box(view, 'Being stripped'));
       expect(view.getByText(SAFETY_LINE)).toBeTruthy();
-      expect(announce).toHaveBeenCalledWith(SAFETY_LINE, { queue: true });
+      // A crime in progress: 999 under the line, said with it.
+      expect(view.getByText(LINE_999)).toBeTruthy();
+      expect(announce).toHaveBeenCalledWith(`${SAFETY_LINE} ${LINE_999}`, { queue: true });
       await press(box(view, 'Being stripped'));
       expect(view.queryByText(SAFETY_LINE)).toBeNull();
     } finally {

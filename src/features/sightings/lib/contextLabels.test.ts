@@ -134,7 +134,9 @@ describe('the context steps’ cards (2026-10-20)', () => {
 
   it('⚠️ SAFETY: no line asks the spotter to follow, watch, track or go closer', () => {
     for (const line of lines) {
-      expect(line).not.toMatch(/follow|watch|track|approach|closer|check/i);
+      expect(line).not.toMatch(
+        /follow|watch|track|approach|closer|nearer|check|inspect|wait|meet|get close|go to/i,
+      );
     }
   });
 

@@ -16,6 +16,7 @@
 import { flattenFlow } from '@/shared/wizard';
 
 import { reportSightingFlow } from './reportSightingFlow';
+import { MAX_NOTE_LENGTH } from './types';
 
 // The flow config imports its step components, which pull native leaves the
 // jest environment can't register — stub them (the steps render elsewhere).
@@ -112,7 +113,9 @@ describe('reportSightingFlow shape', () => {
     }
     expect(schemaFor('state').safeParse({ contextFlags: ['parked'] }).success).toBe(true);
     expect(schemaFor('direction').safeParse({ direction: 'NE' }).success).toBe(true);
-    expect(schemaFor('note').safeParse({ note: 'x'.repeat(501) }).success).toBe(false);
+    expect(
+      schemaFor('note').safeParse({ note: 'x'.repeat(MAX_NOTE_LENGTH + 1) }).success,
+    ).toBe(false);
   });
 
   it('the follow-ups and the marks show only when they apply', () => {
@@ -139,6 +142,14 @@ describe('reportSightingFlow shape', () => {
     expect(label('condition', { contextFlags: ['parked'] })).toBe('Skip'); // a state isn't a condition
     expect(label('note', { note: '  ' })).toBe('Skip');
     expect(label('note', { note: 'By the bins' })).toBe('Continue');
+  });
+
+  it('⚠️ SAFETY: no context step hint asks the spotter to follow, watch or go closer', () => {
+    for (const id of CONTEXT_STEPS) {
+      expect(step(id).helper ?? '').not.toMatch(
+        /follow|watch|track|approach|closer|nearer|check|inspect|wait|meet|get close|go to/i,
+      );
+    }
   });
 
   it('an edit of what it was doing continues to its follow-up', () => {

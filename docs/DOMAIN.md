@@ -634,8 +634,9 @@ Rules that follow, and are not implementation details:
   no longer offered but old rows keep it),
   a driving follow-up (`direction`: 8-way compass heading), conditions
   (plate changed-missing / damage visible / being stripped / looks intact —
-  "being stripped" brings up the don't-approach register too, since
-  2026-10-20), a 3-way people observation (`people_presence`: nobody /
+  "being stripped", like the state "being loaded or towed", is a crime in
+  progress: since 2026-10-20 both bring up the don't-approach register with
+  the 999 line under it), a 3-way people observation (`people_presence`: nobody /
   nearby / in_vehicle — supersedes the `people_nearby` flag for new reports;
   nearby, in_vehicle and "Not sure" all bring up the don't-approach register
   inline),

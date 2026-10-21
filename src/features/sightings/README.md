@@ -70,7 +70,9 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
      Only "No one seen" moves on by itself — never past the line.
    - **Its condition**: any that apply (plate changed or missing · damage
      visible · being stripped · looks intact); "Looks intact" is exclusive;
-     "Being stripped" brings up the same safety line.
+     "Being stripped" brings up the same safety line with "If a crime is in
+     progress, call 999." under it — as does the state "Being loaded or
+     towed", which therefore doesn't move on by itself.
    - **Could you see any of these?** (only when the post has marks): the
      post's distinctive marks as checkbox rows with the owner's photo
      (`confirmed_feature_ids`; the screen seeds `confirmableFeatures`, and the

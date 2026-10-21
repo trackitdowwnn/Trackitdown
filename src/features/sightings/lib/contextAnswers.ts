@@ -11,7 +11,7 @@
  *        sees them all — so they live here, once, and every step calls them.
  *        What reaches create_sighting must not change: sightingApi.test's
  *        golden payload pins it.
- * LINKS: src/features/sightings/components/sightingSteps.tsx (the steps);
+ * LINKS: src/features/sightings/components/contextSteps.tsx (the steps);
  *        src/features/sightings/lib/contextLabels.ts (the words);
  *        src/features/sightings/types.ts (ReportSightingAnswers).
  */
@@ -50,7 +50,7 @@ export function conditionsOf(answers: Answers): ConditionFlag[] {
   );
 }
 
-// Which optional steps apply — the split steps' `when` (from the next PR).
+// Which optional steps apply — the steps' `when`, through stepApplies.
 /** Parked was picked: its "staying?" follow-up applies. */
 export const isParked = (answers: Answers) => stateOf(answers) === 'parked';
 /** Moving was picked: its "which way?" follow-up applies. */
@@ -212,7 +212,22 @@ export function stepTouched(answers: Answers, id: ContextStepId): boolean {
   }
 }
 
-/** Whether a step is shown at all for these answers (the flow's `when`). */
+/**
+ * Whether a step holds a REAL answer — something sent. Unlike stepTouched,
+ * "Not sure" doesn't count: it stores nothing, so check-and-send lists no row
+ * for it, and "Add details" must still reach it (a spotter who now remembers
+ * should be able to say so).
+ */
+export function stepAnswered(answers: Answers, id: ContextStepId): boolean {
+  if (id === 'state') return stateOf(answers) !== null;
+  if (id === 'staying') return Boolean(answers.parkedLikelihood);
+  if (id === 'direction') return Boolean(answers.direction);
+  if (id === 'people') return Boolean(answers.peoplePresence);
+  return stepTouched(answers, id);
+}
+
+/** Whether a step is shown at all for these answers — the ONE source of the
+ *  flow's `when` (reportSightingFlow) and of "Add details" (ConfirmStep). */
 export function stepApplies(answers: Answers, id: ContextStepId): boolean {
   if (id === 'staying') return isParked(answers);
   if (id === 'direction') return isMoving(answers);
@@ -230,9 +245,16 @@ export function peopleShowSafetyLine(answers: Answers): boolean {
   );
 }
 
+/** SAFETY: the state that brings up "Don't approach" (and 999) — a car being
+ *  loaded or towed has people at it, and it is a crime in progress (owner,
+ *  2026-10-20). It also never moves on by itself: the line must be seen. */
+export function stateShowsSafetyLine(answers: Answers): boolean {
+  return stateOf(answers) === 'being_loaded';
+}
+
 /** SAFETY: the condition that brings up "Don't approach" — a car being
  *  stripped has people working on it (owner, 2026-10-20). NEW, not
- *  extracted: unused until the condition step gets its own screen. */
+ *  extracted from the one-page step: the condition step's own rule. */
 export function conditionShowsSafetyLine(answers: Answers): boolean {
   return conditionsOf(answers).includes('being_stripped');
 }

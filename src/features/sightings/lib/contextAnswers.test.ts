@@ -26,6 +26,8 @@ import {
   setDirectionUnsure,
   shownAnswer,
   stateOf,
+  stateShowsSafetyLine,
+  stepAnswered,
   stepApplies,
   stepTouched,
   toggleMark,
@@ -158,6 +160,12 @@ describe('its condition', () => {
     ]);
   });
 
+  it('⚠️ SAFETY: "Being loaded or towed" brings up the line — a crime in progress', () => {
+    expect(stateShowsSafetyLine({ contextFlags: ['being_loaded'] })).toBe(true);
+    expect(stateShowsSafetyLine({ contextFlags: ['parked'] })).toBe(false);
+    expect(stateShowsSafetyLine({})).toBe(false);
+  });
+
   it('⚠️ SAFETY: "Being stripped" brings up the line — people are working on the car', () => {
     expect(conditionShowsSafetyLine({ contextFlags: ['being_stripped'] })).toBe(true);
     expect(conditionShowsSafetyLine({ contextFlags: ['damage_visible'] })).toBe(false);
@@ -183,6 +191,13 @@ describe('the steps', () => {
     expect(stepTouched({ direction: 'N' }, 'direction')).toBe(true);
     expect(stepTouched({ note: '   ' }, 'note')).toBe(false);
     expect(stepTouched({ confirmedFeatureIds: ['m1'] }, 'marks')).toBe(true);
+  });
+
+  it('a step holds a real answer only when something is sent — "Not sure" is not one', () => {
+    expect(stepAnswered({ contextUnsure: ['people'] }, 'people')).toBe(false);
+    expect(stepAnswered({ peoplePresence: 'nobody' }, 'people')).toBe(true);
+    expect(stepAnswered({ contextUnsure: ['state'] }, 'state')).toBe(false);
+    expect(stepAnswered({ note: 'Bins' }, 'note')).toBe(true);
   });
 
   it('applies the follow-ups and the marks only where they belong', () => {

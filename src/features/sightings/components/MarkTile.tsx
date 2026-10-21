@@ -9,7 +9,7 @@
  *        their marks with exactly those ticked — so the owner reads the
  *        report the way it was filled in, including the marks NOT seen.
  *        Moved here from sightingSteps.tsx, where it was private.
- * LINKS: src/features/sightings/components/sightingSteps.tsx (ContextStep —
+ * LINKS: src/features/sightings/components/contextSteps.tsx (MarksStep —
  *          the spotter ticks); src/features/sightings/components/
  *          SightingSeenSection.tsx (the owner reads).
  */

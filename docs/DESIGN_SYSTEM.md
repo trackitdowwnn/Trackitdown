@@ -590,8 +590,10 @@ badges"):
 - **A control that moves under the finger is a bug.** A line that names the
   pick (the compass's "Heading north-east") holds its space when empty.
 - **The inline safety line** (`SAFETY_PRESENCE_LINE`, imported, never
-  retyped) shows under the cards for people "near it", "in it" and "Not sure",
-  and for the condition "Being stripped": `cardTitle` ink (never `danger`)
+  retyped) shows under the cards for people "near it", "in it" and "Not sure";
+  for a crime in progress — "Being loaded or towed", "Being stripped" — it
+  shows with `SAFETY_999_LINE` under it, and those picks never move on by
+  themselves: `cardTitle` ink (never `danger`)
   after SafetyNotice's `slash` glyph at `iconSm` (top-aligned on the first
   line), and announced (queued) with `announceForAccessibility` as it
   appears, since VoiceOver ignores live regions.

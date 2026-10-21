@@ -144,26 +144,36 @@ describe('ConfirmStep — sections and Edit links', () => {
     await press(view.getByRole('button', { name: 'Edit photos' }));
     expect(editStep).toHaveBeenLastCalledWith('photos');
     for (const [name, stepId] of [
-      ['Edit what it was doing', 'state'],
-      ['Edit anyone in or near it', 'people'],
-      ['Edit its condition', 'condition'],
-      ['Edit your note', 'note'],
+      ['Edit: What it was doing', 'state'],
+      ['Edit: Anyone in or near it', 'people'],
+      ['Edit: Its condition', 'condition'],
+      ['Edit: Your note', 'note'],
     ]) {
       await press(view.getByRole('button', { name }));
       expect(editStep).toHaveBeenLastCalledWith(stepId);
     }
     // Photos plus one per answer: the location is the evidence, never edited here.
-    expect(view.getAllByRole('button', { name: /^Edit / })).toHaveLength(5);
+    expect(view.getAllByRole('button', { name: /^Edit[ :]/ })).toHaveLength(5);
   });
 
-  it('"Add details" opens the first question still unanswered — "Not sure" counts as answered', async () => {
+  it('"Add details" opens the first question with nothing stored', async () => {
+    const { view, editStep } = await renderConfirm({
+      photos: [live(0)],
+      contextFlags: ['parked'],
+      parkedLikelihood: 'settled',
+    });
+    await press(view.getByRole('button', { name: 'Add details: Anyone in or near it?' }));
+    expect(editStep).toHaveBeenLastCalledWith('people');
+  });
+
+  it('"Add details" offers a "Not sure" question again — it has no row, and they may now know', async () => {
     const { view, editStep } = await renderConfirm({
       photos: [live(0)],
       contextFlags: ['parked'],
       contextUnsure: ['staying'],
     });
-    await press(view.getByRole('button', { name: 'Add details: Anyone in or near it?' }));
-    expect(editStep).toHaveBeenLastCalledWith('people');
+    await press(view.getByRole('button', { name: 'Add details: Did it look like it was staying?' }));
+    expect(editStep).toHaveBeenLastCalledWith('staying');
   });
 
   it('offers no "Add details" once every question is answered', async () => {
@@ -329,9 +339,9 @@ describe('ConfirmStep — what you saw', () => {
     });
     expect(view.getByText('Nothing added')).toBeTruthy();
     // Only the photos' Edit — no answers, so no answer to edit.
-    expect(view.getAllByRole('button', { name: /^Edit / })).toHaveLength(1);
-    // "Not sure" on what it was doing is an answer: Add opens the next question.
-    await press(view.getByRole('button', { name: 'Add details: Anyone in or near it?' }));
-    expect(editStep).toHaveBeenCalledWith('people');
+    expect(view.getAllByRole('button', { name: /^Edit[ :]/ })).toHaveLength(1);
+    // "Not sure" stored nothing, so Add starts from the first question again.
+    await press(view.getByRole('button', { name: 'Add details: What was it doing?' }));
+    expect(editStep).toHaveBeenCalledWith('state');
   });
 });
