@@ -30,9 +30,11 @@ import {
 
 /** "Not sure"'s value in a control: never stored, only remembered (contextUnsure). */
 export const UNSURE = '__unsure__';
+/** A control's value: one of the question's answers, or "Not sure". */
 export type MaybeUnsure<V extends string> = V | typeof UNSURE;
 
 type Answers = Partial<ReportSightingAnswers>;
+/** What a pick changes — merged into the wizard's answers by setAnswers. */
 export type ContextPatch = Partial<ReportSightingAnswers>;
 
 /** The vehicle state picked, if any. */
@@ -48,11 +50,15 @@ export function conditionsOf(answers: Answers): ConditionFlag[] {
   );
 }
 
+// Which optional steps apply — the split steps' `when` (from the next PR).
+/** Parked was picked: its "staying?" follow-up applies. */
 export const isParked = (answers: Answers) => stateOf(answers) === 'parked';
+/** Moving was picked: its "which way?" follow-up applies. */
 export const isMoving = (answers: Answers) => stateOf(answers) === 'driving';
 /** Whether the post has marks to offer (the seed; empty or absent = none). */
 export const hasMarks = (answers: Answers) => (answers.confirmableFeatures ?? []).length > 0;
 
+/** Whether "Not sure" is this question's answer. */
 export function isUnsure(answers: Answers, question: ContextQuestion): boolean {
   return (answers.contextUnsure ?? []).includes(question);
 }
@@ -104,6 +110,7 @@ export function selectState(answers: Answers, picked: MaybeUnsure<VehicleStateFl
   };
 }
 
+/** "Did it look like it was staying?" — pick, "Not sure", or tap again to clear. */
 export function selectStaying(
   answers: Answers,
   picked: MaybeUnsure<ParkedLikelihood>,
@@ -131,6 +138,8 @@ export function setDirectionUnsure(answers: Answers, on: boolean): ContextPatch 
   };
 }
 
+/** "Anyone in or near it?" — pick, "Not sure", or tap again to clear. The
+ *  caller announces the safety line (peopleShowSafetyLine) as it appears. */
 export function selectPeople(answers: Answers, picked: MaybeUnsure<PeoplePresence>): ContextPatch {
   const cleared = picked === shownAnswer(answers, 'people', answers.peoplePresence);
   return {
@@ -154,6 +163,7 @@ export function changeConditions(answers: Answers, next: ConditionFlag[]): Conte
   return { contextFlags: [...(state ? [state] : []), ...resolved] };
 }
 
+/** Ticks or unticks one of the owner's marks. */
 export function toggleMark(answers: Answers, id: string): ContextPatch {
   const confirmed = answers.confirmedFeatureIds ?? [];
   return {
@@ -174,7 +184,8 @@ export function peopleShowSafetyLine(answers: Answers): boolean {
 }
 
 /** SAFETY: the condition that brings up "Don't approach" — a car being
- *  stripped has people working on it (owner, 2026-10-20). */
+ *  stripped has people working on it (owner, 2026-10-20). NEW, not
+ *  extracted: unused until the condition step gets its own screen. */
 export function conditionShowsSafetyLine(answers: Answers): boolean {
   return conditionsOf(answers).includes('being_stripped');
 }

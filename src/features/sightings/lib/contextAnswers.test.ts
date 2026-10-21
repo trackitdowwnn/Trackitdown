@@ -74,6 +74,14 @@ describe('what it was doing', () => {
     expect(a.contextUnsure).not.toContain('direction');
   });
 
+  it('a real pick after "Not sure" replaces it', () => {
+    let a: Answers = {};
+    a = apply(a, selectState(a, UNSURE));
+    a = apply(a, selectState(a, 'parked'));
+    expect(a.contextFlags).toEqual(['parked']);
+    expect(a.contextUnsure).not.toContain('state');
+  });
+
   it('picking the chosen state again clears it', () => {
     const a = apply({}, selectState({}, 'parked'));
     expect(selectState(a, 'parked').contextFlags).toEqual([]);

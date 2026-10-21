@@ -114,7 +114,10 @@ const evidencePhotoSchema = z
     message: 'A gallery photo carries no location (ADR-0003)',
   });
 
-const submitAnswersSchema = z.object({
+/** What submitSighting accepts from the wizard (unknown keys — the UI-only
+ *  "Not sure" marks, the read-only seeds — are dropped). Exported so the
+ *  golden payload test takes the same path a real report does. */
+export const submitAnswersSchema = z.object({
   // ADR-0003 rule 1 (client half; the RPC re-enforces): ≥1 LIVE capture.
   photos: z
     .array(evidencePhotoSchema)

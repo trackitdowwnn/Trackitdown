@@ -24,6 +24,7 @@ import {
   fetchSightingQuota,
   markSightingHelpful,
   markSightingNotMine,
+  submitAnswersSchema,
   submitSighting,
   SightingSubmissionError,
   withdrawSighting,
@@ -256,8 +257,8 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
     // the context page into one step per question promised the SAME payload;
     // this literal is that promise. Changing it means the server sees
     // something new: that needs its own decision, not a UI refactor.
-    // The rules work on the wizard's answers; the params are built from the
-    // fields the API takes — every context field, mapped one for one.
+    // The rules work on the wizard's answers; those go through the SAME parse
+    // submitSighting runs (which drops the UI-only keys) and on to the params.
     type Answers = Partial<ReportSightingAnswers>;
     const pick = (answers: Answers, patch: Answers): Answers => ({ ...answers, ...patch });
     const mark = 'dddddddd-0000-0000-0000-000000000001';
@@ -270,16 +271,7 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
     const send = (a: Answers) =>
       buildCreateSightingParams(
         POST_ID,
-        {
-          photos: [located],
-          contextFlags: a.contextFlags ?? [],
-          note: a.note ?? '',
-          parkedLikelihood: a.parkedLikelihood,
-          direction: a.direction,
-          peoplePresence: a.peoplePresence,
-          confirmedFeatureIds: a.confirmedFeatureIds ?? [],
-          confirmableFeatures: (a.confirmableFeatures ?? []).map(({ id }) => ({ id })),
-        },
+        submitAnswersSchema.parse({ ...a, photos: [located] }),
         ['p/1.jpg'],
       );
 

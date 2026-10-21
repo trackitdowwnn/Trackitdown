@@ -22,6 +22,7 @@
  *        src/features/sightings/components/ConfirmStep.tsx (the last step);
  *        src/features/sightings/components/CompassPicker.tsx;
  *        src/features/sightings/lib/contextLabels.ts (the shared vocabulary);
+ *        src/features/sightings/lib/contextAnswers.ts (the context rules);
  *        src/shared/ui (CameraCapture, PermissionPrimer, ChoiceChips,
  *        ChoiceChipsMulti, TextField); ./MarkTile.tsx (the owner's marks —
  *        the same rows the owner's sighting page reads back);
