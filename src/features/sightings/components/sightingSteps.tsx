@@ -22,6 +22,7 @@
  *        src/features/sightings/components/ConfirmStep.tsx (the last step);
  *        src/features/sightings/components/CompassPicker.tsx;
  *        src/features/sightings/lib/contextLabels.ts (the shared vocabulary);
+ *        src/features/sightings/lib/contextAnswers.ts (the context rules);
  *        src/shared/ui (CameraCapture, PermissionPrimer, ChoiceChips,
  *        ChoiceChipsMulti, TextField); ./MarkTile.tsx (the owner's marks —
  *        the same rows the owner's sighting page reads back);
@@ -74,12 +75,25 @@ import {
   directionLabel,
 } from '../lib/contextLabels';
 import {
-  CONDITION_FLAGS,
+  UNSURE,
+  changeConditions as changeConditionsRule,
+  conditionsOf,
+  isUnsure,
+  peopleShowSafetyLine,
+  selectDirection,
+  selectPeople as selectPeopleRule,
+  selectState as selectStateRule,
+  selectStaying as selectStayingRule,
+  setDirectionUnsure,
+  shownAnswer,
+  stateOf,
+  toggleMark as toggleMarkRule,
+  type MaybeUnsure,
+} from '../lib/contextAnswers';
+import {
   MAX_NOTE_LENGTH,
   MAX_SIGHTING_PHOTOS,
-  VEHICLE_STATE_FLAGS,
   type ConditionFlag,
-  type ContextQuestion,
   type ParkedLikelihood,
   type PeoplePresence,
   type ReportSightingAnswers,
@@ -274,15 +288,8 @@ export function PhotosStep({ answers, setAnswers }: StepProps) {
 //   - THE WORDS ARE contextLabels': what the spotter taps is what the owner
 //     reads.
 
-/** The "Not sure" chip's value: never stored, only remembered (contextUnsure). */
-const UNSURE = '__unsure__';
-type MaybeUnsure<V extends string> = V | typeof UNSURE;
+/** The "Not sure" chip: an equal answer that stores nothing (contextUnsure). */
 const UNSURE_OPTION = { value: UNSURE, label: 'Not sure' } as const;
-
-/** The people answers that bring up the safety line. "Not sure" counts: a
- *  spotter who can't tell is the one tempted to step closer and check. */
-const showsSafetyLine = (people: PeoplePresence | undefined, unsure: boolean) =>
-  people === 'nearby' || people === 'in_vehicle' || unsure;
 
 /** A follow-up, revealed with the tokens' in-place fade (reduced motion: just
  *  present) and indented under the answer it belongs to. */
@@ -330,97 +337,34 @@ function QuestionHead({ title, hint }: { title: string; hint?: string }) {
 export function ContextStep({ answers, setAnswers }: StepProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
-  const flags = answers.contextFlags ?? [];
-  const state = VEHICLE_STATE_FLAGS.find((flag) => flags.includes(flag)) ?? null;
-  const conditions = flags.filter((flag): flag is ConditionFlag =>
-    (CONDITION_FLAGS as readonly string[]).includes(flag),
-  );
+  const state = stateOf(answers);
+  const conditions = conditionsOf(answers);
   const marks = answers.confirmableFeatures ?? [];
   const confirmedIds = answers.confirmedFeatureIds ?? [];
-  const unsure = answers.contextUnsure ?? [];
   const details = contextDetailCount(answers);
-  const safetyLine = showsSafetyLine(answers.peoplePresence, unsure.includes('people'));
+  const safetyLine = peopleShowSafetyLine(answers);
 
-  /** `unsure` with these questions set to not-sure (true) or cleared (false). */
-  const withUnsure = (changes: Partial<Record<ContextQuestion, boolean>>): ContextQuestion[] => {
-    const next = new Set(unsure);
-    for (const [question, on] of Object.entries(changes) as [ContextQuestion, boolean][]) {
-      if (on) next.add(question);
-      else next.delete(question);
-    }
-    return [...next];
-  };
-
-  /** What a single-answer question's chips show as chosen. */
-  const shown = <V extends string>(question: ContextQuestion, stored: V | undefined | null) =>
-    (stored ?? (unsure.includes(question) ? UNSURE : null)) as MaybeUnsure<V> | null;
-
-  /**
-   * The vehicle's state. Tap again clears; a new state clears the OLD state's
-   * follow-up so "Parked · looks parked up" can't linger under "Moving".
-   * NOTE: contextFlags is rebuilt as state ∪ conditions, so any OTHER flag
-   * seeded into the answers (a legacy people_nearby) would be dropped on the
-   * first tap; fine for the wizard's always-fresh answers.
-   */
-  const selectState = (picked: MaybeUnsure<VehicleStateFlag>) => {
-    const current = shown('state', state);
-    const cleared = picked === current;
-    const next = cleared || picked === UNSURE ? null : picked;
-    setAnswers({
-      contextFlags: [...(next ? [next] : []), ...conditions],
-      parkedLikelihood: next === 'parked' ? answers.parkedLikelihood : undefined,
-      direction: next === 'driving' ? answers.direction : undefined,
-      contextUnsure: withUnsure({
-        state: picked === UNSURE && !cleared,
-        // A follow-up's "not sure" belongs to the state it followed.
-        ...(next !== 'parked' ? { staying: false } : {}),
-        ...(next !== 'driving' ? { direction: false } : {}),
-      }),
-    });
-  };
-
-  const selectStaying = (picked: MaybeUnsure<ParkedLikelihood>) => {
-    const cleared = picked === shown('staying', answers.parkedLikelihood);
-    setAnswers({
-      parkedLikelihood: cleared || picked === UNSURE ? undefined : picked,
-      contextUnsure: withUnsure({ staying: picked === UNSURE && !cleared }),
-    });
-  };
+  // The rules live in lib/contextAnswers (pure, shared by every step); these
+  // only apply their patches.
+  const selectState = (picked: MaybeUnsure<VehicleStateFlag>) =>
+    setAnswers(selectStateRule(answers, picked));
+  const selectStaying = (picked: MaybeUnsure<ParkedLikelihood>) =>
+    setAnswers(selectStayingRule(answers, picked));
+  const changeConditions = (next: ConditionFlag[]) =>
+    setAnswers(changeConditionsRule(answers, next));
+  const toggleMark = (id: string) => setAnswers(toggleMarkRule(answers, id));
 
   const selectPeople = (picked: MaybeUnsure<PeoplePresence>) => {
-    const cleared = picked === shown('people', answers.peoplePresence);
-    const people = cleared || picked === UNSURE ? undefined : picked;
-    const peopleUnsure = picked === UNSURE && !cleared;
-    setAnswers({ peoplePresence: people, contextUnsure: withUnsure({ people: peopleUnsure }) });
+    const patch = selectPeopleRule(answers, picked);
+    setAnswers(patch);
     // SAFETY: say it out loud as it appears. iOS has no live regions, and a
     // live region that mounts with its text isn't reliably read on Android
     // either, so announce on both (the WizardScreen / TextField pattern).
     // Queued (iOS), so VoiceOver saying the chip's "selected" can't cut the
     // sentence off; Android ignores the option.
-    if (!safetyLine && showsSafetyLine(people, peopleUnsure)) {
+    if (!safetyLine && peopleShowSafetyLine({ ...answers, ...patch })) {
       AccessibilityInfo.announceForAccessibilityWithOptions(SAFETY_PRESENCE_LINE, { queue: true });
     }
-  };
-
-  /** "Looks intact" is exclusive: it can't stand beside damage, stripping or a
-   *  changed plate, so picking it clears them and picking any of them clears it. */
-  const changeConditions = (next: ConditionFlag[]) => {
-    const added = next.find((flag) => !conditions.includes(flag));
-    const resolved =
-      added === 'looks_intact'
-        ? (['looks_intact'] as ConditionFlag[])
-        : added
-          ? next.filter((flag) => flag !== 'looks_intact')
-          : next;
-    setAnswers({ contextFlags: [...(state ? [state] : []), ...resolved] });
-  };
-
-  const toggleMark = (id: string) => {
-    setAnswers({
-      confirmedFeatureIds: confirmedIds.includes(id)
-        ? confirmedIds.filter((existing) => existing !== id)
-        : [...confirmedIds, id],
-    });
   };
 
   const noteLength = answers.note?.length ?? 0;
@@ -450,7 +394,7 @@ export function ContextStep({ answers, setAnswers }: StepProps) {
               ...STATE_OPTIONS.map((value) => ({ value, label: FLAG_LABELS[value] })),
               UNSURE_OPTION,
             ]}
-            value={shown('state', state)}
+            value={shownAnswer(answers, 'state', state)}
             onSelect={selectState}
             accessibilityLabel={CONTEXT_QUESTIONS.state}
             clearable
@@ -468,7 +412,7 @@ export function ContextStep({ answers, setAnswers }: StepProps) {
                   })),
                   UNSURE_OPTION,
                 ]}
-                value={shown('staying', answers.parkedLikelihood)}
+                value={shownAnswer(answers, 'staying', answers.parkedLikelihood)}
                 onSelect={selectStaying}
                 accessibilityLabel="Did it look like it was staying?"
                 clearable
@@ -488,9 +432,7 @@ export function ContextStep({ answers, setAnswers }: StepProps) {
               <View style={styles.compass}>
                 <CompassPicker
                   value={answers.direction}
-                  onChange={(direction) =>
-                    setAnswers({ direction, contextUnsure: withUnsure({ direction: false }) })
-                  }
+                  onChange={(direction) => setAnswers(selectDirection(answers, direction))}
                   accessibilityLabel="Which way was it heading?"
                 />
                 {/* Under the compass, centred with it: one control. A checkbox,
@@ -499,14 +441,8 @@ export function ContextStep({ answers, setAnswers }: StepProps) {
                   // Says what it's unsure OF: on its own, "Not sure" under a
                   // compass is just "Not sure, checkbox".
                   options={[{ ...UNSURE_OPTION, accessibilityLabel: 'Not sure which way it went' }]}
-                  value={unsure.includes('direction') ? [UNSURE] : []}
-                  onChange={(next) => {
-                    const on = next.length > 0;
-                    setAnswers({
-                      direction: on ? undefined : answers.direction,
-                      contextUnsure: withUnsure({ direction: on }),
-                    });
-                  }}
+                  value={isUnsure(answers, 'direction') ? [UNSURE] : []}
+                  onChange={(next) => setAnswers(setDirectionUnsure(answers, next.length > 0))}
                   testID="context-direction-unsure"
                 />
               </View>
@@ -521,7 +457,7 @@ export function ContextStep({ answers, setAnswers }: StepProps) {
               ...PEOPLE_OPTIONS.map((value) => ({ value, label: PEOPLE_PRESENCE_LABELS[value] })),
               UNSURE_OPTION,
             ]}
-            value={shown('people', answers.peoplePresence)}
+            value={shownAnswer(answers, 'people', answers.peoplePresence)}
             onSelect={selectPeople}
             accessibilityLabel={CONTEXT_QUESTIONS.people}
             clearable
