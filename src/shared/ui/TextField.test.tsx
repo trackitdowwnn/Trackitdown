@@ -79,6 +79,18 @@ describe('TextField', () => {
     expect(onChangeText).toHaveBeenCalledWith('Jane');
   });
 
+  it('drops NUL characters as they arrive — the database can’t store them', async () => {
+    const NUL = String.fromCharCode(0);
+    const onChangeText = jest.fn();
+    const { getByPlaceholderText } = await render(
+      <TextField placeholder="name" value="" onChangeText={onChangeText} />,
+    );
+    await act(async () => {
+      fireEvent.changeText(getByPlaceholderText('name'), `Ja${NUL}ne${NUL}`);
+    });
+    expect(onChangeText).toHaveBeenLastCalledWith('Jane');
+  });
+
   it('uppercases input for the plate variant', async () => {
     const onChangeText = jest.fn();
     const { getByPlaceholderText } = await render(

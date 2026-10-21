@@ -15,7 +15,7 @@
  *        docs/TESTING.md.
  */
 
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
 import { MessageInputBar } from './MessageInputBar';
@@ -56,6 +56,17 @@ describe('MessageInputBar', () => {
     fireEvent.changeText(getByTestId('message-input'), 'Saw it on Elm St');
 
     expect(onChangeText).toHaveBeenCalledWith('Saw it on Elm St');
+  });
+
+  it('drops a pasted NUL — it would fail the send at the database', async () => {
+    const NUL = String.fromCharCode(0);
+    const { getByTestId, onChangeText } = await setup('');
+
+    await act(async () => {
+      fireEvent.changeText(getByTestId('message-input'), `Elm${NUL} St`);
+    });
+
+    expect(onChangeText).toHaveBeenLastCalledWith('Elm St');
   });
 
   it('carries the length cap down to the input', async () => {
