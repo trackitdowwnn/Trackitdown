@@ -80,6 +80,7 @@ alter table public.sightings add constraint sightings_damage_kinds_chk
   check (damage_kinds is null
          or (damage_kinds <@ array['smashed_window', 'dents_scrapes', 'broken_lights',
                                    'missing_wheels', 'missing_parts', 'fire_damage']::text[]
+             and array_ndims(damage_kinds) = 1
              and cardinality(damage_kinds) between 1 and 6
              and array_position(damage_kinds, null) is null));
 
