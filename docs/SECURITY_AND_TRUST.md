@@ -243,6 +243,17 @@ commenting standards.
     ⚠️ **Kept as long as the sighting row** — no purge yet. A note may hold
     personal data; nulling it some time after the post closes is an open
     follow-up.
+    **The damage details follow the same rules** (2026-10-21,
+    `20261021100000_a_sighting_says_what_damage.sql`): `sightings.damage_kinds`
+    (a closed six-kind list) and `sightings.damage_note` (≤300 characters,
+    trimmed, the same hidden-character refusal), both only beside the
+    `damage_visible` flag. Owner-only through `get_post_sightings`; granted to
+    no client role; never in a push or the public timeline; the app logs
+    only counts / whether there was a note, never the words. **Unmoderated**
+    (§7), like the note. ⚠️ **Kept as long as the sighting row** — the
+    90-day location purge clears coordinates only, and a damage note can
+    still name a place; the same open follow-up as the withdrawal note, and
+    it belongs in the privacy policy / Art. 30 record beside the note.
   - The visible push — title or body — may name make, colour and a
     **district-grain** locality. ⚠️ Deliberately field-agnostic since
     2026-09-22, when the copy pass moved the alert's locality and the
