@@ -21,8 +21,8 @@
 -- and JSON null when not answered) · 8 a non-owner gets NOT_OWNER · 9 ⚠️ no
 -- client role can read or write either column directly · 10 ⚠️ exactly ONE
 -- create_sighting, 15 since 20261021120000 (10 defaulted, the damage args
--- 12th and 13th), the 11- and 13-arg signatures gone, grants authenticated/service_role only · 11 the three
--- table CHECKs reject a direct bad write as service_role (constraint names
+-- 12th and 13th), the 11- and 13-arg signatures gone, grants
+-- authenticated/service_role only · 11 the three table CHECKs reject a direct bad write as service_role (constraint names
 -- asserted), and a direct good write passes.
 -- HOW:   Self-asserting, RAISE on failure (CI's db job, ON_ERROR_STOP=1),
 --        everything inside begin/rollback. The suite creates its OWN active
@@ -511,7 +511,7 @@ begin
   -- Element by element: array equality also compares lower bounds.
   if v_names[12] is distinct from 'p_damage_kinds'
      or v_names[13] is distinct from 'p_damage_note' then
-    raise exception 'CHECK 10 FAILED: the last two params should be p_damage_kinds, p_damage_note (the names the app sends), got %, %', v_names[12], v_names[13];
+    raise exception 'CHECK 10 FAILED: params 12 and 13 should be p_damage_kinds, p_damage_note (the names the app sends), got %, %', v_names[12], v_names[13];
   end if;
   if to_regprocedure('public.create_sighting(uuid, jsonb, text[], text, text, text, text, text, text, uuid[], uuid[])') is not null then
     raise exception 'CHECK 10 FAILED: the old 11-arg signature still exists';

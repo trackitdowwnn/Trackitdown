@@ -177,6 +177,56 @@ function sqlClassRanges(sqlClass: string): { from: number; to: number }[] {
   });
 }
 
+/** The hidden-character class in the LATEST migration that adds
+ *  sightings_missing_parts_note_chk (20261021120000 today), as written in SQL. */
+function latestMissingPartsNoteCheckClass(): string {
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((name) => name.endsWith('.sql'))
+    .sort();
+  for (const name of [...files].reverse()) {
+    const sql = readFileSync(join(MIGRATIONS_DIR, name), 'utf8');
+    const found = sql.match(
+      /add constraint sightings_missing_parts_note_chk[\s\S]*?missing_parts_note !~ '(\[[^']*\])'/,
+    );
+    if (found) return found[1];
+  }
+  throw new Error('sightings_missing_parts_note_chk not found in any migration');
+}
+
+/** The class create_sighting refuses the missing-parts note for, from its
+ *  latest body. */
+function latestCreateSightingMissingPartsClass(): string {
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((name) => name.endsWith('.sql'))
+    .sort();
+  for (const name of [...files].reverse()) {
+    const sql = readFileSync(join(MIGRATIONS_DIR, name), 'utf8');
+    const body = sql.match(
+      /create (?:or replace )?function public\.create_sighting\([\s\S]*?\$(\w*)\$([\s\S]*?)\$\1\$/i,
+    );
+    if (!body) continue;
+    const found = body[2].match(/if v_missing_parts_note ~ '(\[[^']*\])' then/);
+    if (!found) {
+      throw new Error(`${name}: create_sighting has no missing-parts note character check`);
+    }
+    return found[1];
+  }
+  throw new Error('create_sighting not found in any migration');
+}
+
+describe('the missing-parts note (20261021120000)', () => {
+  // The app strips one set for both notes (stripHiddenCharacters), so the
+  // server must refuse ONE set for both: then the damage-note range test
+  // below covers this note too.
+  it('⚠️ its CHECK refuses exactly the damage note’s set', () => {
+    expect(latestMissingPartsNoteCheckClass()).toBe(latestDamageNoteCheckClass());
+  });
+
+  it('⚠️ create_sighting refuses the same set its CHECK does', () => {
+    expect(latestCreateSightingMissingPartsClass()).toBe(latestMissingPartsNoteCheckClass());
+  });
+});
+
 describe('the damage note (20261021100000)', () => {
   it('⚠️ the app strips a character from EVERY range the damage-note CHECK refuses', () => {
     const ranges = sqlClassRanges(latestDamageNoteCheckClass());
