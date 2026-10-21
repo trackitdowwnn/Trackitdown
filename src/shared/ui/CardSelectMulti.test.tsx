@@ -79,4 +79,28 @@ describe('CardSelectMulti', () => {
 
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it('names the group by its question and carries a testID', async () => {
+    const view = await render(
+      <CardSelectMulti
+        options={OPTIONS}
+        value={[]}
+        onChange={() => {}}
+        accessibilityLabel="Its condition"
+        testID="condition"
+      />,
+    );
+    expect(view.getByTestId('condition').props.accessibilityLabel).toBe('Its condition');
+  });
+
+  it("an option's own accessibilityLabel replaces the label + description", async () => {
+    const view = await render(
+      <CardSelectMulti
+        options={[{ value: 'unsure', label: 'Not sure', accessibilityLabel: 'Not sure which way' }]}
+        value={[]}
+        onChange={() => {}}
+      />,
+    );
+    expect(view.getByLabelText('Not sure which way')).toBeTruthy();
+  });
 });
