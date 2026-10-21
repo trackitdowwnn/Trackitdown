@@ -48,6 +48,7 @@ import {
   type ContextStepId,
 } from './lib/contextAnswers';
 import { CONTEXT_STEP_QUESTIONS, contextDetailCount } from './lib/contextLabels';
+import { cleanSpotterWords } from './lib/withdrawReasons';
 import {
   DAMAGE_KINDS,
   DRIVING_DIRECTIONS,
@@ -230,7 +231,8 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
               hasNote: Boolean(answers.note?.trim()),
               // How many kinds, and whether they added words — never the words.
               damageKinds: answers.damageKinds?.length ?? 0,
-              hasDamageNote: Boolean(answers.damageNote?.trim()),
+              // Judged as it is sent: blank-looking words are no words.
+              hasDamageNote: cleanSpotterWords(answers.damageNote) !== null,
               unsure: answers.contextUnsure?.length ?? 0,
               answered: CONTEXT_STEP_IDS.filter(
                 (id) => stepApplies(answers, id) && stepTouched(answers, id),

@@ -12,17 +12,24 @@
  *        length cap, and the hidden characters it strips, must match what
  *        withdraw_sighting refuses — or a spotter's withdrawal fails over a
  *        character they can't see.
+ *        Since 20261021100000 the DAMAGE NOTE too: it shares the same strip
+ *        (stripHiddenCharacters), and sightings_damage_note_chk and
+ *        create_sighting refuse their own copy of the set — so every range
+ *        listed there must be one the app strips, or a report fails.
  * LINKS: src/features/sightings/lib/withdrawReasons.ts;
  *        supabase/migrations/20261009150000_a_withdrawal_says_why.sql;
- *        supabase/migrations/20261009180000_a_withdrawal_can_say_more.sql.
+ *        supabase/migrations/20261009180000_a_withdrawal_can_say_more.sql;
+ *        supabase/migrations/20261021100000_a_sighting_says_what_damage.sql.
  */
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  cleanSpotterWords,
   cleanWithdrawNote,
   MAX_WITHDRAW_NOTE_LENGTH,
+  stripHiddenCharacters,
   WITHDRAW_REASONS,
   withdrawalSentence,
 } from '../../src/features/sightings/lib/withdrawReasons';
@@ -113,6 +120,97 @@ describe('the "Something else" note', () => {
       if (refused.test(ch) !== appStrips) mismatches.push(cp.toString(16));
     }
     expect(mismatches).toEqual([]);
+  });
+});
+
+/** The hidden-character class in the LATEST migration that adds
+ *  sightings_damage_note_chk (20261021100000 today), as written in SQL. */
+function latestDamageNoteCheckClass(): string {
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((name) => name.endsWith('.sql'))
+    .sort();
+  for (const name of [...files].reverse()) {
+    const sql = readFileSync(join(MIGRATIONS_DIR, name), 'utf8');
+    const found = sql.match(
+      /add constraint sightings_damage_note_chk[\s\S]*?damage_note !~ '(\[[^']*\])'/,
+    );
+    if (found) return found[1];
+  }
+  throw new Error('sightings_damage_note_chk not found in any migration');
+}
+
+/** The class create_sighting refuses the damage note for, from its latest body. */
+function latestCreateSightingDamageClass(): string {
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((name) => name.endsWith('.sql'))
+    .sort();
+  for (const name of [...files].reverse()) {
+    const sql = readFileSync(join(MIGRATIONS_DIR, name), 'utf8');
+    const body = sql.match(
+      /create (?:or replace )?function public\.create_sighting\([\s\S]*?\$(\w*)\$([\s\S]*?)\$\1\$/i,
+    );
+    if (!body) continue;
+    const found = body[2].match(/if v_damage_note ~ '(\[[^']*\])' then/);
+    if (!found) throw new Error(`${name}: create_sighting has no damage-note character check`);
+    return found[1];
+  }
+  throw new Error('create_sighting not found in any migration');
+}
+
+// The SQL class is written in escapes only — two hex digits after an "x",
+// four after a "u", ranges joined by "-". The backslash is built, not typed,
+// so no escape in this file can be mistyped into a raw character.
+const BACKSLASH = String.fromCharCode(92);
+const SQL_ESCAPE = `${BACKSLASH}${BACKSLASH}(?:x([0-9A-Fa-f]{2})|u([0-9A-Fa-f]{4}))`;
+const SQL_CLASS_ITEM = new RegExp(`${SQL_ESCAPE}(?:-${SQL_ESCAPE})?`, 'g');
+
+/** Each range (or single character, from === to) the SQL class lists. */
+function sqlClassRanges(sqlClass: string): { from: number; to: number }[] {
+  const inner = sqlClass.slice(1, -1);
+  const items = [...inner.matchAll(SQL_CLASS_ITEM)];
+  // Every character of the class was parsed: nothing skipped, nothing guessed.
+  expect(items.map((item) => item[0]).join('')).toBe(inner);
+  return items.map((item) => {
+    const from = parseInt(item[1] ?? item[2], 16);
+    const end = item[3] ?? item[4];
+    return { from, to: end === undefined ? from : parseInt(end, 16) };
+  });
+}
+
+describe('the damage note (20261021100000)', () => {
+  it('⚠️ the app strips a character from EVERY range the damage-note CHECK refuses', () => {
+    const ranges = sqlClassRanges(latestDamageNoteCheckClass());
+    // The class lists more than one range: a parse that found nothing would
+    // pass the loop below vacuously.
+    expect(ranges.length).toBeGreaterThan(10);
+    const kept: string[] = [];
+    for (const { from, to } of ranges) {
+      expect(from).toBeLessThanOrEqual(to);
+      // Both ends and the middle of each range.
+      for (const cp of new Set([from, Math.floor((from + to) / 2), to])) {
+        const ch = String.fromCharCode(cp);
+        if (stripHiddenCharacters(`a${ch}b`) !== 'ab') kept.push(cp.toString(16));
+      }
+    }
+    expect(kept).toEqual([]);
+  });
+
+  it('⚠️ create_sighting refuses the same set the CHECK does', () => {
+    // Two copies in SQL: a migration that widened one but not the other would
+    // refuse, at the RPC or the table, a note the app thinks is clean.
+    expect(latestCreateSightingDamageClass()).toBe(latestDamageNoteCheckClass());
+  });
+
+  it('keeps ordinary words, spaces and emoji without joiners', () => {
+    const fire = String.fromCodePoint(0x1f525);
+    const dash = String.fromCharCode(0x2014);
+    const noBreakSpace = String.fromCharCode(0xa0);
+    const words = `Mirror hanging off ${dash} driver's side,${noBreakSpace}glass ${fire}${fire}`;
+    expect(stripHiddenCharacters(words)).toBe(words);
+    expect(stripHiddenCharacters('  two  spaces\tand a tab\nand a line  ')).toBe(
+      '  two  spaces\tand a tab\nand a line  ',
+    );
+    expect(cleanSpotterWords(`  Bent wheel ${fire} `)).toBe(`Bent wheel ${fire}`);
   });
 });
 

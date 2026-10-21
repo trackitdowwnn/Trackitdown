@@ -20,7 +20,6 @@ import {
   CONTEXT_SHORT_LABELS,
   CONTEXT_STEP_QUESTIONS,
   DAMAGE_KIND_LABELS,
-  DAMAGE_OPTIONS,
   FLAG_LABELS,
   PARKED_LIKELIHOOD_LABELS,
   PEOPLE_OPTIONS,
@@ -30,6 +29,7 @@ import {
   contextReviewRows,
   sightingAnswerGroups,
 } from './contextLabels';
+import { DAMAGE_KINDS } from '../types';
 
 describe('contextLabels — the shared words', () => {
   it('offers the step\'s options in order, with no retired value', () => {
@@ -157,7 +157,8 @@ describe('the context steps’ cards (2026-10-20)', () => {
 
 describe('what damage (owner, 2026-10-21)', () => {
   it('offers the six kinds in the server’s order, each in plain words', () => {
-    expect(DAMAGE_OPTIONS).toEqual([
+    // The steps offer DAMAGE_KINDS itself — the one list, no second copy.
+    expect(DAMAGE_KINDS).toEqual([
       'smashed_window',
       'dents_scrapes',
       'broken_lights',
@@ -165,7 +166,7 @@ describe('what damage (owner, 2026-10-21)', () => {
       'missing_parts',
       'fire_damage',
     ]);
-    expect(DAMAGE_OPTIONS.map((kind) => DAMAGE_KIND_LABELS[kind])).toEqual([
+    expect(DAMAGE_KINDS.map((kind) => DAMAGE_KIND_LABELS[kind])).toEqual([
       'Smashed window',
       'Dents or scrapes',
       'Broken lights',

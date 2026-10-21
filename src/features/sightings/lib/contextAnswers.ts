@@ -31,6 +31,7 @@ import {
   type ReportSightingAnswers,
   type VehicleStateFlag,
 } from '../types';
+import { cleanSpotterWords } from './withdrawReasons';
 
 /** "Not sure"'s value in a control: never stored, only remembered (contextUnsure). */
 export const UNSURE = '__unsure__';
@@ -232,7 +233,10 @@ export function stepTouched(answers: Answers, id: ContextStepId): boolean {
     case 'condition':
       return conditionsOf(answers).length > 0;
     case 'damage':
-      return (answers.damageKinds ?? []).length > 0 || Boolean(answers.damageNote?.trim());
+      // Blank-looking = what the payload sends as null (cleanSpotterWords).
+      return (
+        (answers.damageKinds ?? []).length > 0 || cleanSpotterWords(answers.damageNote) !== null
+      );
     case 'marks':
       return (answers.confirmedFeatureIds ?? []).length > 0;
     case 'note':

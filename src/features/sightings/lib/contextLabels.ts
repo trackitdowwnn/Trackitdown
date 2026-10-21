@@ -39,6 +39,7 @@ import {
   type VehicleStateFlag,
 } from '../types';
 import type { ContextStepId } from './contextAnswers';
+import { cleanSpotterWords } from './withdrawReasons';
 
 export const FLAG_LABELS: Record<SightingContextFlag, string> = {
   parked: 'Parked',
@@ -88,14 +89,8 @@ export const DAMAGE_KIND_LABELS: Record<DamageKind, string> = {
   missing_parts: 'Missing panels or parts',
   fire_damage: 'Fire damage',
 };
-export const DAMAGE_OPTIONS: readonly DamageKind[] = [
-  'smashed_window',
-  'dents_scrapes',
-  'broken_lights',
-  'missing_wheels',
-  'missing_parts',
-  'fire_damage',
-];
+// The cards are offered in DAMAGE_KINDS' order (types.ts) — the one list,
+// which mirrors the server's whitelist — so there is no second copy here.
 
 /** The damage kinds' words, in the order given, skipping any this app
  *  doesn't know (a newer server's kind is left out, never a crash). */
@@ -318,9 +313,12 @@ export function sightingAnswerGroups(source: ContextSummarySource): ContextAnswe
 export function contextReviewRows(answers: Partial<ReportSightingAnswers>): ContextReviewRow[] {
   const rows = answeredContextRows(answers);
 
-  // The kinds ride on the condition row; their words about it, their own.
-  const damageNote = answers.damageNote?.trim();
-  if (damageNote) rows.push({ key: 'damage', label: 'About the damage', value: damageNote });
+  // The kinds ride on the condition row; their words about it, their own —
+  // cleaned as they are sent, so a note that looks blank shows no row.
+  const damageNote = cleanSpotterWords(answers.damageNote);
+  if (damageNote !== null) {
+    rows.push({ key: 'damage', label: 'About the damage', value: damageNote });
+  }
 
   const confirmed = answers.confirmedFeatureIds ?? [];
   const marks = (answers.confirmableFeatures ?? [])
@@ -354,7 +352,7 @@ export function contextDetailCount(answers: Partial<ReportSightingAnswers>): num
     (answers.direction ? 1 : 0) +
     (answers.peoplePresence ? 1 : 0) +
     (answers.damageKinds?.length ?? 0) +
-    (answers.damageNote?.trim() ? 1 : 0) +
+    (cleanSpotterWords(answers.damageNote) !== null ? 1 : 0) +
     (answers.confirmedFeatureIds?.length ?? 0) +
     (answers.note?.trim() ? 1 : 0)
   );

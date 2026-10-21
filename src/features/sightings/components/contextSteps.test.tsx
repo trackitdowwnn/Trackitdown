@@ -453,7 +453,7 @@ describe('what damage can you see?', () => {
     expect(advanceSoon).not.toHaveBeenCalled();
   });
 
-  it('writes their words, and counts them in characters against the 300', async () => {
+  it('writes their words, and counts them against the 300 as the box limits them', async () => {
     const view = await renderStep(DamageStep, { contextFlags: ['damage_visible'] });
     // The counter is hidden from screen readers on purpose (TextField).
     expect(view.getByText('0/300', { includeHiddenElements: true })).toBeTruthy();
@@ -462,9 +462,10 @@ describe('what damage can you see?', () => {
     await type(view, 'Mirror hanging off');
     expect(latest.damageNote).toBe('Mirror hanging off');
     expect(view.getByText('18/300', { includeHiddenElements: true })).toBeTruthy();
-    // An emoji is one character, as the server counts it.
+    // The counter counts what maxLength counts (UTF-16 units), so it reaches
+    // 300/300 exactly when the box stops taking text: an emoji counts two.
     await type(view, String.fromCodePoint(0x1f525));
-    expect(view.getByText('1/300', { includeHiddenElements: true })).toBeTruthy();
+    expect(view.getByText('2/300', { includeHiddenElements: true })).toBeTruthy();
     expect(advanceSoon).not.toHaveBeenCalled();
   });
 

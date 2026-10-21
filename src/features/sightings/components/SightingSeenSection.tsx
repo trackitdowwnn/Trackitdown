@@ -157,9 +157,15 @@ export function SightingDetails({ sighting }: { sighting: OwnerSighting }) {
             </View>
           ) : null}
           {damageNote ? (
-            <View style={styles.quote} testID="seen-damage-note">
+            // One screen-reader stop, read as a statement, like a table row.
+            <View
+              style={styles.quote}
+              accessible
+              accessibilityLabel={`About the damage: ${damageNote}`}
+              testID="seen-damage-note"
+            >
               <Text style={styles.label}>About the damage</Text>
-              <Text style={styles.quoteText}>{damageNote}</Text>
+              <Text style={styles.noteText}>{damageNote}</Text>
             </View>
           ) : null}
         </View>
@@ -180,7 +186,8 @@ const makeStyles = (c: Palette) =>
     root: {
       gap: spacing.xl,
     },
-    // The blocks' quiet label — the marks' count and the note.
+    // The blocks' quiet label — the marks' count, the words about the damage
+    // and the note.
     label: {
       ...typography.caption,
       color: c.textSecondary,
@@ -259,17 +266,12 @@ const makeStyles = (c: Palette) =>
     answers: {
       gap: spacing.md,
     },
-    // The note's inline-quote form, a size down: a short aside to the table,
-    // not a second note.
+    // The note's inline-quote form, its text in the note's own style
+    // (noteText): their words read the same wherever they appear.
     quote: {
       gap: spacing.xs,
       borderLeftWidth: sizes.followUpRule,
       borderLeftColor: c.border,
       paddingLeft: spacing.md,
-    },
-    quoteText: {
-      ...typography.label,
-      fontFamily: typography.body.fontFamily,
-      color: c.textPrimary,
     },
   });

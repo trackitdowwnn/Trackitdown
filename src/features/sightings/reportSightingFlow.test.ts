@@ -205,6 +205,16 @@ describe('reportSightingFlow shape', () => {
       hasDamageNote: true,
       answered: ['condition', 'damage'],
     });
+    // Words that only look blank are judged as they'd be sent: none.
+    await step('note').onContinue?.({
+      contextFlags: ['damage_visible'],
+      damageNote: String.fromCharCode(0x3164),
+      note: '',
+    });
+    expect(getRecentLogs().findLast((e) => e.message === 'context_summary')?.data).toMatchObject({
+      hasDamageNote: false,
+      answered: ['condition'],
+    });
   });
 
   it('says who sees what above "Send report", word for word', () => {

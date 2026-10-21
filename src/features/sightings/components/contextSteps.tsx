@@ -41,19 +41,19 @@
 
 import { Feather } from '@expo/vector-icons';
 import {
-  AppWindow,
   Car,
   CarFront,
-  CircleOff,
+  CircleDashed,
   CircleParking,
   CircleQuestionMark,
   Flame,
   Hammer,
   LightbulbOff,
-  Puzzle,
   RectangleHorizontal,
   ShieldCheck,
+  SquareDashed,
   SquareParking,
+  SquareSlash,
   TriangleAlert,
   Truck,
   User,
@@ -108,7 +108,6 @@ import {
   CONTEXT_OPTION_DESCRIPTIONS,
   CONTEXT_STEP_QUESTIONS,
   DAMAGE_KIND_LABELS,
-  DAMAGE_OPTIONS,
   FLAG_LABELS,
   PARKED_LIKELIHOOD_LABELS,
   PEOPLE_OPTIONS,
@@ -119,6 +118,7 @@ import {
 } from '../lib/contextLabels';
 import { stripHiddenCharacters } from '../lib/withdrawReasons';
 import {
+  DAMAGE_KINDS,
   MAX_DAMAGE_NOTE_LENGTH,
   MAX_NOTE_LENGTH,
   type ConditionFlag,
@@ -162,11 +162,12 @@ const CONDITION_ICONS: Record<ConditionFlag, LucideIcon> = {
   looks_intact: ShieldCheck,
 };
 const DAMAGE_ICONS: Record<DamageKind, LucideIcon> = {
-  smashed_window: AppWindow,
+  smashed_window: SquareSlash,
   dents_scrapes: Hammer,
   broken_lights: LightbulbOff,
-  missing_wheels: CircleOff,
-  missing_parts: Puzzle,
+  // Dashed outline = missing.
+  missing_wheels: CircleDashed,
+  missing_parts: SquareDashed,
   fire_damage: Flame,
 };
 
@@ -418,7 +419,7 @@ export function DamageStep({ answers, setAnswers }: StepProps) {
   return (
     <View style={styles.stack}>
       <CardSelectMulti
-        options={DAMAGE_OPTIONS.map((value) => ({
+        options={DAMAGE_KINDS.map((value) => ({
           value,
           label: DAMAGE_KIND_LABELS[value],
           icon: DAMAGE_ICONS[value],
@@ -440,8 +441,8 @@ export function DamageStep({ answers, setAnswers }: StepProps) {
         variant="multiline"
         value={note}
         onChangeText={(text) => setAnswers({ damageNote: stripHiddenCharacters(text) })}
-        // Characters, as the server counts them (an emoji is one).
-        counter={`${[...note].length}/${MAX_DAMAGE_NOTE_LENGTH}`}
+        // UTF-16 units, as maxLength counts them (like the note step).
+        counter={`${note.length}/${MAX_DAMAGE_NOTE_LENGTH}`}
         // The counter is hidden from screen readers (TextField's contract);
         // the limit goes here instead, read once on focus.
         accessibilityHint={`Up to ${MAX_DAMAGE_NOTE_LENGTH} characters`}
