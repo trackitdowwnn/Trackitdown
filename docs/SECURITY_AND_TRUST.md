@@ -246,7 +246,9 @@ commenting standards.
     **The damage details follow the same rules** (2026-10-21,
     `20261021100000_a_sighting_says_what_damage.sql`): `sightings.damage_kinds`
     (a closed six-kind list) and `sightings.damage_note` (≤300 characters,
-    trimmed, the same hidden-character refusal), both only beside the
+    trimmed, the same hidden-character refusal — the app strips that set as
+    typed, held to the CHECK's every range and to create_sighting's copy by
+    `supabase/tests/withdrawReasons.test.ts`), both only beside the
     `damage_visible` flag. Owner-only through `get_post_sightings`; granted to
     no client role; never in a push or the public timeline; the app logs
     only counts / whether there was a note, never the words. **Unmoderated**

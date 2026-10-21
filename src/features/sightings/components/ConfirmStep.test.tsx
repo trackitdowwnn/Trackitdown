@@ -4,7 +4,8 @@
  *        Where and when), links gone on a spur and inert while sending, the
  *        full-screen photo preview, the location lines (approximate, no
  *        area, no fix), the time from the first LIVE photo, the car card, the
- *        "What you saw" rows and their empty state, and the "Library" badge
+ *        "What you saw" rows (the damage seen, and its own row and Edit) and
+ *        their empty state, and the "Library" badge
  *        (moved here from sightingSteps.test.tsx).
  * WHY:   This is the spotter's last look before the owner sees it. A wrong
  *        Edit target strands them on the wrong step; an Edit on the location
@@ -164,6 +165,32 @@ describe('ConfirmStep — sections and Edit links', () => {
     });
     await press(view.getByRole('button', { name: 'Add details: Anyone in or near it?' }));
     expect(editStep).toHaveBeenLastCalledWith('people');
+  });
+
+  it('"Add details" reaches what damage once "Damage visible" is ticked', async () => {
+    const { view, editStep } = await renderConfirm({
+      photos: [live(0)],
+      contextFlags: ['parked', 'damage_visible'],
+      parkedLikelihood: 'settled',
+      peoplePresence: 'nobody',
+    });
+    await press(view.getByRole('button', { name: 'Add details: What damage can you see?' }));
+    expect(editStep).toHaveBeenLastCalledWith('damage');
+  });
+
+  it('their words about the damage edit on the damage step', async () => {
+    const { view, editStep } = await renderConfirm({
+      photos: [live(0)],
+      contextFlags: ['damage_visible'],
+      damageKinds: ['smashed_window'],
+      damageNote: 'Glass on the pavement',
+    });
+    await press(view.getByRole('button', { name: 'Edit: About the damage' }));
+    expect(editStep).toHaveBeenLastCalledWith('damage');
+    // Answered: "Add details" moves on past it.
+    expect(
+      view.queryByRole('button', { name: 'Add details: What damage can you see?' }),
+    ).toBeNull();
   });
 
   it('"Add details" offers a "Not sure" question again — it has no row, and they may now know', async () => {
@@ -329,6 +356,18 @@ describe('ConfirmStep — what you saw', () => {
       expect(view.getByText(label)).toBeTruthy();
       expect(view.getByText(value)).toBeTruthy();
     }
+  });
+
+  it('names the damage seen on the condition row, and their words on a row of their own', async () => {
+    const { view } = await renderConfirm({
+      photos: [live(0)],
+      contextFlags: ['damage_visible'],
+      damageKinds: ['smashed_window', 'dents_scrapes'],
+      damageNote: '  Glass on the pavement  ',
+    });
+    expect(view.getByText('Damage visible · Smashed window, Dents or scrapes')).toBeTruthy();
+    expect(view.getByText('About the damage')).toBeTruthy();
+    expect(view.getByText('Glass on the pavement')).toBeTruthy();
   });
 
   it('says "Nothing added" with an Add link when the step was skipped', async () => {

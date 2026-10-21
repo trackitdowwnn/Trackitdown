@@ -72,7 +72,17 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
      visible · being stripped · looks intact); "Looks intact" is exclusive;
      "Being stripped" brings up the same safety line with "If a crime is in
      progress, call 999." under it — as does the state "Being loaded or
-     towed", which therefore doesn't move on by itself.
+     towed", which therefore doesn't move on by itself. The cards are
+     title-only (owner, 2026-10-21).
+   - **What damage can you see?** (after Damage visible only; owner,
+     2026-10-21): any that apply on title-only cards (Smashed window · Dents
+     or scrapes · Broken lights · Missing wheels · Missing panels or parts ·
+     Fire damage = `damage_kinds`), then **Anything else?** — their own words,
+     ≤ 300 characters with an n/300 counter (`damage_note`; hidden characters
+     stripped as typed, the withdraw note's set). Never moves on by itself.
+     Unticking Damage visible, or ticking Looks intact, clears both; neither
+     is ever sent without the flag (the server refuses it). The funnel logs
+     how many kinds and whether there are words — never the words.
    - **Could you see any of these?** (only when the post has marks): the
      post's distinctive marks as checkbox rows with the owner's photo
      (`confirmed_feature_ids`; the screen seeds `confirmableFeatures`, and the
@@ -94,8 +104,10 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
      editing** (`// SAFETY`: the capture point is the evidence). No fix: "No
      location on this report — your photos still help."
    - **What you saw**: one row per answer in the contextLabels words
-     (`contextReviewRows`), the marks and the note — each with its own Edit
-     to that step ("what it was doing" continues to its follow-up), and one
+     (`contextReviewRows`; the damage seen rides on the condition row, "About
+     the damage" is a row of its own), the marks and the note — each with its
+     own Edit to that step ("what it was doing" continues to its follow-up,
+     "its condition" to what damage while Damage visible is ticked), and one
      **Add details** to the first question still unanswered ("Nothing added"
      with an Add link when everything was skipped).
    - Above the CTA, the step's `footerNote`: "Only the owner sees your photos
@@ -146,12 +158,15 @@ car today — the owner has them.").
     an older report with no `offered_feature_ids` shows the seen ones
     alone; `SightingMarks`, shown only when there are marks).
   - **Details** (a section of its own since 2026-10-20; `SightingDetails`,
-    shown only when there is an answer or a note): their answers as a small
-    table, label | answers (`sightingAnswerGroups` under
-    `CONTEXT_SHORT_LABELS`: Doing / People / Condition), plain text with
-    hairlines between rows — a state's follow-up on its line ("Parked ·
-    Looks settled"), conditions a line each; skipped questions aren't
-    shown, and rows stack at large text. Then their note.
+    shown only when there is an answer, words about the damage, or a note):
+    their answers as a small table, label | answers (`sightingAnswerGroups`
+    under `CONTEXT_SHORT_LABELS`: Doing / People / Condition), plain text
+    with hairlines between rows — a state's follow-up on its line ("Parked ·
+    Looks settled"), conditions a line each, the damage seen on its own
+    ("Damage visible · Smashed window, Dents or scrapes"; a kind this app
+    doesn't know is skipped); skipped questions aren't shown, and rows stack
+    at large text. Then their words about the damage as a short quote
+    ("About the damage", 2026-10-21), then their note.
   - **Where:** the street address in a chip (`useSightingAddress`: a device
     reverse geocode of the point, the stored area as the fallback), the map,
     the safety notice beside the point, then [Google Maps] [Waze] side by

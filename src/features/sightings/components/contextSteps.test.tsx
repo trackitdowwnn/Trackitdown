@@ -2,8 +2,10 @@
  * WHAT:  Tests for the report's context steps, one question each (2026-10-20):
  *        state (with "Not sure"), the follow-ups (staying; the compass and its
  *        "Not sure"), people and its fixed safety line, condition ("Looks
- *        intact" exclusive; "Being stripped" brings the line up too), the
- *        owner's marks, the note — each card's words and line, a second tap
+ *        intact" exclusive; "Being stripped" brings the line up too; losing
+ *        "Damage visible" drops what damage), what damage (title-only cards,
+ *        their own words, hidden characters stripped), the owner's marks, the
+ *        note — each card's words and line, a second tap
  *        clearing, auto-advance on a single pick, and NEVER past the safety
  *        line. Plus CompassPicker's own select/clear.
  * WHY:   The steps write DOMAIN facts into one shared answers bag: a wiring
@@ -29,6 +31,7 @@ import { DRIVING_DIRECTIONS, type ReportSightingAnswers } from '../types';
 import { CompassPicker } from './CompassPicker';
 import {
   ConditionStep,
+  DamageStep,
   DirectionStep,
   MarksStep,
   NoteStep,
@@ -386,6 +389,92 @@ describe('its condition', () => {
     } finally {
       announce.mockRestore();
     }
+  });
+
+  it('⚠️ unticking "Damage visible" drops what damage they said — so does "Looks intact"', async () => {
+    const damaged: Answers = {
+      contextFlags: ['damage_visible'],
+      damageKinds: ['smashed_window'],
+      damageNote: 'Glass on the pavement',
+    };
+    const view = await renderStep(ConditionStep, damaged);
+    await press(box(view, 'Plate changed or missing'));
+    expect(latest.damageKinds).toEqual(['smashed_window']); // still damaged: kept
+    await press(box(view, 'Damage visible'));
+    expect(latest.contextFlags).toEqual(['plate_changed']);
+    expect(latest.damageKinds).toBeUndefined();
+    expect(latest.damageNote).toBeUndefined();
+    await act(async () => view.unmount());
+
+    const again = await renderStep(ConditionStep, damaged);
+    await press(box(again, 'Looks intact'));
+    expect(latest.contextFlags).toEqual(['looks_intact']);
+    expect(latest.damageKinds).toBeUndefined();
+    expect(latest.damageNote).toBeUndefined();
+  });
+});
+
+describe('what damage can you see?', () => {
+  const box = (view: View, title: string) => card(view, 'context-damage', title, 'checkbox');
+  const noteField = (view: View) => view.getByLabelText('Anything else?');
+  const type = async (view: View, text: string) => {
+    await act(async () => {
+      fireEvent.changeText(noteField(view), text);
+    });
+  };
+
+  it('offers the six kinds as title-only cards, under the question', async () => {
+    const view = await renderStep(DamageStep, { contextFlags: ['damage_visible'] });
+    const names = within(view.getByTestId('context-damage'))
+      .getAllByRole('checkbox')
+      .map((node) => node.props.accessibilityLabel);
+    // Title only: the spoken name is the title, nothing after it.
+    expect(names).toEqual([
+      'Smashed window',
+      'Dents or scrapes',
+      'Broken lights',
+      'Missing wheels',
+      'Missing panels or parts',
+      'Fire damage',
+    ]);
+    expect(view.getByTestId('context-damage').props.accessibilityLabel).toBe(
+      'What damage can you see?',
+    );
+  });
+
+  it('stores the kinds ticked, in the order ticked — and never moves on by itself', async () => {
+    const view = await renderStep(DamageStep, { contextFlags: ['damage_visible'] });
+    await press(box(view, 'Fire damage'));
+    await press(box(view, 'Smashed window'));
+    expect(latest.damageKinds).toEqual(['fire_damage', 'smashed_window']);
+    expect(box(view, 'Fire damage')).toBeChecked();
+    await press(box(view, 'Fire damage'));
+    expect(latest.damageKinds).toEqual(['smashed_window']);
+    expect(advanceSoon).not.toHaveBeenCalled();
+  });
+
+  it('writes their words, and counts them against the 300 as the box limits them', async () => {
+    const view = await renderStep(DamageStep, { contextFlags: ['damage_visible'] });
+    // The counter is hidden from screen readers on purpose (TextField).
+    expect(view.getByText('0/300', { includeHiddenElements: true })).toBeTruthy();
+    expect(noteField(view).props.accessibilityHint).toBe('Up to 300 characters');
+    expect(noteField(view).props.maxLength).toBe(300);
+    await type(view, 'Mirror hanging off');
+    expect(latest.damageNote).toBe('Mirror hanging off');
+    expect(view.getByText('18/300', { includeHiddenElements: true })).toBeTruthy();
+    // The counter counts what maxLength counts (UTF-16 units), so it reaches
+    // 300/300 exactly when the box stops taking text: an emoji counts two.
+    await type(view, String.fromCodePoint(0x1f525));
+    expect(view.getByText('2/300', { includeHiddenElements: true })).toBeTruthy();
+    expect(advanceSoon).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ strips hidden characters as they arrive — the server would refuse them', async () => {
+    const view = await renderStep(DamageStep, { contextFlags: ['damage_visible'] });
+    const zeroWidth = String.fromCharCode(0x200b);
+    const rightToLeft = String.fromCharCode(0x202e);
+    await type(view, `Dent${zeroWidth} on the ${rightToLeft}door`);
+    expect(latest.damageNote).toBe('Dent on the door');
   });
 });
 

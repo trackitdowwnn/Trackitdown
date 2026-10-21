@@ -9,8 +9,9 @@
  *        - "Details" (SightingDetails; owner, 2026-10-20: "a title above the
  *          table just like the What they saw") — the spotter's answers as a
  *          small TABLE, label | answers, one row per question they answered
- *          (Doing | Parked · Looks settled), then their note under "In their
- *          words" (set apart by a rule).
+ *          (Doing | Parked · Looks settled), their words about the damage as
+ *          a short quote just under it ("About the damage", 2026-10-21), then
+ *          their note under "In their words" (set apart by a rule).
  * WHY:   - The marks read back the report wizard the way the spotter filled
  *          it in (owner, 2026-10-19): the SAME rows (MarkTile, read-only),
  *          the same ticks, unseen marks included — so "they didn't see the
@@ -22,7 +23,8 @@
  *          filled chips sat heavy in a table cell. Only what was chosen:
  *          skipped and "Not sure" store nothing, so those rows aren't here.
  *          A state's follow-up stays on its line (Parked · Looks settled);
- *          conditions take a line each.
+ *          conditions take a line each, the damage seen on its own ("Damage
+ *          visible · Smashed window, Dents or scrapes", owner, 2026-10-21).
  *        Before: chips under the full questions (2026-10-19), caption/text
  *        rows (2026-10-08), and before THAT one dense unlabelled line.
  *
@@ -54,9 +56,13 @@ import type { OwnerSighting } from '../types';
 import { MarkTile } from './MarkTile';
 
 /** True when the "Details" section has anything to show: an answered
- *  question or a note. */
+ *  question, their words about the damage, or a note. */
 export function hasSightingDetails(sighting: OwnerSighting): boolean {
-  return sightingAnswerGroups(sighting).length > 0 || Boolean(sighting.note?.trim());
+  return (
+    sightingAnswerGroups(sighting).length > 0 ||
+    Boolean(sighting.damageNote?.trim()) ||
+    Boolean(sighting.note?.trim())
+  );
 }
 
 /** A row's answer lines: the state with its follow-up on ONE line ("Parked ·
@@ -104,45 +110,64 @@ export function SightingDetails({ sighting }: { sighting: OwnerSighting }) {
   const stacked = fontScale > listRowStackFontScale;
   const groups = sightingAnswerGroups(sighting);
   const note = sighting.note?.trim();
+  const damageNote = sighting.damageNote?.trim();
 
   return (
     <View style={styles.root}>
-      {groups.length > 0 ? (
-        <View testID="sighting-answers">
-          {groups.map((group, index) => (
-            // One stop per row, read as a statement — see the header.
-            <View
-              key={group.key}
-              style={[
-                styles.row,
-                stacked && styles.rowStacked,
-                index > 0 && styles.rowDivided,
-                // The section's own rhythm frames the table: no extra padding
-                // above the first row or below the last.
-                index === 0 && styles.rowFirst,
-                index === groups.length - 1 && styles.rowLast,
-              ]}
-              accessible
-              accessibilityLabel={`${group.label}: ${group.answers.join(', ')}`}
-              testID={`seen-${group.key}`}
-            >
-              <Text style={[styles.cellLabel, !stacked && styles.cellLabelColumn]}>
-                {group.label}
-              </Text>
-              <View
-                style={[styles.cellAnswers, !stacked && styles.cellAnswersColumn]}
-                testID={`seen-${group.key}-answers`}
-              >
-                {answerLines(group).map((line, lineIndex) => (
-                  // Indexed: a legacy or direct-RPC row can repeat a flag, and
-                  // the answers are shown as stored, never deduped.
-                  <Text key={`${lineIndex}-${line}`} style={styles.answer}>
-                    {line}
+      {groups.length > 0 || damageNote ? (
+        // The table and the words about the damage read as one block: the
+        // quote sits close under the row it qualifies.
+        <View style={styles.answers}>
+          {groups.length > 0 ? (
+            <View testID="sighting-answers">
+              {groups.map((group, index) => (
+                // One stop per row, read as a statement — see the header.
+                <View
+                  key={group.key}
+                  style={[
+                    styles.row,
+                    stacked && styles.rowStacked,
+                    index > 0 && styles.rowDivided,
+                    // The section's own rhythm frames the table: no extra padding
+                    // above the first row or below the last.
+                    index === 0 && styles.rowFirst,
+                    index === groups.length - 1 && styles.rowLast,
+                  ]}
+                  accessible
+                  accessibilityLabel={`${group.label}: ${group.answers.join(', ')}`}
+                  testID={`seen-${group.key}`}
+                >
+                  <Text style={[styles.cellLabel, !stacked && styles.cellLabelColumn]}>
+                    {group.label}
                   </Text>
-                ))}
-              </View>
+                  <View
+                    style={[styles.cellAnswers, !stacked && styles.cellAnswersColumn]}
+                    testID={`seen-${group.key}-answers`}
+                  >
+                    {answerLines(group).map((line, lineIndex) => (
+                      // Indexed: a legacy or direct-RPC row can repeat a flag, and
+                      // the answers are shown as stored, never deduped.
+                      <Text key={`${lineIndex}-${line}`} style={styles.answer}>
+                        {line}
+                      </Text>
+                    ))}
+                  </View>
+                </View>
+              ))}
             </View>
-          ))}
+          ) : null}
+          {damageNote ? (
+            // One screen-reader stop, read as a statement, like a table row.
+            <View
+              style={styles.quote}
+              accessible
+              accessibilityLabel={`About the damage: ${damageNote}`}
+              testID="seen-damage-note"
+            >
+              <Text style={styles.label}>About the damage</Text>
+              <Text style={styles.noteText}>{damageNote}</Text>
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -161,7 +186,8 @@ const makeStyles = (c: Palette) =>
     root: {
       gap: spacing.xl,
     },
-    // The blocks' quiet label — the marks' count and the note.
+    // The blocks' quiet label — the marks' count, the words about the damage
+    // and the note.
     label: {
       ...typography.caption,
       color: c.textSecondary,
@@ -234,5 +260,18 @@ const makeStyles = (c: Palette) =>
     noteText: {
       ...typography.body,
       color: c.textPrimary,
+    },
+    // The table, then their words about the damage close beneath it (md, not
+    // the section's xl): the quote belongs to the Condition row.
+    answers: {
+      gap: spacing.md,
+    },
+    // The note's inline-quote form, its text in the note's own style
+    // (noteText): their words read the same wherever they appear.
+    quote: {
+      gap: spacing.xs,
+      borderLeftWidth: sizes.followUpRule,
+      borderLeftColor: c.border,
+      paddingLeft: spacing.md,
     },
   });

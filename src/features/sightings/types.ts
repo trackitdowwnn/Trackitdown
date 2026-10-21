@@ -63,6 +63,23 @@ export type ParkedLikelihood = (typeof PARKED_LIKELIHOOD)[number];
 export const DRIVING_DIRECTIONS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
 export type DrivingDirection = (typeof DRIVING_DIRECTIONS)[number];
 
+/** What damage the spotter could see — the "What damage can you see?" step
+ *  after "Damage visible" (owner, 2026-10-21). Mirrors create_sighting's
+ *  whitelist, in ITS order (the server stores the kinds in this order). */
+export const DAMAGE_KINDS = [
+  'smashed_window',
+  'dents_scrapes',
+  'broken_lights',
+  'missing_wheels',
+  'missing_parts',
+  'fire_damage',
+] as const;
+export type DamageKind = (typeof DAMAGE_KINDS)[number];
+
+/** The damage note's limit — the server's 300 is in characters; TextInput's
+ *  maxLength counts UTF-16 units, so it is never looser. */
+export const MAX_DAMAGE_NOTE_LENGTH = 300;
+
 /** One registered distinctive mark on the post, as the wizard offers it for
  *  confirmation ("Could you see the cracked wing mirror?"). */
 export interface ConfirmableFeature {
@@ -110,6 +127,12 @@ export interface ReportSightingAnswers {
   peoplePresence?: PeoplePresence;
   /** Ids of the post's registered marks the spotter confirmed seeing. */
   confirmedFeatureIds?: string[];
+  /** What damage they could see — only beside 'damage_visible' (unticking it
+   *  clears these, as does "Looks intact"). */
+  damageKinds?: DamageKind[];
+  /** Their own words about the damage, ≤ MAX_DAMAGE_NOTE_LENGTH. The owner
+   *  reads it in the app only; never logged. */
+  damageNote?: string;
   /** READ-ONLY seed (not submitted): the post's registered marks, fetched by
    *  the screen before the wizard mounts so the context step can offer them
    *  as checkmarks. Empty/absent = no marks section. */
@@ -146,6 +169,12 @@ export interface CreateSightingParams {
   /** The ids of the marks the wizard showed — ids only, never their words or
    *  photos. null = the marks never loaded (unknown). */
   p_offered_feature_ids: string[] | null;
+  /** What damage was seen (2026-10-21) — null unless 'damage_visible' is
+   *  among the flags and at least one kind was picked. */
+  p_damage_kinds: string[] | null;
+  /** Their words about the damage — cleaned and trimmed; null when blank or
+   *  without 'damage_visible'. */
+  p_damage_note: string | null;
 }
 
 export interface CreateSightingResult {
@@ -198,6 +227,13 @@ export interface OwnerSighting {
    *  2026-10-19, or by an older app): the page then lists the seen ones
    *  alone. [] = asked, but there were no marks to show. */
   offeredFeatureIds?: string[] | null;
+  /** What damage they saw (2026-10-21), as stored — plain strings, so a kind
+   *  from a newer server is skipped on screen, never a failed list.
+   *  null/absent = not answered (never "no damage"). */
+  damageKinds?: string[] | null;
+  /** Their own words about the damage, ≤300 characters, unmoderated — shown
+   *  in the app only, never logged. */
+  damageNote?: string | null;
   spotter: {
     firstName: string;
     sightingsReported: number;

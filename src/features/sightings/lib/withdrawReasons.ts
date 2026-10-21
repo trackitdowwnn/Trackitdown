@@ -66,12 +66,24 @@ export const MAX_WITHDRAW_NOTE_LENGTH = 200;
 const HIDDEN_CHARACTERS =
   /[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u00AD\u061C\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g;
 
+/** The text without the hidden characters above — for a field to strip as it
+ *  is typed. The damage note (20261021100000) is refused for the SAME set,
+ *  so it shares this one copy. */
+export function stripHiddenCharacters(text: string): string {
+  return text.replace(HIDDEN_CHARACTERS, '');
+}
+
 /** The note as it is sent: hidden characters stripped, trimmed, and null
  *  when nothing visible is left — a blank note is no note. */
 export function cleanWithdrawNote(note: string | null | undefined): string | null {
-  const cleaned = (note ?? '').replace(HIDDEN_CHARACTERS, '').trim();
+  const cleaned = stripHiddenCharacters(note ?? '').trim();
   // Visible = anything but whitespace (JS's whitespace class already covers
   // no-break and the other Unicode spaces) and the Hangul filler, which
   // looks blank. The server's own blank check matches (20261009180000).
   return /[^\s\u3164]/.test(cleaned) ? cleaned : null;
 }
+
+/** The same cleaning for the spotter's words about the damage (2026-10-21):
+ *  create_sighting refuses the same hidden characters and treats blank the
+ *  same way (20261021100000), so it shares these rules rather than copy them. */
+export const cleanSpotterWords = cleanWithdrawNote;

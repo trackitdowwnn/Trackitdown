@@ -30,6 +30,7 @@ import {
   withdrawSighting,
 } from './sightingApi';
 import * as contextRules from '../lib/contextAnswers';
+import { contextDetailCount, contextReviewRows } from '../lib/contextLabels';
 import type { ReportSightingAnswers } from '../types';
 
 // The golden payloads (see "GOLDEN" below). Literal on purpose: computed values
@@ -45,6 +46,9 @@ const GOLDEN_PARKED = {
   p_people_presence: 'nearby',
   p_confirmed_feature_ids: ['dddddddd-0000-0000-0000-000000000001'],
   p_offered_feature_ids: ['dddddddd-0000-0000-0000-000000000001'],
+  // 2026-10-21, owner-approved: what damage, and their words about it.
+  p_damage_kinds: ['smashed_window', 'dents_scrapes'],
+  p_damage_note: 'Glass on the pavement',
 };
 const GOLDEN_MOVED = {
   p_post_id: 'aaaaaaaa-0000-0000-0000-000000000001',
@@ -57,6 +61,9 @@ const GOLDEN_MOVED = {
   p_people_presence: null,
   p_confirmed_feature_ids: null,
   p_offered_feature_ids: ['dddddddd-0000-0000-0000-000000000001'],
+  // Said, then taken back by "Looks intact": nothing of it is sent.
+  p_damage_kinds: null,
+  p_damage_note: null,
 };
 const GOLDEN_SKIPPED = {
   p_post_id: 'aaaaaaaa-0000-0000-0000-000000000001',
@@ -69,6 +76,8 @@ const GOLDEN_SKIPPED = {
   p_people_presence: null,
   p_confirmed_feature_ids: null,
   p_offered_feature_ids: ['dddddddd-0000-0000-0000-000000000001'],
+  p_damage_kinds: null,
+  p_damage_note: null,
 };
 
 const mockRpc = jest.fn();
@@ -256,7 +265,8 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
     // rules — and the exact params that leave the app. The 2026-10-20 split of
     // the context page into one step per question promised the SAME payload;
     // this literal is that promise. Changing it means the server sees
-    // something new: that needs its own decision, not a UI refactor.
+    // something new: that needs its own decision, not a UI refactor. (The
+    // damage params, 2026-10-21, were one: owner-approved, server live first.)
     // The rules work on the wizard's answers; those go through the SAME parse
     // submitSighting runs (which drops the UI-only keys) and on to the params.
     type Answers = Partial<ReportSightingAnswers>;
@@ -275,13 +285,16 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
         ['p/1.jpg'],
       );
 
-    it('parked, settled, people near it, two conditions, a mark and a note', () => {
+    it('parked, settled, people near it, two conditions, what damage, a mark and a note', () => {
       let a = start;
       a = pick(a, contextRules.selectState(a, 'parked'));
       a = pick(a, contextRules.selectStaying(a, 'settled'));
       a = pick(a, contextRules.selectPeople(a, 'nearby'));
       a = pick(a, contextRules.changeConditions(a, ['damage_visible']));
       a = pick(a, contextRules.changeConditions(a, ['damage_visible', 'plate_changed']));
+      a = pick(a, contextRules.toggleDamageKind(a, 'smashed_window'));
+      a = pick(a, contextRules.toggleDamageKind(a, 'dents_scrapes'));
+      a = pick(a, { damageNote: '  Glass on the pavement ' });
       a = pick(a, contextRules.toggleMark(a, mark));
       a = pick(a, { note: ' grey tarp over the bonnet ' });
 
@@ -289,7 +302,7 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
       expect(params).toEqual(GOLDEN_PARKED);
     });
 
-    it('a state changed midway keeps nothing of the old one; "Looks intact" stands alone', () => {
+    it('a state changed midway keeps nothing of the old one; "Looks intact" stands alone, damage and all', () => {
       let a = start;
       a = pick(a, contextRules.selectState(a, 'parked'));
       a = pick(a, contextRules.selectStaying(a, 'moving'));
@@ -297,6 +310,8 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
       a = pick(a, contextRules.selectDirection(a, 'NE'));
       a = pick(a, contextRules.selectPeople(a, contextRules.UNSURE));
       a = pick(a, contextRules.changeConditions(a, ['damage_visible']));
+      a = pick(a, contextRules.toggleDamageKind(a, 'fire_damage'));
+      a = pick(a, { damageNote: 'Scorched bonnet' });
       a = pick(a, contextRules.changeConditions(a, ['damage_visible', 'looks_intact']));
 
       const { p_photos: _photos, ...params } = send(a);
@@ -306,6 +321,71 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
     it('every question skipped: still a report, and the offered marks still recorded', () => {
       const { p_photos: _photos, ...params } = send(start);
       expect(params).toEqual(GOLDEN_SKIPPED);
+    });
+  });
+
+  describe('what damage (2026-10-21)', () => {
+    const base = {
+      photos: [located],
+      contextFlags: ['damage_visible' as const],
+      note: '',
+      confirmedFeatureIds: [],
+    };
+
+    it('⚠️ sends no damage details without "Damage visible" — the server would refuse them', () => {
+      const params = buildCreateSightingParams(
+        POST_ID,
+        { ...base, contextFlags: ['parked'], damageKinds: ['fire_damage'], damageNote: 'Burnt' },
+        ['p/1.jpg'],
+      );
+      expect(params.p_damage_kinds).toBeNull();
+      expect(params.p_damage_note).toBeNull();
+    });
+
+    it('sends no kinds for an empty pick, and no note for a blank one', () => {
+      const params = buildCreateSightingParams(
+        POST_ID,
+        { ...base, damageKinds: [], damageNote: '   ' },
+        ['p/1.jpg'],
+      );
+      expect(params.p_damage_kinds).toBeNull();
+      expect(params.p_damage_note).toBeNull();
+    });
+
+    it('⚠️ strips hidden characters from the note — the server refuses them', () => {
+      const hidden = String.fromCharCode(0x200b) + String.fromCharCode(0x2066);
+      const params = buildCreateSightingParams(
+        POST_ID,
+        { ...base, damageNote: ` Bent${hidden} wheel ${hidden}` },
+        ['p/1.jpg'],
+      );
+      expect(params.p_damage_note).toBe('Bent wheel');
+      // Nothing visible left: no note at all.
+      const onlyHidden = buildCreateSightingParams(POST_ID, { ...base, damageNote: hidden }, [
+        'p/1.jpg',
+      ]);
+      expect(onlyHidden.p_damage_note).toBeNull();
+    });
+
+    it('⚠️ a note that only LOOKS blank (the Hangul filler) is no note — everywhere', () => {
+      // trim() keeps U+3164; the payload's cleaning doesn't. Every reading of
+      // "is there a note?" must agree with what is sent.
+      const filler = String.fromCharCode(0x3164);
+      const answers = { ...base, damageNote: ` ${filler}${filler} ` };
+      // Check-and-send: no "About the damage" row.
+      expect(contextReviewRows(answers).map((row) => row.key)).toEqual(['condition']);
+      // Unanswered: Skip, not Continue; and no detail counted.
+      expect(contextRules.stepTouched(answers, 'damage')).toBe(false);
+      expect(contextRules.stepAnswered(answers, 'damage')).toBe(false);
+      expect(contextDetailCount(answers)).toBe(1); // "Damage visible" alone
+      // Sent as no note.
+      expect(buildCreateSightingParams(POST_ID, answers, ['p/1.jpg']).p_damage_note).toBeNull();
+    });
+
+    it('refuses a kind the server doesn’t know before anything is sent', () => {
+      expect(
+        submitAnswersSchema.safeParse({ ...base, damageKinds: ['flood_damage'] }).success,
+      ).toBe(false);
     });
   });
 
@@ -584,6 +664,48 @@ describe('fetchPostSightings (PRIVACY strictness)', () => {
     });
     const rows = await fetchPostSightings(POST_ID);
     expect(rows.map((row) => row.offeredFeatureIds)).toEqual([offered, null, null]);
+  });
+
+  // 2026-10-21: what damage they saw, and their words about it. Absent from an
+  // older payload, null when not answered — both must still parse.
+  it('reads what damage they saw — absent and null still parse', async () => {
+    mockRpc.mockResolvedValue({
+      data: [
+        {
+          ...baseRow,
+          context_flags: ['damage_visible'],
+          damage_kinds: ['smashed_window', 'dents_scrapes'],
+          damage_note: 'Glass on the pavement',
+        },
+        { ...baseRow, damage_kinds: null, damage_note: null },
+        baseRow,
+      ],
+      error: null,
+    });
+    const rows = await fetchPostSightings(POST_ID);
+    expect(rows.map((row) => [row.damageKinds, row.damageNote])).toEqual([
+      [['smashed_window', 'dents_scrapes'], 'Glass on the pavement'],
+      [null, null],
+      [null, null],
+    ]);
+  });
+
+  it('⚠️ keeps a kind of damage this app doesn’t know — one row must never fail the list', async () => {
+    mockRpc.mockResolvedValue({
+      data: [
+        { ...baseRow, context_flags: ['damage_visible'], damage_kinds: ['flood_damage'] },
+        // Malformed: read as "not answered", the rest of the row intact.
+        { ...baseRow, damage_kinds: 'smashed_window', damage_note: 42 },
+        // 300 emoji: 300 characters to the server, 600 UTF-16 units to zod.
+        { ...baseRow, damage_note: String.fromCodePoint(0x1f525).repeat(300) },
+      ],
+      error: null,
+    });
+    const rows = await fetchPostSightings(POST_ID);
+    expect(rows[0].damageKinds).toEqual(['flood_damage']);
+    expect([rows[1].damageKinds, rows[1].damageNote]).toEqual([null, null]);
+    expect(rows[1].spotter.firstName).toBe('Beth');
+    expect([...(rows[2].damageNote ?? '')]).toHaveLength(300);
   });
 
   it('REJECTS a payload whose spotter block carries an extra field (e.g. spotter_id)', async () => {
