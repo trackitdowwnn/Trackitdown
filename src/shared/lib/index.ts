@@ -55,3 +55,4 @@ export {
   NO_BOUNTY_PARAM,
 } from './money';
 export { timeAgo } from './timeAgo';
+export { withoutNul } from './typedText';

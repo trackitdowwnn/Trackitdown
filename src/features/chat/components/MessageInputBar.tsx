@@ -35,6 +35,7 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
+import { withoutNul } from '@/shared/lib';
 
 /** Roughly four lines of body text before the field scrolls instead of grows. */
 const COMPOSER_MAX_HEIGHT = 120;
@@ -55,7 +56,9 @@ export function MessageInputBar({ value, onChangeText, onSend, maxLength }: Mess
       <View style={styles.pill}>
         <TextInput
           value={value}
-          onChangeText={onChangeText}
+          // A pasted NUL would fail the send at the database: dropped here,
+          // as the shared TextField does.
+          onChangeText={(text) => onChangeText(withoutNul(text))}
           maxLength={maxLength}
           multiline
           placeholder="Message…"

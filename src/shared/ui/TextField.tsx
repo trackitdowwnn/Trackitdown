@@ -15,7 +15,9 @@
  *        is tokens-only (docs/DESIGN_SYSTEM.md): `border` on default,
  *        `primary` on focus, `danger` on error. The `plate` variant only
  *        *formats* input (uppercase + letter-spacing); plate validation lives at
- *        the form layer.
+ *        the form layer. Every variant drops NUL characters as they arrive
+ *        (withoutNul): the database can't store one, so a pasted NUL would
+ *        fail whatever the text is sent with.
  * LINKS: docs/DESIGN_SYSTEM.md (Colour, Typography, Forms, Accessibility);
  *        src/shared/theme; src/shared/ui/TextInputHost.ts (input host).
  *
@@ -53,6 +55,7 @@ import {
   useThemedStyles,
   type Palette,
 } from '../theme';
+import { withoutNul } from '../lib/typedText';
 import { HostTextInput } from './TextInputHost';
 
 // Derive the focus/blur event types from TextInput itself so we stay correct
@@ -212,8 +215,10 @@ export function TextField({
     onBlur?.(e);
   };
 
-  const handleChangeText = (text: string) =>
+  const handleChangeText = (typed: string) => {
+    const text = withoutNul(typed);
     onChangeText(variant === 'plate' ? text.toUpperCase() : text);
+  };
 
   // Error colour is static and wins over the focus transition.
   // These interpolations are rebuilt on every render, so reading the palette
