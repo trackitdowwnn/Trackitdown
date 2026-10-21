@@ -330,7 +330,8 @@ commenting standards.
     `delete-account` Edge Function exists. It had been invoked by the client
     since 2026-07-10 but was never written, so the app shipped a delete button
     that could not delete. It now removes every object the user owns in
-    `avatars`, `post-photos` and `verification-documents` before deleting the
+    `avatars`, `post-photos`, `verification-documents` and (since 2026-10-21)
+    `bug-screenshots` before deleting the
     `auth.users` row. It sweeps via the Storage API, never by deleting
     `storage.objects` rows — a row delete leaves the bytes orphaned in the
     backing store, findable by nothing. Order is load-bearing: storage FIRST, so
@@ -462,6 +463,8 @@ commenting standards.
   unlinkable, and a run is unlinkable to an account that person later creates.
   Both are read by `service_role` only: RLS is enabled with no client policies
   and both tables carry an explicit `revoke all` from `anon`/`authenticated`.
+  Kept 180 days (onboarding) and 90 days (telemetry): the purges, written in
+  2026-08 but never scheduled, run in the hourly sweep since 2026-10-21.
   - ⚠️ **These are the app's only two anon-writable endpoints**
     (`record_onboarding_step`, `record_telemetry_events`), and that is inherent
     to the question rather than a shortcut: onboarding and much of the funnel

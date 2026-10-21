@@ -349,7 +349,12 @@ const PRIVACY: LegalDocument = {
   // spotter's words about each (20261021100000, 20261021120000) — and the
   // last four digits of a payout bank account we keep (20261015100000), both
   // asked for by SECURITY_AND_TRUST §3. docs/RECORD_OF_PROCESSING.md is the
-  // Art. 30 record these lines must agree with.
+  // Art. 30 record these lines must agree with. Same day, the record's
+  // "smaller gaps": "Who we share it with" names Resend, the Gmail inbox, Apple
+  // and Google sign-in, the iOS place-name lookup and the owner's Waze / Google
+  // Maps hand-off; "What we collect" names number plates and the usage counts;
+  // "How long we keep it" gives the usage counts' periods, which the hourly
+  // sweep now enforces.
   slug: 'privacy',
   title: 'Privacy policy',
   lastUpdated: '21 October 2026',
@@ -362,7 +367,7 @@ const PRIVACY: LegalDocument = {
       heading: 'What we collect',
       body: [
         '• Account: your email address, first name, the display name you choose, and a profile photo if you add one.',
-        '• Vehicles: make, model, colour, year, body type, and photographs of vehicles you list or save.',
+        '• Vehicles: number plate, make, model, colour, year, body type, and photographs of vehicles you list or save.',
         '• Locations: where a listed vehicle was last seen; where a sighting was reported; and the centre of any alert area you set.',
         '• Sightings: your photograph, notes, and the details you confirm about the vehicle — including any damage you could see and which parts were missing, and anything you write about them. Only the vehicle’s owner sees what you write, and it is never put in a notification.',
         '• Messages: the content of messages between an owner and a spotter.',
@@ -370,6 +375,7 @@ const PRIVACY: LegalDocument = {
         '• Bounty payouts: if you receive a bounty, we keep the last four digits of the bank account it is paid into, so the app can show you where your money went. Only you can see them. Stripe holds the rest of your bank details; we do not store them.',
         '• Device: a push notification token for each device you sign in on, so we can notify you.',
         '• Activity: counts of sightings reported, sightings marked helpful, and recoveries credited.',
+        '• How the app is used: which screens are reached and which errors happen, recorded under a random number that lasts for one session and is never stored on your phone. It can include the reference of a listing or sighting you opened, but never your name, your location or anything you wrote.',
         // ⚠️ ADDED 2026-08-24 with the in-app bug reporter, and WIDENED the same
         // day when the form grew. Diagnostic data was a collection category this
         // app did not previously have, and these three bullets are exactly what
@@ -435,7 +441,11 @@ const PRIVACY: LegalDocument = {
         '• Supabase — hosting, database and file storage, in the EU (Ireland).',
         '• Stripe — payments, including your email address so they can send your receipt, and identity checks for anyone receiving a bounty. Stripe is a controller in its own right for that.',
         '• Expo, and Apple or Google — delivery of push notifications.',
-        '• Google Maps — map display and converting locations into place names.',
+        '• Google Maps — map display. Your phone turns locations into place names using Google (Android) or Apple (iOS).',
+        '• Apple and Google — if you sign in with Apple or Google, they confirm who you are to us.',
+        '• Resend — sending email: your sign-in codes, and the bug reports you send and alerts about payments on to our inbox.',
+        '• Google (Gmail) — our inbox, which receives the bug reports you send and alerts about payments.',
+        '• Waze or Google Maps — only if a vehicle’s owner chooses to open a sighting’s location in one of them; the app passes the location and nothing else.',
         '• The police, if we are required to disclose information or where we believe it is necessary to prevent harm.',
         'We do not sell personal data and we do not use it for advertising.',
       ],
@@ -445,6 +455,7 @@ const PRIVACY: LegalDocument = {
       body: [
         'A closed listing stays visible for 30 days after it closes, then leaves public view.',
         'The detailed location history attached to a closed listing’s sightings is deleted after 90 days.',
+        'Records of how the app is used are deleted after 90 days, and records of how far people got through the introduction after 180 days.',
         'Payment records are kept for as long as financial and tax law requires, which is longer than the rest.',
         'Everything else is kept while your account exists.',
       ],

@@ -94,6 +94,8 @@ Deno.serve(async (request) => {
     skipped: 0,
     purged: 0,
     locationsPurged: 0,
+    onboardingEventsPurged: 0,
+    telemetryEventsPurged: 0,
     photosRemoved: 0,
     sightingPhotosRemoved: 0,
     deletionWarningsSent: 0,
@@ -151,6 +153,29 @@ Deno.serve(async (request) => {
     }
   } catch (err) {
     console.error('[sightings] location purge failed', (err as Error).message);
+  }
+
+  // --- Phase 0b2: analytics retention ---------------------------------------
+  // The funnel (180 days) and telemetry (90 days) purges were written in
+  // 2026-08 and never scheduled — the privacy policy and the Art. 30 record
+  // (docs/RECORD_OF_PROCESSING.md) now state those periods, so they run here,
+  // on the one clock this project has, like the two purges above. Each is a
+  // single DELETE ... WHERE at < now() - interval; best-effort and separately
+  // counted, so one failing never stops the other or the money work below.
+  for (const [rpc, key] of [
+    ['purge_onboarding_events', 'onboardingEventsPurged'],
+    ['purge_telemetry_events', 'telemetryEventsPurged'],
+  ] as const) {
+    try {
+      const { data: removed, error: analyticsError } = await admin.rpc(rpc);
+      if (analyticsError) {
+        console.error('[analytics] purge failed', { rpc, message: analyticsError.message });
+      } else {
+        summary[key] = typeof removed === 'number' ? removed : 0;
+      }
+    } catch (err) {
+      console.error('[analytics] purge failed', { rpc, message: (err as Error).message });
+    }
   }
 
   // --- Phase 0c: orphaned photo objects -------------------------------------
