@@ -80,6 +80,8 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
      Fire damage = `damage_kinds`), then **Anything else?** — their own words,
      ≤ 300 characters with an n/300 counter (`damage_note`; hidden characters
      stripped as typed, the withdraw note's set). Never moves on by itself.
+     "Fire damage" brings up the safety line with "If the car is currently
+     on fire, call 999." under it (owner, 2026-10-21).
      Unticking Damage visible, or ticking Looks intact, clears both; neither
      is ever sent without the flag (the server refuses it). The funnel logs
      how many kinds and whether there are words — never the words.

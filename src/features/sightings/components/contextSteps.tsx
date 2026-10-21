@@ -29,6 +29,9 @@
  *          brings the same line up with the app's 999 line under it, and
  *          never moves on by itself (owner, 2026-10-20), so "your report is
  *          enough" can never read as "no need to call the police".
+ *        - "Fire damage" brings the line up with a 999 line of its own —
+ *          "If the car is currently on fire" — because the damage may be
+ *          old (owner, 2026-10-21). The damage step never moves on by itself.
  *        - Nothing here asks the spotter to watch, follow or go closer: the
  *          heading is what they saw, and no card needs a close look.
  * LINKS: src/features/sightings/reportSightingFlow.tsx (the steps' config);
@@ -78,6 +81,7 @@ import {
   CardSelect,
   CardSelectMulti,
   SAFETY_999_LINE,
+  SAFETY_FIRE_999_LINE,
   SAFETY_PRESENCE_LINE,
   TextField,
   type CardSelectOption,
@@ -89,6 +93,7 @@ import {
   changeConditions,
   conditionShowsSafetyLine,
   conditionsOf,
+  damageShowsSafetyLine,
   isUnsure,
   peopleShowSafetyLine,
   selectDirection,
@@ -175,17 +180,23 @@ const DAMAGE_ICONS: Record<DamageKind, LucideIcon> = {
  *  regions, and a live region that mounts with its text isn't reliably read
  *  on Android either, so announce on both. Queued (iOS), so VoiceOver saying
  *  the card's "selected" can't cut it off; Android ignores the option. */
-function announceSafetyLine(crimeInProgress = false) {
-  AccessibilityInfo.announceForAccessibilityWithOptions(safetyWords(crimeInProgress), {
+function announceSafetyLine(call999?: Call999Line) {
+  AccessibilityInfo.announceForAccessibilityWithOptions(safetyWords(call999), {
     queue: true,
   });
 }
 
-/** What the line says: "Don't approach" — and, where what was seen is a crime
- *  happening now, the app's 999 line under it, so "your report is enough"
- *  can never read as "no need to call the police" (owner, 2026-10-20). */
-const safetyWords = (crimeInProgress: boolean) =>
-  crimeInProgress ? `${SAFETY_PRESENCE_LINE} ${SAFETY_999_LINE}` : SAFETY_PRESENCE_LINE;
+/** The 999 lines a step may put under "Don't approach" — imported SAFETY
+ *  copy only: the crime-in-progress line (loaded, towed, stripped) or the
+ *  fire line (owner, 2026-10-21: "it should say if the car is currently on
+ *  fire"). */
+type Call999Line = typeof SAFETY_999_LINE | typeof SAFETY_FIRE_999_LINE;
+
+/** What the line says: "Don't approach" — and, where what was seen may be an
+ *  emergency happening now, a 999 line under it, so "your report is enough"
+ *  can never read as "no need to call 999" (owner, 2026-10-20). */
+const safetyWords = (call999?: Call999Line) =>
+  call999 ? `${SAFETY_PRESENCE_LINE} ${call999}` : SAFETY_PRESENCE_LINE;
 
 /**
  * The fixed "Don't approach — your report is enough." under the cards that
@@ -196,7 +207,7 @@ const safetyWords = (crimeInProgress: boolean) =>
  * `danger`), SafetyNotice's rule glyph. Fades in when it appears after the
  * step has mounted.
  */
-function SafetyPresenceLine({ crimeInProgress = false }: { crimeInProgress?: boolean }) {
+function SafetyPresenceLine({ call999 }: { call999?: Call999Line }) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   return (
@@ -204,7 +215,7 @@ function SafetyPresenceLine({ crimeInProgress = false }: { crimeInProgress?: boo
       entering={FadeIn.duration(motion.fast).reduceMotion(ReduceMotion.System)}
       style={styles.safetyBlock}
     >
-      <View style={styles.safetyRow} accessible accessibilityLabel={safetyWords(crimeInProgress)}>
+      <View style={styles.safetyRow} accessible accessibilityLabel={safetyWords(call999)}>
         <Feather
           name="slash"
           size={sizes.iconSm}
@@ -213,7 +224,7 @@ function SafetyPresenceLine({ crimeInProgress = false }: { crimeInProgress?: boo
         />
         <View style={styles.safetyLines}>
           <Text style={styles.safetyText}>{SAFETY_PRESENCE_LINE}</Text>
-          {crimeInProgress ? <Text style={styles.safetyText}>{SAFETY_999_LINE}</Text> : null}
+          {call999 ? <Text style={styles.safetyText}>{call999}</Text> : null}
         </View>
       </View>
     </Animated.View>
@@ -250,13 +261,13 @@ export function StateStep({ answers, setAnswers, advanceSoon, cancelAdvanceSoon 
             // and so does an answer that brings up the safety line (SAFETY).
             if (picked !== shown && !lineNow) advanceSoon?.();
             else cancelAdvanceSoon?.();
-            if (!showing && lineNow) announceSafetyLine(true);
+            if (!showing && lineNow) announceSafetyLine(SAFETY_999_LINE);
           }}
           accessibilityLabel={CONTEXT_STEP_QUESTIONS.state}
           clearable
           testID="context-state"
         />
-        {showing ? <SafetyPresenceLine crimeInProgress /> : null}
+        {showing ? <SafetyPresenceLine call999={SAFETY_999_LINE} /> : null}
       </View>
     </LayoutAnimationConfig>
   );
@@ -395,14 +406,14 @@ export function ConditionStep({ answers, setAnswers }: StepProps) {
             const patch = changeConditions(answers, next);
             setAnswers(patch);
             if (!showing && conditionShowsSafetyLine({ ...answers, ...patch })) {
-              announceSafetyLine(true);
+              announceSafetyLine(SAFETY_999_LINE);
             }
           }}
           accessibilityLabel={CONTEXT_STEP_QUESTIONS.condition}
           testID="context-condition"
         />
         {/* Being stripped is a crime in progress: 999 under the line. */}
-        {showing ? <SafetyPresenceLine crimeInProgress /> : null}
+        {showing ? <SafetyPresenceLine call999={SAFETY_999_LINE} /> : null}
       </View>
     </LayoutAnimationConfig>
   );
@@ -416,40 +427,52 @@ export function ConditionStep({ answers, setAnswers }: StepProps) {
 export function DamageStep({ answers, setAnswers }: StepProps) {
   const styles = useThemedStyles(makeStyles);
   const note = answers.damageNote ?? '';
+  // SAFETY: "Fire damage" brings up "Don't approach" with the fire 999 line —
+  // the damage may be old, so it asks whether the car is burning now (owner,
+  // 2026-10-21).
+  const showing = damageShowsSafetyLine(answers);
   return (
-    <View style={styles.stack}>
-      <CardSelectMulti
-        options={DAMAGE_KINDS.map((value) => ({
-          value,
-          label: DAMAGE_KIND_LABELS[value],
-          icon: DAMAGE_ICONS[value],
-        }))}
-        value={answers.damageKinds ?? []}
-        onChange={(next) => {
-          // One card changes per tap: whichever is in one list but not the other.
-          const current = answers.damageKinds ?? [];
-          const changed =
-            next.find((kind) => !current.includes(kind)) ??
-            current.find((kind) => !next.includes(kind));
-          if (changed) setAnswers(toggleDamageKind(answers, changed));
-        }}
-        accessibilityLabel={CONTEXT_STEP_QUESTIONS.damage}
-        testID="context-damage"
-      />
-      <TextField
-        label="Anything else?"
-        variant="multiline"
-        value={note}
-        onChangeText={(text) => setAnswers({ damageNote: stripHiddenCharacters(text) })}
-        // UTF-16 units, as maxLength counts them (like the note step).
-        counter={`${note.length}/${MAX_DAMAGE_NOTE_LENGTH}`}
-        // The counter is hidden from screen readers (TextField's contract);
-        // the limit goes here instead, read once on focus.
-        accessibilityHint={`Up to ${MAX_DAMAGE_NOTE_LENGTH} characters`}
-        maxLength={MAX_DAMAGE_NOTE_LENGTH}
-        testID="context-damage-note"
-      />
-    </View>
+    <LayoutAnimationConfig skipEntering>
+      <View style={styles.stack}>
+        <CardSelectMulti
+          options={DAMAGE_KINDS.map((value) => ({
+            value,
+            label: DAMAGE_KIND_LABELS[value],
+            icon: DAMAGE_ICONS[value],
+          }))}
+          value={answers.damageKinds ?? []}
+          onChange={(next) => {
+            // One card changes per tap: whichever is in one list but not the other.
+            const current = answers.damageKinds ?? [];
+            const changed =
+              next.find((kind) => !current.includes(kind)) ??
+              current.find((kind) => !next.includes(kind));
+            if (!changed) return;
+            const patch = toggleDamageKind(answers, changed);
+            setAnswers(patch);
+            if (!showing && damageShowsSafetyLine({ ...answers, ...patch })) {
+              announceSafetyLine(SAFETY_FIRE_999_LINE);
+            }
+          }}
+          accessibilityLabel={CONTEXT_STEP_QUESTIONS.damage}
+          testID="context-damage"
+        />
+        {showing ? <SafetyPresenceLine call999={SAFETY_FIRE_999_LINE} /> : null}
+        <TextField
+          label="Anything else?"
+          variant="multiline"
+          value={note}
+          onChangeText={(text) => setAnswers({ damageNote: stripHiddenCharacters(text) })}
+          // UTF-16 units, as maxLength counts them (like the note step).
+          counter={`${note.length}/${MAX_DAMAGE_NOTE_LENGTH}`}
+          // The counter is hidden from screen readers (TextField's contract);
+          // the limit goes here instead, read once on focus.
+          accessibilityHint={`Up to ${MAX_DAMAGE_NOTE_LENGTH} characters`}
+          maxLength={MAX_DAMAGE_NOTE_LENGTH}
+          testID="context-damage-note"
+        />
+      </View>
+    </LayoutAnimationConfig>
   );
 }
 

@@ -24,7 +24,7 @@ import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { useState, type ComponentType } from 'react';
 import { AccessibilityInfo } from 'react-native';
 
-import { SAFETY_999_LINE, SAFETY_PRESENCE_LINE } from '@/shared/ui';
+import { SAFETY_999_LINE, SAFETY_FIRE_999_LINE, SAFETY_PRESENCE_LINE } from '@/shared/ui';
 import type { WizardStepProps } from '@/shared/wizard';
 
 import { DRIVING_DIRECTIONS, type ReportSightingAnswers } from '../types';
@@ -62,6 +62,8 @@ jest.mock('@gorhom/bottom-sheet', () =>
 const SAFETY_LINE = 'Don’t approach — your report is enough.';
 /** …and, for a crime in progress, the app's 999 line under it. */
 const LINE_999 = 'If a crime is in progress, call 999.';
+/** …and, for fire damage, the fire 999 line (owner, 2026-10-21). */
+const FIRE_LINE_999 = 'If the car is currently on fire, call 999.';
 
 const MARKS = [
   {
@@ -336,6 +338,7 @@ describe('anyone in or near it?', () => {
   it('SAFETY: the lines are the shared constants, word for word', () => {
     expect(SAFETY_PRESENCE_LINE).toBe(SAFETY_LINE);
     expect(SAFETY_999_LINE).toBe(LINE_999);
+    expect(SAFETY_FIRE_999_LINE).toBe(FIRE_LINE_999);
   });
 
   it('SAFETY: people near it is not a crime in itself — no 999 line there', async () => {
@@ -475,6 +478,42 @@ describe('what damage can you see?', () => {
     const rightToLeft = String.fromCharCode(0x202e);
     await type(view, `Dent${zeroWidth} on the ${rightToLeft}door`);
     expect(latest.damageNote).toBe('Dent on the door');
+  });
+
+  it('⚠️ SAFETY: "Fire damage" shows the line with the fire 999 line, and announces both', async () => {
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibilityWithOptions');
+    announce.mockClear();
+    try {
+      const view = await renderStep(DamageStep, { contextFlags: ['damage_visible'] });
+      await press(box(view, 'Smashed window'));
+      expect(view.queryByText(SAFETY_LINE)).toBeNull();
+      expect(announce).not.toHaveBeenCalled();
+      await press(box(view, 'Fire damage'));
+      expect(view.getByText(SAFETY_LINE)).toBeTruthy();
+      expect(view.getByText(FIRE_LINE_999)).toBeTruthy();
+      // Not the crime line: the damage may be old, so it asks about now.
+      expect(view.queryByText(LINE_999)).toBeNull();
+      expect(announce).toHaveBeenCalledTimes(1);
+      expect(announce).toHaveBeenCalledWith(`${SAFETY_LINE} ${FIRE_LINE_999}`, { queue: true });
+      // Another tick while it shows says nothing new.
+      await press(box(view, 'Broken lights'));
+      expect(announce).toHaveBeenCalledTimes(1);
+      expect(advanceSoon).not.toHaveBeenCalled();
+      await press(box(view, 'Fire damage'));
+      expect(view.queryByText(SAFETY_LINE)).toBeNull();
+      expect(view.queryByText(FIRE_LINE_999)).toBeNull();
+    } finally {
+      announce.mockRestore();
+    }
+  });
+
+  it('⚠️ SAFETY: a report already saying "Fire damage" shows the line when the step opens', async () => {
+    const view = await renderStep(DamageStep, {
+      contextFlags: ['damage_visible'],
+      damageKinds: ['fire_damage'],
+    });
+    expect(view.getByText(SAFETY_LINE)).toBeTruthy();
+    expect(view.getByText(FIRE_LINE_999)).toBeTruthy();
   });
 });
 

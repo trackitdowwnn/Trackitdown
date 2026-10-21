@@ -170,6 +170,7 @@ export { RadiusSlider, type RadiusSliderProps } from './RadiusSlider';
 export {
   SafetyNotice,
   SAFETY_999_LINE,
+  SAFETY_FIRE_999_LINE,
   SAFETY_DISTANCE_LINE,
   SAFETY_NOTICE_BODY,
   SAFETY_NOTICE_TITLE,

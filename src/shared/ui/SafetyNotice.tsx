@@ -78,6 +78,10 @@ export const SAFETY_RULE_LINE =
  *  from it, so the banner and the points can't say different things. */
 export const SAFETY_999_LINE = 'If a crime is in progress, call 999.';
 
+/** The 999 line for a report that ticks "Fire damage": the damage may be old,
+ *  so it asks the one question that matters (owner, 2026-10-21). */
+export const SAFETY_FIRE_999_LINE = 'If the car is currently on fire, call 999.';
+
 export const SAFETY_NOTICE_BODY = `${SAFETY_RULE_LINE} ${SAFETY_999_LINE}`;
 
 /**
