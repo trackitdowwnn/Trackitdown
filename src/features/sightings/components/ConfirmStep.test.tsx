@@ -206,7 +206,7 @@ describe('ConfirmStep — sections and Edit links', () => {
     expect(editStep).toHaveBeenLastCalledWith('parts');
   });
 
-  it('⚠️ what’s missing edits on its own step — the condition’s Edit stops at the damage step', async () => {
+  it('⚠️ what’s missing edits on its own step, from its own row', async () => {
     const { view, editStep } = await renderConfirm({
       photos: [live(0)],
       contextFlags: ['damage_visible'],

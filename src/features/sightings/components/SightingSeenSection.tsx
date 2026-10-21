@@ -12,8 +12,8 @@
  *          (Doing | Parked · Looks settled), their words about the damage as
  *          a short quote just under it ("About the damage", 2026-10-21) and
  *          their words about what's missing likewise ("About what's
- *          missing"), then
- *          their note under "In their words" (set apart by a rule).
+ *          missing"), then their note under "In their words" (set apart by a
+ *          rule).
  * WHY:   - The marks read back the report wizard the way the spotter filled
  *          it in (owner, 2026-10-19): the SAME rows (MarkTile, read-only),
  *          the same ticks, unseen marks included — so "they didn't see the
@@ -199,7 +199,7 @@ const makeStyles = (c: Palette) =>
       gap: spacing.xl,
     },
     // The blocks' quiet label — the marks' count, the words about the damage
-    // and the note.
+    // and about what's missing, and the note.
     label: {
       ...typography.caption,
       color: c.textSecondary,
@@ -273,8 +273,9 @@ const makeStyles = (c: Palette) =>
       ...typography.body,
       color: c.textPrimary,
     },
-    // The table, then their words about the damage close beneath it (md, not
-    // the section's xl): the quote belongs to the Condition row.
+    // The table, then their words about the damage and what's missing close
+    // beneath it (md, not the section's xl): the quotes belong to the
+    // Condition row.
     answers: {
       gap: spacing.md,
     },

@@ -92,8 +92,9 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
      being their own damage kind), then **Anything else?** ≤ 300
      (`missing_parts_note`). Unticking Missing panels or parts (or losing
      Damage visible) clears both; never sent without that kind. Its Edit on
-     check-and-send is its own "What's missing" row — the condition's Edit
-     carries on to the damage step but no further.
+     check-and-send is its own "What's missing" row; the condition's Edit
+     also carries on through the damage step to it (an edit's follow-ups
+     chain forward, the wizard's `editContinuesTo`).
    - **Could you see any of these?** (only when the post has marks): the
      post's distinctive marks as checkbox rows with the owner's photo
      (`confirmed_feature_ids`; the screen seeds `confirmableFeatures`, and the

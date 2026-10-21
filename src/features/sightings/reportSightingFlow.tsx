@@ -216,7 +216,8 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
             damageKinds: z.array(z.enum(DAMAGE_KINDS)).optional(),
             damageNote: z.string().max(MAX_DAMAGE_NOTE_LENGTH).optional(),
           }),
-          // Ticking "Missing panels or parts" from Confirm asks which, too.
+          // Ticking "Missing panels or parts" from Confirm asks which, too —
+          // also when the edit opened on the condition (follow-ups chain forward).
           editContinuesTo: (answers) => (hasMissingParts(answers) ? 'parts' : undefined),
         }),
         // "Missing panels or parts"'s follow-up, its own step as the damage

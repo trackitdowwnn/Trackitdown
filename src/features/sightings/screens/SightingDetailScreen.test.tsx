@@ -769,7 +769,10 @@ describe('the evidence', () => {
       }),
     );
     const view = await renderScreen();
-    expect(view.getByTestId('seen-damage-note')).toBeTruthy();
+    // One screen-reader stop, read as a statement.
+    expect(view.getByTestId('seen-damage-note').props.accessibilityLabel).toBe(
+      'About the damage: Scorched bonnet',
+    );
     const texts = textsInOrder(view);
     const at = (text: string) => texts.indexOf(text);
     expect(at('Condition')).toBeLessThan(at('About the damage'));

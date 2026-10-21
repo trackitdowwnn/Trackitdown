@@ -107,20 +107,18 @@ export const MISSING_PART_LABELS: Record<MissingPart, string> = {
 };
 // Offered in MISSING_PARTS' order (types.ts), the server's whitelist's.
 
-/** Known words for the values given, in the order given, skipping any this
- *  app doesn't know (a newer server's value is left out, never a crash). */
-function knownLabels<K extends string>(
+/** The values this app has words for, in the order given, skipping any it
+ *  doesn't know (a newer server's value is left out, never a crash). */
+function knownValues<K extends string>(
   table: Record<K, string>,
   values: readonly string[] | null | undefined,
-): string[] {
-  return (values ?? [])
-    .filter((value): value is K => Object.hasOwn(table, value))
-    .map((value) => table[value]);
+): K[] {
+  return (values ?? []).filter((value): value is K => Object.hasOwn(table, value));
 }
 
 /** The missing parts' words, as listed on the check-and-send step's row. */
 export function missingPartLabels(parts: readonly string[] | null | undefined): string[] {
-  return knownLabels(MISSING_PART_LABELS, parts);
+  return knownValues(MISSING_PART_LABELS, parts).map((part) => MISSING_PART_LABELS[part]);
 }
 
 /** The damage kinds' words. With `parts`, "Missing panels or parts" names
@@ -131,10 +129,10 @@ function damageKindLabels(
   parts?: readonly string[] | null,
 ): string[] {
   const named = missingPartLabels(parts);
-  return knownLabels(DAMAGE_KIND_LABELS, kinds).map((label) =>
-    label === DAMAGE_KIND_LABELS.missing_parts && named.length > 0
-      ? `${label} (${named.join(', ')})`
-      : label,
+  return knownValues(DAMAGE_KIND_LABELS, kinds).map((kind) =>
+    kind === 'missing_parts' && named.length > 0
+      ? `${DAMAGE_KIND_LABELS[kind]} (${named.join(', ')})`
+      : DAMAGE_KIND_LABELS[kind],
   );
 }
 
@@ -374,8 +372,8 @@ export function contextReviewRows(answers: Partial<ReportSightingAnswers>): Cont
   }
 
   // Which parts, and their words about it, on ONE row whose Edit opens the
-  // parts step: the condition's Edit carries on to the damage step but no
-  // further (editContinuesTo is one hop), so the parts need a door of their own.
+  // parts step itself — the condition's Edit reaches it only by way of the
+  // damage step, and only when "Missing panels or parts" is ticked.
   const whatsMissing = [
     missingPartLabels(answers.missingParts).join(', '),
     cleanSpotterWords(answers.missingPartsNote) ?? '',

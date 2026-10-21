@@ -56,7 +56,7 @@ import {
   Lightbulb,
   LightbulbOff,
   PanelBottom,
-  RectangleEllipsis,
+  PanelTop,
   RectangleHorizontal,
   ShieldCheck,
   SquareDashed,
@@ -187,11 +187,12 @@ const DAMAGE_ICONS: Record<DamageKind, LucideIcon> = {
 };
 const MISSING_PART_ICONS: Record<MissingPart, LucideIcon> = {
   bumpers: PanelBottom,
-  bonnet: CarFront,
+  bonnet: PanelTop,
   doors: DoorOpen,
   lights: Lightbulb,
   wing_mirrors: FlipHorizontal2,
-  number_plates: RectangleEllipsis,
+  // The condition step's plate, so the flow draws a plate one way.
+  number_plates: RectangleHorizontal,
 };
 
 /** SAFETY: say "Don't approach" out loud as it appears. iOS has no live
@@ -529,6 +530,8 @@ export function PartsStep({ answers, setAnswers }: StepProps) {
         onChangeText={(text) => setAnswers({ missingPartsNote: stripHiddenCharacters(text) })}
         // UTF-16 units, as maxLength counts them (like the damage step).
         counter={`${note.length}/${MAX_MISSING_PARTS_NOTE_LENGTH}`}
+        // The counter is hidden from screen readers (TextField's contract);
+        // the limit goes here instead, read once on focus.
         accessibilityHint={`Up to ${MAX_MISSING_PARTS_NOTE_LENGTH} characters`}
         maxLength={MAX_MISSING_PARTS_NOTE_LENGTH}
         testID="context-parts-note"
