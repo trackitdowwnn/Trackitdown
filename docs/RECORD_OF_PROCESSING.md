@@ -52,9 +52,8 @@ this automatically.
 | The police | Disclosure when required, or to prevent harm | Case-by-case | — |
 
 None of these receives data for its own marketing; we do not sell data
-(privacy policy). **Missing from the privacy policy's "Who we share it with":
-Resend, Gmail, Apple/Google as sign-in providers, Apple as the iOS geocoder,
-Waze** (§5).
+(privacy policy). All of them are named in the privacy policy's "Who we
+share it with" since 2026-10-21.
 
 ## 3. Criminal-offence and special-category data
 
@@ -119,7 +118,7 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
 - **Basis:** *proposed:* contract.
 - **Recipients:** the user only (no RPC exposes another user's garage).
 - **Retention:** until the user deletes the vehicle or the account.
-- **Not in the privacy policy:** garage plates (§5).
+- **In the privacy policy** ("Vehicles: number plate…", 2026-10-21).
 
 ### 4.4 Sightings
 - **Subjects:** spotters; owners; incidentally, people near the car.
@@ -274,9 +273,9 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
 - **Purpose:** support and fixing faults.
 - **Basis:** *proposed:* legitimate interests.
 - **Recipients:** operator; Resend and the Gmail inbox (§2).
-- **Retention:** rows with the account. **⚠️ Screenshot files are NOT removed
-  when the account is deleted** (delete-account sweeps `avatars`,
-  `post-photos`, `verification-documents` only). Emails: no retention set.
+- **Retention:** rows and screenshot files with the account (delete-account
+  sweeps `bug-screenshots` since 2026-10-21). Emails in the inbox: no
+  retention set.
 
 ### 4.17 Account deletion audit
 - **Data:** `account_deletions` — the deleted user id, Stripe account id,
@@ -292,10 +291,9 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
   Supabase function logs. **Sentry is not wired.**
 - **Purpose:** how far people get; error counts.
 - **Basis:** *proposed:* legitimate interests (treated as anonymous).
-- **Retention:** intended 180 days (onboarding) and 90 days (telemetry) —
-  **the purge functions exist but nothing schedules them.** Platform log
-  retention not documented.
-- **Not in the privacy policy:** telemetry (§5).
+- **Retention:** 180 days (onboarding) and 90 days (telemetry), run by the
+  hourly sweep since 2026-10-21. Platform log retention not documented.
+- **In the privacy policy** ("How the app is used", 2026-10-21).
 
 ### 4.19 Bounty guidance and area insights
 - **Data:** per-post recommendations shown; counts on a ~1 km grid with
@@ -321,11 +319,14 @@ so it is not mistaken for a decision already made.
    all free text stay.
 4. **Free text has no purge:** sighting notes, damage and missing-parts notes,
    withdrawal notes, dispute statements.
-5. **Recipients missing from the policy:** Resend, Gmail, Apple/Google
-   sign-in, Apple geocoding, Waze. **Data missing:** telemetry, garage plates.
-6. **Unscheduled purges:** onboarding and telemetry. The 90-day GPS purge runs
-   only inside the hourly sweep — if the sweep stops, it stops silently.
-7. **Bug-report screenshots** outlive account deletion.
+5. ~~Recipients and data missing from the policy~~ — **closed 2026-10-21**:
+   Resend, Gmail, Apple/Google sign-in, Apple geocoding, Waze, telemetry and
+   garage plates are named.
+6. **Purges depend on one clock.** The onboarding and telemetry purges now
+   run in the hourly sweep (2026-10-21), with the notification and 90-day GPS
+   purges — so if the sweep stops, all four stop silently.
+7. ~~Bug-report screenshots outlive account deletion~~ — **closed
+   2026-10-21**: delete-account sweeps `bug-screenshots`.
 8. **No retention period** for payment records, webhook ids, push tokens,
    recovered listings, or the operator's emails.
 9. **Transfers:** no mechanism documented for any non-UK/EU recipient.

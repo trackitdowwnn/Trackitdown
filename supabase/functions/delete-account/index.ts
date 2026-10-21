@@ -65,6 +65,11 @@ const BUCKETS = [
   { id: 'avatars', uidSegment: 1 },
   { id: 'post-photos', uidSegment: 1 },
   { id: 'verification-documents', uidSegment: 1 },
+  // Bug-report screenshots (`<uid>/…`, 20260824140000). Their rows cascade
+  // with the account, but the files do not — until 2026-10-21 they outlived
+  // it (docs/RECORD_OF_PROCESSING.md §5). The reporter's own, unlike sighting
+  // photos below: nobody else's case depends on them.
+  { id: 'bug-screenshots', uidSegment: 1 },
 ] as const;
 
 /*
