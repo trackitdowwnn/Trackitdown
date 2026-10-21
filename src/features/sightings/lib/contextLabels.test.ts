@@ -14,8 +14,10 @@
 
 import {
   CONDITION_OPTIONS,
+  CONTEXT_OPTION_DESCRIPTIONS,
   CONTEXT_QUESTIONS,
   CONTEXT_SHORT_LABELS,
+  CONTEXT_STEP_QUESTIONS,
   FLAG_LABELS,
   PARKED_LIKELIHOOD_LABELS,
   PEOPLE_OPTIONS,
@@ -109,6 +111,39 @@ describe('contextLabels — the shared words', () => {
         value: `Parked · ${PARKED_LIKELIHOOD_LABELS.settled}`,
       },
     ]);
+  });
+});
+
+describe('the context steps’ cards (2026-10-20)', () => {
+  const lines = [
+    ...STATE_OPTIONS.map((value) => CONTEXT_OPTION_DESCRIPTIONS.state[value]),
+    ...STAYING_OPTIONS.map(
+      (value) => CONTEXT_OPTION_DESCRIPTIONS.staying[value as 'settled' | 'moving'],
+    ),
+    ...PEOPLE_OPTIONS.map((value) => CONTEXT_OPTION_DESCRIPTIONS.people[value]),
+    ...CONDITION_OPTIONS.map((value) => CONTEXT_OPTION_DESCRIPTIONS.condition[value]),
+  ];
+
+  it('gives every offered answer one short line — six words at most (fewer words)', () => {
+    expect(lines).toHaveLength(12);
+    for (const line of lines) {
+      expect(line).toBeTruthy();
+      expect(line.split(/\s+/).length).toBeLessThanOrEqual(6);
+    }
+  });
+
+  it('⚠️ SAFETY: no line asks the spotter to follow, watch, track or go closer', () => {
+    for (const line of lines) {
+      expect(line).not.toMatch(
+        /follow|watch|track|approach|closer|nearer|check|inspect|wait|meet|get close|go to/i,
+      );
+    }
+  });
+
+  it('asks each step’s question in the same words the rest of the app uses', () => {
+    expect(CONTEXT_STEP_QUESTIONS.state).toBe(CONTEXT_QUESTIONS.state);
+    expect(CONTEXT_STEP_QUESTIONS.people).toBe(CONTEXT_QUESTIONS.people);
+    expect(CONTEXT_STEP_QUESTIONS.condition).toBe(CONTEXT_QUESTIONS.condition);
   });
 });
 

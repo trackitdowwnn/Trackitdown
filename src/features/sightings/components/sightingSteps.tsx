@@ -1,17 +1,13 @@
 /**
- * WHAT:  Two of the report-sighting wizard's step components (2026-07-30
- *        rebuild; the safety gate moved out to ReportSafetySheet on
- *        2026-09-30, shown before the flow opens): the
- *        camera-AS-the-step photos step (in-place viewfinder, no modal, the
- *        ADR-0003 gallery button beside the shutter), the optional context
- *        step (redesigned 2026-10-01: one page of chip questions, each with
- *        "Not sure", inline follow-ups, the owner's marks with their photos,
- *        and a real note box; the footer says Skip until something's added).
- *        The last step, "Check and send", is its own file (ConfirmStep.tsx,
- *        2026-10-02).
+ * WHAT:  The report-sighting wizard's photos step (2026-07-30 rebuild; the
+ *        safety gate moved out to ReportSafetySheet on 2026-09-30, shown
+ *        before the flow opens): the camera-AS-the-step (in-place
+ *        viewfinder, no modal, the ADR-0003 gallery button beside the
+ *        shutter). The optional context questions, one per step since
+ *        2026-10-20, are contextSteps.tsx; "Check and send" is
+ *        ConfirmStep.tsx.
  * WHY:   Speed-flow screens: big targets, minimal reading, nothing optional
- *        standing between the spotter and Send. The context step's reasons
- *        are in its section comment.
+ *        standing between the spotter and Send.
  *        SAFETY decisions live here: ≥1 LIVE in-app capture is required
  *        (gallery photos are supplementary, labelled, and never
  *        location-bearing — ADR-0003, re-enforced by the RPC), removing a
@@ -19,15 +15,10 @@
  *        blocks the flow (an un-located report is still valuable). The
  *        display-only confirm map's SAFETY note moved with it.
  * LINKS: src/features/sightings/reportSightingFlow.tsx (the config);
+ *        src/features/sightings/components/contextSteps.tsx (the context);
  *        src/features/sightings/components/ConfirmStep.tsx (the last step);
- *        src/features/sightings/components/CompassPicker.tsx;
- *        src/features/sightings/lib/contextLabels.ts (the shared vocabulary);
- *        src/features/sightings/lib/contextAnswers.ts (the context rules);
- *        src/shared/ui (CameraCapture, PermissionPrimer, ChoiceChips,
- *        ChoiceChipsMulti, TextField); ./MarkTile.tsx (the owner's marks —
- *        the same rows the owner's sighting page reads back);
+ *        src/shared/ui (CameraCapture, PermissionPrimer);
  *        src/features/sightings/components/ReportSafetySheet.tsx (the gate);
- *        docs/DOMAIN.md (Sighting rules — structured context);
  *        docs/decisions/ADR-0003-gallery-supplementary-evidence.md.
  */
 
@@ -35,12 +26,10 @@ import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useEffect, useState } from 'react';
-import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, LayoutAnimationConfig, ReduceMotion } from 'react-native-reanimated';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { createLogger } from '@/shared/lib/logger';
 import {
-  motion,
   opacity,
   radii,
   sizes,
@@ -52,55 +41,13 @@ import {
 } from '@/shared/theme';
 import {
   CameraCapture,
-  ChoiceChips,
-  ChoiceChipsMulti,
   type EvidencePhoto,
   PermissionPrimer,
   type PermissionPrimerContent,
-  SAFETY_PRESENCE_LINE,
-  TextField,
 } from '@/shared/ui';
 import type { WizardStepProps } from '@/shared/wizard';
 
-import {
-  CONDITION_OPTIONS,
-  CONTEXT_QUESTIONS,
-  FLAG_LABELS,
-  PARKED_LIKELIHOOD_LABELS,
-  PEOPLE_OPTIONS,
-  PEOPLE_PRESENCE_LABELS,
-  STATE_OPTIONS,
-  STAYING_OPTIONS,
-  contextDetailCount,
-  directionLabel,
-} from '../lib/contextLabels';
-import {
-  UNSURE,
-  changeConditions as changeConditionsRule,
-  conditionsOf,
-  isUnsure,
-  peopleShowSafetyLine,
-  selectDirection,
-  selectPeople as selectPeopleRule,
-  selectState as selectStateRule,
-  selectStaying as selectStayingRule,
-  setDirectionUnsure,
-  shownAnswer,
-  stateOf,
-  toggleMark as toggleMarkRule,
-  type MaybeUnsure,
-} from '../lib/contextAnswers';
-import {
-  MAX_NOTE_LENGTH,
-  MAX_SIGHTING_PHOTOS,
-  type ConditionFlag,
-  type ParkedLikelihood,
-  type PeoplePresence,
-  type ReportSightingAnswers,
-  type VehicleStateFlag,
-} from '../types';
-import { CompassPicker } from './CompassPicker';
-import { MarkTile } from './MarkTile';
+import { MAX_SIGHTING_PHOTOS, type ReportSightingAnswers } from '../types';
 
 const log = createLogger('sightings');
 
@@ -269,294 +216,10 @@ export function PhotosStep({ answers, setAnswers }: StepProps) {
   );
 }
 
-// --- 2 · Context (all optional) --------------------------------------------------
-//
-// THE 2026-10-01 REDESIGN, after research (GOV.UK question pages, NN/g,
-// Baymard, eyewitness-memory studies). What changed and why:
-//   - ONE PAGE, ALL VISIBLE. Every question is a short row of chips. No sheet
-//     springing up on a tap, no "Add more detail" drawer hiding the people
-//     question, the owner's marks and the safety line.
-//   - "NOT SURE" ON EVERY QUESTION, nothing pre-selected. People guess less
-//     and are more accurate when "not sure" is a real, equal answer. It sends
-//     nothing: to the owner it is simply unanswered.
-//   - DESCRIBE, DON'T PREDICT. "Did it look like it was staying?", not
-//     "Likely to stay?".
-//   - ONE CONTROL GRAMMAR: chips (single = radios, condition = checkboxes),
-//     the compass only for direction, bordered photo rows for the marks.
-//   - ONE WAY ON. The footer reads "Skip" until something is added, then
-//     "Continue" (reportSightingFlow's ctaLabel); the in-body Skip link went.
-//   - THE WORDS ARE contextLabels': what the spotter taps is what the owner
-//     reads.
-
-/** The "Not sure" chip: an equal answer that stores nothing (contextUnsure). */
-const UNSURE_OPTION = { value: UNSURE, label: 'Not sure' } as const;
-
-/** A follow-up, revealed with the tokens' in-place fade (reduced motion: just
- *  present) and indented under the answer it belongs to. */
-function FollowUp({ children }: { children: React.ReactNode }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <Animated.View
-      entering={FadeIn.duration(motion.fast).reduceMotion(ReduceMotion.System)}
-      style={styles.followUp}
-    >
-      {children}
-    </Animated.View>
-  );
-}
-
-/** An inline line revealed with the same fade, not indented (the safety line). */
-function Reveal({ children }: { children: React.ReactNode }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <Animated.View
-      entering={FadeIn.duration(motion.fast).reduceMotion(ReduceMotion.System)}
-      style={styles.revealBlock}
-    >
-      {children}
-    </Animated.View>
-  );
-}
-
-/** A question's title (a header, so it's on the headings rotor) and an
- *  optional quiet hint under it. */
-function QuestionHead({ title, hint }: { title: string; hint?: string }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.questionHead}>
-      <Text accessibilityRole="header" style={styles.questionTitle}>
-        {title}
-      </Text>
-      {hint ? <Text style={styles.questionHint}>{hint}</Text> : null}
-    </View>
-  );
-}
-
-/** The optional "Anything else that helps?" step: every context question on
- *  one page, written straight into the wizard's answers. */
-export function ContextStep({ answers, setAnswers }: StepProps) {
-  const styles = useThemedStyles(makeStyles);
-  const palette = usePalette();
-  const state = stateOf(answers);
-  const conditions = conditionsOf(answers);
-  const marks = answers.confirmableFeatures ?? [];
-  const confirmedIds = answers.confirmedFeatureIds ?? [];
-  const details = contextDetailCount(answers);
-  const safetyLine = peopleShowSafetyLine(answers);
-
-  // The rules live in lib/contextAnswers (pure, shared by every step); these
-  // only apply their patches.
-  const selectState = (picked: MaybeUnsure<VehicleStateFlag>) =>
-    setAnswers(selectStateRule(answers, picked));
-  const selectStaying = (picked: MaybeUnsure<ParkedLikelihood>) =>
-    setAnswers(selectStayingRule(answers, picked));
-  const changeConditions = (next: ConditionFlag[]) =>
-    setAnswers(changeConditionsRule(answers, next));
-  const toggleMark = (id: string) => setAnswers(toggleMarkRule(answers, id));
-
-  const selectPeople = (picked: MaybeUnsure<PeoplePresence>) => {
-    const patch = selectPeopleRule(answers, picked);
-    setAnswers(patch);
-    // SAFETY: say it out loud as it appears. iOS has no live regions, and a
-    // live region that mounts with its text isn't reliably read on Android
-    // either, so announce on both (the WizardScreen / TextField pattern).
-    // Queued (iOS), so VoiceOver saying the chip's "selected" can't cut the
-    // sentence off; Android ignores the option.
-    if (!safetyLine && peopleShowSafetyLine({ ...answers, ...patch })) {
-      AccessibilityInfo.announceForAccessibilityWithOptions(SAFETY_PRESENCE_LINE, { queue: true });
-    }
-  };
-
-  const noteLength = answers.note?.length ?? 0;
-
-  return (
-    // skipEntering: follow-ups already answered (coming Back to the step) are
-    // simply there; only a reveal AFTER mount fades in. A first-mount
-    // `entering` can finish on a stale frame on device (WizardScreen's X fix,
-    // 2026-09-30).
-    <LayoutAnimationConfig skipEntering>
-      <View style={styles.contextStack}>
-        {/* Always rendered, so the page never jumps when the first chip is
-            tapped. Not a live region: each chip already says checked or not,
-            and the safety line should be the only thing that speaks. */}
-        <Text style={styles.count} testID="context-count">
-          {details === 0
-            ? 'Nothing added yet'
-            : details === 1
-              ? '1 detail added'
-              : `${details} details added`}
-        </Text>
-
-        <View>
-          <QuestionHead title={CONTEXT_QUESTIONS.state} />
-          <ChoiceChips
-            options={[
-              ...STATE_OPTIONS.map((value) => ({ value, label: FLAG_LABELS[value] })),
-              UNSURE_OPTION,
-            ]}
-            value={shownAnswer(answers, 'state', state)}
-            onSelect={selectState}
-            accessibilityLabel={CONTEXT_QUESTIONS.state}
-            clearable
-            testID="context-state"
-          />
-
-          {state === 'parked' ? (
-            <FollowUp>
-              <QuestionHead title="Did it look like it was staying?" />
-              <ChoiceChips
-                options={[
-                  ...STAYING_OPTIONS.map((value) => ({
-                    value,
-                    label: PARKED_LIKELIHOOD_LABELS[value],
-                  })),
-                  UNSURE_OPTION,
-                ]}
-                value={shownAnswer(answers, 'staying', answers.parkedLikelihood)}
-                onSelect={selectStaying}
-                accessibilityLabel="Did it look like it was staying?"
-                clearable
-                testID="context-staying"
-              />
-            </FollowUp>
-          ) : null}
-
-          {state === 'driving' ? (
-            <FollowUp>
-              {/* The hint is always there (so the grid never shifts under a
-                  second tap) and names the pick once there is one. */}
-              <QuestionHead
-                title="Which way was it heading?"
-                hint={answers.direction ? directionLabel(answers.direction) : 'Tap where it went.'}
-              />
-              <View style={styles.compass}>
-                <CompassPicker
-                  value={answers.direction}
-                  onChange={(direction) => setAnswers(selectDirection(answers, direction))}
-                  accessibilityLabel="Which way was it heading?"
-                />
-                {/* Under the compass, centred with it: one control. A checkbox,
-                    not a lone radio, because it toggles on its own. */}
-                <ChoiceChipsMulti
-                  // Says what it's unsure OF: on its own, "Not sure" under a
-                  // compass is just "Not sure, checkbox".
-                  options={[{ ...UNSURE_OPTION, accessibilityLabel: 'Not sure which way it went' }]}
-                  value={isUnsure(answers, 'direction') ? [UNSURE] : []}
-                  onChange={(next) => setAnswers(setDirectionUnsure(answers, next.length > 0))}
-                  testID="context-direction-unsure"
-                />
-              </View>
-            </FollowUp>
-          ) : null}
-        </View>
-
-        <View>
-          <QuestionHead title={CONTEXT_QUESTIONS.people} />
-          <ChoiceChips
-            options={[
-              ...PEOPLE_OPTIONS.map((value) => ({ value, label: PEOPLE_PRESENCE_LABELS[value] })),
-              UNSURE_OPTION,
-            ]}
-            value={shownAnswer(answers, 'people', answers.peoplePresence)}
-            onSelect={selectPeople}
-            accessibilityLabel={CONTEXT_QUESTIONS.people}
-            clearable
-            testID="context-people"
-          />
-          {safetyLine ? (
-            <Reveal>
-              {/* SAFETY: fixed, imported copy (SAFETY_PRESENCE_LINE), not a
-                  prop — the register reinforces the gate's rule exactly where
-                  the temptation to linger lives. Firm and unmissable: question
-                  weight, with SafetyNotice's rule glyph; announced by
-                  selectPeople as it appears. */}
-              <View style={styles.safetyRow} accessible accessibilityLabel={SAFETY_PRESENCE_LINE}>
-                <Feather
-                  name="slash"
-                  size={sizes.iconSm}
-                  color={palette.textPrimary}
-                  style={styles.safetyGlyph}
-                />
-                <Text style={styles.safetyInline}>{SAFETY_PRESENCE_LINE}</Text>
-              </View>
-            </Reveal>
-          ) : null}
-        </View>
-
-        <View>
-          <QuestionHead title={CONTEXT_QUESTIONS.condition} hint="Any that apply." />
-          <ChoiceChipsMulti
-            options={CONDITION_OPTIONS.map((value) => ({ value, label: FLAG_LABELS[value] }))}
-            value={conditions}
-            onChange={changeConditions}
-            accessibilityLabel={CONTEXT_QUESTIONS.condition}
-            testID="context-condition"
-          />
-        </View>
-
-        {marks.length > 0 ? (
-          <View>
-            <QuestionHead
-              title="Could you see any of these?"
-              hint="The owner’s marks. Tick any you could see from where you were."
-            />
-            <View style={styles.markTiles}>
-              {marks.map((mark) => (
-                <MarkTile
-                  key={mark.id}
-                  description={mark.description}
-                  photoUrl={mark.photoUrl}
-                  selected={confirmedIds.includes(mark.id)}
-                  onPress={() => toggleMark(mark.id)}
-                  testID={`confirm-mark-${mark.id}`}
-                />
-              ))}
-            </View>
-          </View>
-        ) : null}
-
-        <TextField
-          label="A note for the owner (optional)"
-          variant="multiline"
-          value={answers.note ?? ''}
-          onChangeText={(note) => setAnswers({ note })}
-          helperText="What you noticed. A line is plenty."
-          counter={`${noteLength}/${MAX_NOTE_LENGTH}`}
-          // The counter is hidden from screen readers (TextField's contract);
-          // the limit goes here instead, read once on focus.
-          accessibilityHint={`Up to ${MAX_NOTE_LENGTH} characters`}
-          maxLength={MAX_NOTE_LENGTH}
-        />
-      </View>
-    </LayoutAnimationConfig>
-  );
-}
-
 const makeStyles = (c: Palette) => StyleSheet.create({
   quiet: {
     ...typography.caption,
     color: c.textSecondary,
-  },
-  revealBlock: {
-    marginTop: spacing.md,
-  },
-  // Safety copy is the one place we are firm and unmissable — never the
-  // quietest style on the screen: question weight, ink (never `danger`), with
-  // SafetyNotice's rule glyph.
-  // Top-aligned, the glyph centred on the FIRST line: at large text the line
-  // wraps, and a centred glyph would float mid-block (SafetyNotice's fix).
-  safetyRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-  },
-  safetyGlyph: {
-    marginTop: (typography.cardTitle.lineHeight - sizes.iconSm) / 2,
-  },
-  safetyInline: {
-    ...typography.cardTitle,
-    color: c.textPrimary,
-    flexShrink: 1,
   },
   // The camera-as-step: viewfinder + controls own a fixed, generous canvas
   // (a flex child inside the wizard's scroll must claim its height).
@@ -577,45 +240,5 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   galleryButtonDisabled: {
     opacity: opacity.disabled,
-  },
-  // --- The context step (2026-10-01 redesign) ---------------------------------
-  // One question = a title, an optional quiet hint, then its chips. Questions
-  // sit `xxl` apart so each reads as its own block on a long page.
-  contextStack: {
-    gap: spacing.xxl,
-  },
-  questionTitle: {
-    ...typography.cardTitle,
-    color: c.textPrimary,
-  },
-  questionHint: {
-    ...typography.caption,
-    color: c.textSecondary,
-  },
-  questionHead: {
-    gap: spacing.xs,
-    marginBottom: spacing.md,
-  },
-  // A follow-up indents under its parent answer, with a 2pt rule down its
-  // left edge, so it reads as "about the Parked you just chose".
-  followUp: {
-    marginTop: spacing.lg,
-    paddingLeft: spacing.lg,
-    borderLeftWidth: sizes.followUpRule,
-    borderLeftColor: c.border,
-  },
-  // The compass and its "Not sure", centred together as one control (the
-  // grid centres itself; this centres the chip under it).
-  compass: {
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  count: {
-    ...typography.label,
-    color: c.textSecondary,
-  },
-  // The owner's marks (MarkTile — the same rows the owner reads back).
-  markTiles: {
-    gap: spacing.sm,
   },
 });

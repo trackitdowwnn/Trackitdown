@@ -45,34 +45,40 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
    `PermissionPrimer`; **denied/failed GPS never blocks** — the report
    proceeds flagged `location_unavailable`. Poor accuracy (> ~100 m) is
    recorded with its value, never rejected.
-2. **Context** (all optional, redesigned 2026-10-01): "Anything else that
-   helps?", ONE page with every question visible (no drawer, no sheet).
-   Single-select rows are `ChoiceChips` (tap again to clear), each with an
-   equal **Not sure** chip that stores nothing (its selected look lives in the
-   UI-only `contextUnsure` answer, never sent). The words are
-   `lib/contextLabels.ts`, shared with every owner-facing summary.
+2. **Context** (all optional; ONE QUESTION PER STEP since 2026-10-20, the
+   owner's call — one page of chips before): `components/contextSteps.tsx`,
+   each question on full-width cards (`CardSelect` / `CardSelectMulti`: an
+   icon, the answer, one short line), every single question ending in an
+   equal **Not sure** card that stores nothing (its selected look lives in the
+   UI-only `contextUnsure` answer, never sent). The rules that tie the steps
+   together are `lib/contextAnswers.ts` (a golden payload test pins what is
+   sent); the words are `lib/contextLabels.ts`, shared with every owner-facing
+   summary. Each step reads **Skip** until answered, then **Continue**; a
+   single pick moves on after a beat, a second tap clears and stays.
    - **What was it doing?** Parked · Moving · Being loaded or towed, stored in
-     `context_flags` (Moving is stored `driving`). Follow-ups appear
-     inline: Parked asks **Did it look like it was staying?** (Looks parked
-     up = `settled` · Looks about to move = `moving`; `street` is no longer
-     offered, old rows still read); Moving shows the **compass grid**
-     (`CompassPicker`) plus Not sure. Switching state clears the other
-     follow-up.
+     `context_flags` (Moving is stored `driving`). Switching state clears the
+     other state's follow-up.
+   - **Did it look like it was staying?** (after Parked only): Looks parked
+     up = `settled` · Looks about to move = `moving` (`street` is no longer
+     offered, old rows still read).
+   - **Which way was it heading?** (after Moving only): the compass grid
+     (`CompassPicker`) plus Not sure.
    - **Anyone in or near it?** 3-way `people_presence` (No one seen · People
      near it · Someone in it); the last two, and Not sure, reveal the fixed
      inline register "Don’t approach — your report is enough."
      (`SAFETY_PRESENCE_LINE`), announced to screen readers as it appears.
-   - **Its condition**: multi-select chips (plate changed or missing · damage
-     visible · being stripped · looks intact); "Looks intact" is exclusive.
-   - **Could you see any of these?** The post's distinctive marks as checkbox
-     rows with the owner's photo (`confirmed_feature_ids`; absent when the
-     post has none; the screen seeds `confirmableFeatures`, and the car as
-     `reportedCar`, from one `get_post_detail` call, best-effort via
+     Only "No one seen" moves on by itself — never past the line.
+   - **Its condition**: any that apply (plate changed or missing · damage
+     visible · being stripped · looks intact); "Looks intact" is exclusive;
+     "Being stripped" brings up the same safety line with "If a crime is in
+     progress, call 999." under it — as does the state "Being loaded or
+     towed", which therefore doesn't move on by itself.
+   - **Could you see any of these?** (only when the post has marks): the
+     post's distinctive marks as checkbox rows with the owner's photo
+     (`confirmed_feature_ids`; the screen seeds `confirmableFeatures`, and the
+     car as `reportedCar`, from one `get_post_detail` call, best-effort via
      `lib/reportSeed.ts`. Both are read-only seeds and never sent).
    - **A note for the owner**: multiline, with a 0/500 counter.
-   One way on: the footer reads **Skip** until something is added, then
-   **Continue** (`ctaLabel` as a function); "N details added" ("Nothing added
-   yet" at 0, always shown so the page never jumps) counts above.
 3. **Check and send** (`components/ConfirmStep.tsx`, redesigned 2026-10-02
    on the GOV.UK check-answers pattern): labelled sections.
    - **You're reporting**: the car from the listing (its first photo across
@@ -87,9 +93,11 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
      photo, and why it can't be changed. **No Edit, no manual location
      editing** (`// SAFETY`: the capture point is the evidence). No fix: "No
      location on this report — your photos still help."
-   - **What you saw** (Edit → the context step): one row per answer in the
-     contextLabels words (`contextReviewRows`), the marks and the note;
-     "Nothing added" with an Add link when skipped.
+   - **What you saw**: one row per answer in the contextLabels words
+     (`contextReviewRows`), the marks and the note — each with its own Edit
+     to that step ("what it was doing" continues to its follow-up), and one
+     **Add details** to the first question still unanswered ("Nothing added"
+     with an Add link when everything was skipped).
    - Above the CTA, the step's `footerNote`: "Only the owner sees your photos
      and the exact spot. They'll see your first name, not your contact
      details." (Strictly true: the public sees that a sighting happened.)

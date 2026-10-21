@@ -6,9 +6,10 @@
  *          - "Photos": the real shots, tap one to see it full screen;
  *          - "Where and when": the captured point (read-only, on purpose);
  *          - "What you saw": every answer as a labelled row, and the note.
- *        Photos and What you saw each carry an Edit link that jumps to that
- *        step and comes back (the wizard's `editStep` spur: "Done" returns,
- *        Back cancels). The privacy line sits above the button as the step's
+ *        Photos, and each answer under What you saw, carry an Edit link that
+ *        jumps to that step and comes back (the wizard's `editStep` spur:
+ *        "Done" returns, Back cancels); one "Add details" opens the first
+ *        question with nothing stored (one question per step, 2026-10-20). The privacy line sits above the button as the step's
  *        footerNote (REPORT_PRIVACY_LINE).
  * WHY:   Redesigned 2026-10-02 after research (GOV.UK check answers, NN/g
  *        error prevention and recognition over recall, Apple HIG, survey
@@ -17,7 +18,7 @@
  *            blurry shot when they SEE it.
  *          - The car's identity on top: "wrong car" is the mistake that
  *            matters most, and the last chance to notice it is here.
- *          - Edit per section, landing back here: fixing one thing never
+ *          - Edit per answer, landing back here: fixing one thing never
  *            means walking the whole flow again.
  *          - NO Edit on Where and when: the captured point is the evidence
  *            (SAFETY, below), so the section says why instead.
@@ -36,12 +37,13 @@
 
 import { Feather } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { useTimeAgo } from '@/shared/hooks';
 import { spokenAgo } from '@/shared/lib';
 import {
   cardSurface,
+  listRowStackFontScale,
   opacity,
   radii,
   sizes,
@@ -56,7 +58,8 @@ import { AppMap, AppMapMarker } from '@/shared/ui/AppMap';
 import type { WizardStepProps } from '@/shared/wizard';
 
 import { firstLocatedPhoto, isApproximateFix } from '../lib/areaLabel';
-import { contextReviewRows } from '../lib/contextLabels';
+import { CONTEXT_STEP_IDS, stepAnswered, stepApplies } from '../lib/contextAnswers';
+import { CONTEXT_STEP_QUESTIONS, contextReviewRows } from '../lib/contextLabels';
 import { MAX_SIGHTING_PHOTOS, type ReportedCar, type ReportSightingAnswers } from '../types';
 
 type StepProps = WizardStepProps<ReportSightingAnswers>;
@@ -312,6 +315,17 @@ export function ConfirmStep({ answers, editStep, busy = false }: StepProps) {
   const ago = useTimeAgo(timePhoto?.capturedAt ?? 0);
   const takenAgo = timePhoto ? ago : null;
   const rows = contextReviewRows(answers);
+  // The first question that applies and has nothing stored: where "Add
+  // details" goes. A "Not sure" stores nothing and has no row, so it is
+  // offered again — the spotter may have remembered. None left, no link.
+  const nextToAdd = CONTEXT_STEP_IDS.find(
+    (id) => stepApplies(answers, id) && !stepAnswered(answers, id),
+  );
+  const linksShown = Boolean(editStep && nextToAdd);
+  // Past the list-row threshold the Edit goes under its answer, so a long
+  // value keeps the row's width (ThreadRow's rule).
+  const { fontScale } = useWindowDimensions();
+  const stackEdit = (fontScale ?? 1) > listRowStackFontScale;
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const car = answers.reportedCar;
 
@@ -343,38 +357,55 @@ export function ConfirmStep({ answers, editStep, busy = false }: StepProps) {
         <WhereAndWhen areaLabel={answers.areaLabel} located={located} takenAgo={takenAgo} />
       </ReviewSection>
 
-      <ReviewSection
-        title="What you saw"
-        action={
-          editStep && rows.length > 0 ? (
-            <EditLink
-              accessibilityLabel="Edit what you saw"
-              onPress={() => editStep('context')}
-              disabled={busy}
-            />
-          ) : null
-        }
-      >
+      {/* Each answer edits on its own step (one question per step since
+          2026-10-20): its Edit opens that question and Done comes straight
+          back — "what it was doing" also asks its follow-up on the way. Only
+          what was answered is listed (owner's pick); one "Add details" opens
+          the first question still unanswered, and again after that. */}
+      <ReviewSection title="What you saw">
         {rows.length > 0 ? (
           <View>
             {rows.map((row, index) => (
               <View
                 key={row.key}
-                style={[styles.row, index < rows.length - 1 ? styles.rowRuled : null]}
+                style={[
+                  styles.row,
+                  stackEdit ? null : styles.rowWithEdit,
+                  index < rows.length - 1 || linksShown ? styles.rowRuled : null,
+                ]}
               >
-                <Text style={styles.rowLabel}>{row.label}</Text>
-                <Text style={styles.rowValue}>{row.value}</Text>
+                <View style={styles.rowText}>
+                  <Text style={styles.rowLabel}>{row.label}</Text>
+                  <Text style={styles.rowValue}>{row.value}</Text>
+                </View>
+                {editStep ? (
+                  <EditLink
+                    accessibilityLabel={`Edit: ${row.label}`}
+                    onPress={() => editStep(row.key)}
+                    disabled={busy}
+                  />
+                ) : null}
               </View>
             ))}
+            {editStep && nextToAdd ? (
+              <View style={styles.addRow}>
+                <EditLink
+                  text="Add details"
+                  accessibilityLabel={`Add details: ${CONTEXT_STEP_QUESTIONS[nextToAdd]}`}
+                  onPress={() => editStep(nextToAdd)}
+                  disabled={busy}
+                />
+              </View>
+            ) : null}
           </View>
         ) : (
           <View style={styles.emptyRow}>
             <Text style={styles.rowValueQuiet}>Nothing added</Text>
-            {editStep ? (
+            {editStep && nextToAdd ? (
               <EditLink
                 text="Add"
-                accessibilityLabel="Add what you saw"
-                onPress={() => editStep('context')}
+                accessibilityLabel={`Add details: ${CONTEXT_STEP_QUESTIONS[nextToAdd]}`}
+                onPress={() => editStep(nextToAdd)}
                 disabled={busy}
               />
             ) : null}
@@ -553,6 +584,22 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   rowRuled: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: c.border,
+  },
+  // An answer and its own Edit, side by side; the words wrap before they push
+  // the link off the row.
+  // The Edit lines up with the label, not the middle of a long answer.
+  rowWithEdit: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.lg,
+  },
+  rowText: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  addRow: {
+    alignItems: 'flex-start',
+    paddingTop: spacing.sm,
   },
   rowLabel: {
     ...typography.caption,

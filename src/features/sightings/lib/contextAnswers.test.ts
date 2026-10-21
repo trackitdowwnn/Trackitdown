@@ -10,6 +10,7 @@
 
 import type { ReportSightingAnswers } from '../types';
 import {
+  CONTEXT_STEP_IDS,
   UNSURE,
   changeConditions,
   conditionShowsSafetyLine,
@@ -25,6 +26,10 @@ import {
   setDirectionUnsure,
   shownAnswer,
   stateOf,
+  stateShowsSafetyLine,
+  stepAnswered,
+  stepApplies,
+  stepTouched,
   toggleMark,
 } from './contextAnswers';
 
@@ -155,6 +160,12 @@ describe('its condition', () => {
     ]);
   });
 
+  it('⚠️ SAFETY: "Being loaded or towed" brings up the line — a crime in progress', () => {
+    expect(stateShowsSafetyLine({ contextFlags: ['being_loaded'] })).toBe(true);
+    expect(stateShowsSafetyLine({ contextFlags: ['parked'] })).toBe(false);
+    expect(stateShowsSafetyLine({})).toBe(false);
+  });
+
   it('⚠️ SAFETY: "Being stripped" brings up the line — people are working on the car', () => {
     expect(conditionShowsSafetyLine({ contextFlags: ['being_stripped'] })).toBe(true);
     expect(conditionShowsSafetyLine({ contextFlags: ['damage_visible'] })).toBe(false);
@@ -166,5 +177,42 @@ describe("the owner's marks", () => {
     const a = apply({}, toggleMark({}, 'm1'));
     expect(a.confirmedFeatureIds).toEqual(['m1']);
     expect(toggleMark(a, 'm1').confirmedFeatureIds).toEqual([]);
+  });
+});
+
+describe('the steps', () => {
+  it('counts a step answered once it has an answer — "Not sure" included', () => {
+    expect(stepTouched({}, 'state')).toBe(false);
+    expect(stepTouched({ contextUnsure: ['state'] }, 'state')).toBe(true);
+    expect(stepTouched({ contextFlags: ['parked'] }, 'state')).toBe(true);
+    // A state is not a condition, nor a condition a state.
+    expect(stepTouched({ contextFlags: ['parked'] }, 'condition')).toBe(false);
+    expect(stepTouched({ contextFlags: ['damage_visible'] }, 'state')).toBe(false);
+    expect(stepTouched({ direction: 'N' }, 'direction')).toBe(true);
+    expect(stepTouched({ note: '   ' }, 'note')).toBe(false);
+    expect(stepTouched({ confirmedFeatureIds: ['m1'] }, 'marks')).toBe(true);
+  });
+
+  it('a step holds a real answer only when something is sent — "Not sure" is not one', () => {
+    expect(stepAnswered({ contextUnsure: ['people'] }, 'people')).toBe(false);
+    expect(stepAnswered({ peoplePresence: 'nobody' }, 'people')).toBe(true);
+    expect(stepAnswered({ contextUnsure: ['state'] }, 'state')).toBe(false);
+    expect(stepAnswered({ note: 'Bins' }, 'note')).toBe(true);
+  });
+
+  it('applies the follow-ups and the marks only where they belong', () => {
+    expect(stepApplies({ contextFlags: ['parked'] }, 'staying')).toBe(true);
+    expect(stepApplies({ contextFlags: ['parked'] }, 'direction')).toBe(false);
+    expect(stepApplies({}, 'marks')).toBe(false);
+    expect(stepApplies({}, 'people')).toBe(true);
+    expect(CONTEXT_STEP_IDS).toEqual([
+      'state',
+      'staying',
+      'direction',
+      'people',
+      'condition',
+      'marks',
+      'note',
+    ]);
   });
 });

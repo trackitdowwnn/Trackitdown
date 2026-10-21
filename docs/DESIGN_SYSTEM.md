@@ -560,37 +560,47 @@ GOV.UK both advise against dropdowns for long lists).
 - **Model waits for make.** The model field appears only once a make is
   chosen. A new make clears the model; the same make keeps it.
 
-### Optional detail step (report context, 2026-10-01)
+### Optional question steps (report context, 2026-10-20)
 
-For a page of quick, optional, factual questions (the report flow's
-"Anything else that helps?"):
+For quick, optional, factual questions (the report flow's context, which was
+one page of chips — "Anything else that helps?" — until the owner asked for
+"separate steps with more detail on each", as cards "instead of just
+badges"):
 
-- **One page, everything visible.** No drawer or sheet hiding questions.
-  Questions are `cardTitle` headers with an optional grey hint, spaced `xxl`.
-- **Chips, not cards or toggles.** `ChoiceChips` for single answers (tap
-  again to clear), `ChoiceChipsMulti` for "any that apply". A spatial answer
-  (the compass) may keep its own control, centred.
-- **An equal "Not sure"** chip on each single factual question, never
-  pre-selected. It stores nothing; only the UI remembers it.
-- **Follow-ups appear inline** under their answer (FadeIn, reduced-motion
-  aware), indented behind a 2pt `border` rule, never in a sheet.
+- **One question per step.** The wizard's question is the screen's title;
+  a follow-up is its own step, shown only when its answer applies (`when`) —
+  never an inline drawer. Progress counts only the steps that will show.
+- **Cards, not chips.** `CardSelect` for a single answer, `CardSelectMulti`
+  for "any that apply": an icon, the answer (`cardTitle`), and ONE short line
+  (≤ 6 words) of what it looks like from where the spotter stands. A spatial
+  answer (the compass) keeps its own control, centred.
+- **An equal "Not sure"**, the LAST card of each single question: title and
+  `CircleQuestionMark` only, never pre-selected. It stores nothing; only the
+  UI remembers it — and it counts as answering ("Continue", not "Skip").
 - **Neutral wording that describes, never predicts** ("Looks about to move",
-  not "Likely to stay?").
-- **One way on.** No in-body Skip link: the footer CTA reads "Skip" while
-  nothing is added and "Continue" after. A "N details added" line (`label`,
-  `textSecondary`, "Nothing added yet" at 0) heads the page, always rendered so the
-  first tap never shifts it, and never a live region.
-- **Single chips say they clear.** Pass `clearable` to `ChoiceChips` when a
-  second tap clears ("Double tap to clear" on the chosen chip), and the
-  question as the group's `accessibilityLabel`.
-- **A control that moves under the finger is a bug.** A hint that only appears
-  after a pick (the compass's "Heading north-east") is always there instead
-  ("Tap where it went.").
+  not "Likely to stay?"), and no line that needs a close look.
+- **One way on.** No in-body Skip link: the footer reads "Skip" until the
+  step is answered, then "Continue".
+- **A single pick moves on** after `motion.autoAdvanceBeat`; a second tap on
+  the chosen card clears it and stays (`clearable` — "Double tap to clear").
+  Multi-select steps never move on by themselves.
+- **Never past the safety line.** The people step moves on only for "No one
+  seen"; any answer that shows the line keeps the screen and cancels a beat
+  already running (`cancelAdvanceSoon`).
+- **A control that moves under the finger is a bug.** A line that names the
+  pick (the compass's "Heading north-east") holds its space when empty.
 - **The inline safety line** (`SAFETY_PRESENCE_LINE`, imported, never
-  retyped) shows under the people answer for "near it", "in it" and "Not
-  sure": `cardTitle` ink (never `danger`) after SafetyNotice's `slash`
-  glyph at `iconSm` (top-aligned on the first line), and announced (queued) with `announceForAccessibility` as it
+  retyped) shows under the cards for people "near it", "in it" and "Not sure";
+  for a crime in progress — "Being loaded or towed", "Being stripped" — it
+  shows with `SAFETY_999_LINE` under it, and those picks never move on by
+  themselves: `cardTitle` ink (never `danger`)
+  after SafetyNotice's `slash` glyph at `iconSm` (top-aligned on the first
+  line), and announced (queued) with `announceForAccessibility` as it
   appears, since VoiceOver ignores live regions.
+- **On check-and-send,** only answered questions are listed, each with its own
+  Edit (that step, then straight back; "what it was doing" also asks its
+  follow-up), and one "Add details" opens the first question still
+  unanswered.
 - **Photo rows for "could you see…?"**: `surface`, `radii.md`, a 2pt
   `selectBorder` turning `primary` when ticked, a `markThumb` (48) photo
   (an empty thumb with an `image` glyph when there's none, so rows align)

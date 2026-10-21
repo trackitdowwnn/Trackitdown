@@ -1,16 +1,20 @@
 /**
- * WHAT:  The report-sighting WizardFlow — one intro-less phase, three steps
- *        (photos → context → confirm), no built-in review (the confirm step
- *        IS the review), final CTA "Send report". The safety gate comes
- *        BEFORE it, as ReportSafetySheet (2026-09-30).
+ * WHAT:  The report-sighting WizardFlow — one intro-less phase: photos, then
+ *        the optional context one question per step (state → staying /
+ *        direction → people → condition → marks → note, 2026-10-20), then
+ *        confirm. No built-in review (the confirm step IS the review), final
+ *        CTA "Send report". The safety gate comes BEFORE it, as
+ *        ReportSafetySheet (2026-09-30).
  * WHY:   A SPEED flow: the spotter may be near the vehicle, so the config is
- *        the framework's lightest shape — no phase intros, one optional step,
- *        per-step funnel logging via onContinue. The photos step derives
+ *        the framework's lightest shape — no phase intros, every context step
+ *        optional with Skip, a single pick moving on by itself, per-step
+ *        funnel logging via onContinue. The photos step derives
  *        the coarse area label on continue so the confirm screen can say
  *        where the report reads as from.
- * LINKS: src/features/sightings/components/sightingSteps.tsx (photos,
- *        context); src/features/sightings/components/ConfirmStep.tsx (check
- *        and send);
+ * LINKS: src/features/sightings/components/sightingSteps.tsx (photos);
+ *        src/features/sightings/components/contextSteps.tsx (the context);
+ *        src/features/sightings/lib/contextAnswers.ts (its rules);
+ *        src/features/sightings/components/ConfirmStep.tsx (check and send);
  *        src/features/sightings/screens/ReportSightingScreen.tsx (renders);
  *        src/features/sightings/lib/areaLabel.ts; docs/DOMAIN.md.
  */
@@ -18,21 +22,66 @@
 import { z } from 'zod';
 
 import { createLogger } from '@/shared/lib/logger';
-import type { WizardFlow } from '@/shared/wizard';
+import type { WizardStep, WizardFlow } from '@/shared/wizard';
 
 import { ConfirmStep, REPORT_PRIVACY_LINE } from './components/ConfirmStep';
-import { ContextStep, PhotosStep } from './components/sightingSteps';
-import { derivePlaceLabels } from './lib/areaLabel';
-import { contextDetailCount } from './lib/contextLabels';
 import {
+  ConditionStep,
+  DirectionStep,
+  MarksStep,
+  NoteStep,
+  PeopleStep,
+  StateStep,
+  StayingStep,
+} from './components/contextSteps';
+import { PhotosStep } from './components/sightingSteps';
+import { derivePlaceLabels } from './lib/areaLabel';
+import {
+  CONTEXT_STEP_IDS,
+  isMoving,
+  isParked,
+  stepApplies,
+  stepTouched,
+  type ContextStepId,
+} from './lib/contextAnswers';
+import { CONTEXT_STEP_QUESTIONS, contextDetailCount } from './lib/contextLabels';
+import {
+  DRIVING_DIRECTIONS,
   MAX_NOTE_LENGTH,
   MAX_SIGHTING_PHOTOS,
   MIN_SIGHTING_PHOTOS,
+  PARKED_LIKELIHOOD,
+  PEOPLE_PRESENCE,
   SIGHTING_CONTEXT_FLAGS,
   type ReportSightingAnswers,
 } from './types';
 
 const log = createLogger('sightings');
+
+const contextFlagsSchema = z.array(z.enum(SIGHTING_CONTEXT_FLAGS)).optional();
+
+/**
+ * One optional context step: its question from contextLabels, shown only
+ * where it applies (stepApplies — the one source "Add details" reads too),
+ * and "Skip" until answered then "Continue". `rest` adds the step's own parts.
+ *
+ * ⚠️ NO onContinue here: the wizard runs one as a busy action, so every Skip
+ * flashed a spinner and dropped Back for a frame — seven times in a row. The
+ * funnel reads ONE event instead, from the last step (see `note`).
+ */
+function contextStep(
+  id: ContextStepId,
+  rest: Omit<WizardStep<ReportSightingAnswers>, 'id' | 'question'>,
+): WizardStep<ReportSightingAnswers> {
+  return {
+    id,
+    question: CONTEXT_STEP_QUESTIONS[id],
+    optional: true,
+    when: (answers) => stepApplies(answers, id),
+    ctaLabel: (answers) => (stepTouched(answers, id) ? 'Continue' : 'Skip'),
+    ...rest,
+  };
+}
 
 const evidenceShape = z
   .object({
@@ -112,33 +161,62 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
             return { areaLabel: areaLabel ?? undefined, locality: locality ?? undefined };
           },
         },
-        {
-          id: 'context',
-          question: 'Anything else that helps?',
-          helper: 'All optional. Tap what you saw.',
-          component: ContextStep,
-          // Everything optional: an empty step must never cost a report, and
-          // `optional` keeps the final gate from ever demanding it. ONE way on
-          // (2026-10-01): the footer says "Skip" until something is added, then
-          // "Continue", so it is always labelled for what it will do.
-          optional: true,
-          ctaLabel: (answers) => (contextDetailCount(answers) > 0 ? 'Continue' : 'Skip'),
-          schema: z.object({
-            contextFlags: z.array(z.enum(SIGHTING_CONTEXT_FLAGS)).optional(),
-            note: z.string().max(MAX_NOTE_LENGTH).optional(),
-          }),
+        // The optional context, ONE QUESTION PER STEP, as cards (owner,
+        // 2026-10-20; one page of chips before). Every one is optional — an
+        // empty answer must never cost a report, and `optional` keeps the
+        // final gate from demanding it — and labelled for what it will do:
+        // "Skip" until answered, then "Continue". The rules that tie them
+        // together are lib/contextAnswers'; what is sent is unchanged.
+        contextStep('state', {
+          helper: 'All optional.',
+          component: StateStep,
+          schema: z.object({ contextFlags: contextFlagsSchema }),
+          // Changing what it was doing from Confirm asks its follow-up too.
+          editContinuesTo: (answers) =>
+            isParked(answers) ? 'staying' : isMoving(answers) ? 'direction' : undefined,
+        }),
+        contextStep('staying', {
+          component: StayingStep,
+          schema: z.object({ parkedLikelihood: z.enum(PARKED_LIKELIHOOD).optional() }),
+        }),
+        contextStep('direction', {
+          helper: 'Tap where it went.',
+          component: DirectionStep,
+          schema: z.object({ direction: z.enum(DRIVING_DIRECTIONS).optional() }),
+        }),
+        contextStep('people', {
+          component: PeopleStep,
+          schema: z.object({ peoplePresence: z.enum(PEOPLE_PRESENCE).optional() }),
+        }),
+        contextStep('condition', {
+          helper: 'Any that apply.',
+          component: ConditionStep,
+          schema: z.object({ contextFlags: contextFlagsSchema }),
+        }),
+        contextStep('marks', {
+          helper: 'The owner’s marks. Tick any you could see from where you were.',
+          component: MarksStep,
+          schema: z.object({ confirmedFeatureIds: z.array(z.string()).optional() }),
+        }),
+        contextStep('note', {
+          helper: 'What you noticed. A line is plenty.',
+          component: NoteStep,
+          schema: z.object({ note: z.string().max(MAX_NOTE_LENGTH).optional() }),
+          // The context's ONE funnel event (no per-step onContinue — see
+          // contextStep): the old one-page step's summary, plus which steps
+          // were answered ("Not sure" counts) and which were walked past.
           onContinue: async (answers) => {
-            // Skip and Continue are the same button now, so both are counted:
-            // `details: 0` is a skip.
-            log.info('step_completed', {
-              step: 'context',
+            log.info('context_summary', {
               details: contextDetailCount(answers),
               flags: answers.contextFlags?.length ?? 0,
               hasNote: Boolean(answers.note?.trim()),
               unsure: answers.contextUnsure?.length ?? 0,
+              answered: CONTEXT_STEP_IDS.filter(
+                (id) => stepApplies(answers, id) && stepTouched(answers, id),
+              ),
             });
           },
-        },
+        }),
         {
           id: 'confirm',
           question: 'Check and send',
