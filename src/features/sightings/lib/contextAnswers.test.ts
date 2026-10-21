@@ -1,7 +1,7 @@
 /**
  * WHAT:  Tests for the report's context rules — each pick's patch, the
- *        cross-question clearing, "Looks intact"'s exclusivity, "Not sure",
- *        and the two safety-line checks.
+ *        cross-question clearing (the damage details with "Damage visible"),
+ *        "Looks intact"'s exclusivity, "Not sure", and the safety-line checks.
  * WHY:   Once the questions sit on separate steps (owner, 2026-10-20) these
  *        rules are the only thing holding them together; no screen sees them
  *        all. sightingApi.test's golden payload pins where they lead.
@@ -30,6 +30,7 @@ import {
   stepAnswered,
   stepApplies,
   stepTouched,
+  toggleDamageKind,
   toggleMark,
 } from './contextAnswers';
 
@@ -160,6 +161,27 @@ describe('its condition', () => {
     ]);
   });
 
+  it('⚠️ losing "Damage visible" clears what damage — unticked, or by "Looks intact"', () => {
+    let a: Answers = {};
+    a = apply(a, changeConditions(a, ['damage_visible']));
+    a = apply(a, toggleDamageKind(a, 'fire_damage'));
+    a = apply(a, { damageNote: 'Scorched bonnet' });
+
+    // Another condition beside it keeps them.
+    const kept = apply(a, changeConditions(a, ['damage_visible', 'plate_changed']));
+    expect(kept.damageKinds).toEqual(['fire_damage']);
+    expect(kept.damageNote).toBe('Scorched bonnet');
+
+    const unticked = apply(a, changeConditions(a, []));
+    expect(unticked.damageKinds).toBeUndefined();
+    expect(unticked.damageNote).toBeUndefined();
+
+    const intact = apply(a, changeConditions(a, ['damage_visible', 'looks_intact']));
+    expect(intact.contextFlags).toEqual(['looks_intact']);
+    expect(intact.damageKinds).toBeUndefined();
+    expect(intact.damageNote).toBeUndefined();
+  });
+
   it('⚠️ SAFETY: "Being loaded or towed" brings up the line — a crime in progress', () => {
     expect(stateShowsSafetyLine({ contextFlags: ['being_loaded'] })).toBe(true);
     expect(stateShowsSafetyLine({ contextFlags: ['parked'] })).toBe(false);
@@ -169,6 +191,25 @@ describe('its condition', () => {
   it('⚠️ SAFETY: "Being stripped" brings up the line — people are working on the car', () => {
     expect(conditionShowsSafetyLine({ contextFlags: ['being_stripped'] })).toBe(true);
     expect(conditionShowsSafetyLine({ contextFlags: ['damage_visible'] })).toBe(false);
+  });
+});
+
+describe('what damage', () => {
+  it('toggles a kind in and out, in the order tapped', () => {
+    let a: Answers = {};
+    a = apply(a, toggleDamageKind(a, 'fire_damage'));
+    a = apply(a, toggleDamageKind(a, 'smashed_window'));
+    expect(a.damageKinds).toEqual(['fire_damage', 'smashed_window']);
+    expect(toggleDamageKind(a, 'fire_damage').damageKinds).toEqual(['smashed_window']);
+  });
+
+  it('a state picked afterwards keeps "Damage visible" and its details', () => {
+    let a: Answers = {};
+    a = apply(a, changeConditions(a, ['damage_visible']));
+    a = apply(a, toggleDamageKind(a, 'dents_scrapes'));
+    a = apply(a, selectState(a, 'parked'));
+    expect(a.contextFlags).toEqual(['parked', 'damage_visible']);
+    expect(a.damageKinds).toEqual(['dents_scrapes']);
   });
 });
 
@@ -191,6 +232,12 @@ describe('the steps', () => {
     expect(stepTouched({ direction: 'N' }, 'direction')).toBe(true);
     expect(stepTouched({ note: '   ' }, 'note')).toBe(false);
     expect(stepTouched({ confirmedFeatureIds: ['m1'] }, 'marks')).toBe(true);
+    // What damage: a kind, or words — a blank box is neither.
+    expect(stepTouched({}, 'damage')).toBe(false);
+    expect(stepTouched({ damageKinds: [], damageNote: '  ' }, 'damage')).toBe(false);
+    expect(stepTouched({ damageKinds: ['broken_lights'] }, 'damage')).toBe(true);
+    expect(stepTouched({ damageNote: 'Mirror hanging off' }, 'damage')).toBe(true);
+    expect(stepAnswered({ damageNote: 'Mirror hanging off' }, 'damage')).toBe(true);
   });
 
   it('a step holds a real answer only when something is sent — "Not sure" is not one', () => {
@@ -205,12 +252,17 @@ describe('the steps', () => {
     expect(stepApplies({ contextFlags: ['parked'] }, 'direction')).toBe(false);
     expect(stepApplies({}, 'marks')).toBe(false);
     expect(stepApplies({}, 'people')).toBe(true);
+    // What damage: only after "Damage visible".
+    expect(stepApplies({ contextFlags: ['parked', 'damage_visible'] }, 'damage')).toBe(true);
+    expect(stepApplies({ contextFlags: ['being_stripped'] }, 'damage')).toBe(false);
+    expect(stepApplies({}, 'damage')).toBe(false);
     expect(CONTEXT_STEP_IDS).toEqual([
       'state',
       'staying',
       'direction',
       'people',
       'condition',
+      'damage',
       'marks',
       'note',
     ]);

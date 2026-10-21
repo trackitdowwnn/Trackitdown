@@ -1,16 +1,19 @@
 /**
  * WHAT:  The rules of the report's optional context questions — what was it
- *        doing (and its follow-up), anyone in or near it, its condition, the
- *        owner's marks — as pure functions over the wizard's answers. Each
+ *        doing (and its follow-up), anyone in or near it, its condition (and
+ *        what damage, after "Damage visible"), the owner's marks — as pure
+ *        functions over the wizard's answers. Each
  *        `select…` returns the PATCH to apply; nothing here renders.
  * WHY:   The rules cross questions: a new state clears the old state's
  *        follow-up and its "Not sure"; "Looks intact" excludes every other
- *        condition; contextFlags is the state plus the conditions. While every
+ *        condition; losing "Damage visible" clears the damage details;
+ *        contextFlags is the state plus the conditions. While every
  *        question sat on one page, the step component could hold them. Split
  *        into a step per question (owner, 2026-10-20), no single component
  *        sees them all — so they live here, once, and every step calls them.
- *        What reaches create_sighting must not change: sightingApi.test's
- *        golden payload pins it.
+ *        What reaches create_sighting must not change by accident:
+ *        sightingApi.test's golden payload pins it (the damage params were a
+ *        deliberate addition, owner, 2026-10-21).
  * LINKS: src/features/sightings/components/contextSteps.tsx (the steps);
  *        src/features/sightings/lib/contextLabels.ts (the words);
  *        src/features/sightings/types.ts (ReportSightingAnswers).
@@ -21,6 +24,7 @@ import {
   VEHICLE_STATE_FLAGS,
   type ConditionFlag,
   type ContextQuestion,
+  type DamageKind,
   type DrivingDirection,
   type ParkedLikelihood,
   type PeoplePresence,
@@ -55,6 +59,8 @@ export function conditionsOf(answers: Answers): ConditionFlag[] {
 export const isParked = (answers: Answers) => stateOf(answers) === 'parked';
 /** Moving was picked: its "which way?" follow-up applies. */
 export const isMoving = (answers: Answers) => stateOf(answers) === 'driving';
+/** "Damage visible" was ticked: its "What damage?" follow-up applies. */
+export const hasDamage = (answers: Answers) => conditionsOf(answers).includes('damage_visible');
 /** Whether the post has marks to offer (the seed; empty or absent = none). */
 export const hasMarks = (answers: Answers) => (answers.confirmableFeatures ?? []).length > 0;
 
@@ -149,7 +155,10 @@ export function selectPeople(answers: Answers, picked: MaybeUnsure<PeoplePresenc
 }
 
 /** "Looks intact" is exclusive: it can't stand beside damage, stripping or a
- *  changed plate, so ticking it clears them and ticking any of them clears it. */
+ *  changed plate, so ticking it clears them and ticking any of them clears it.
+ *  The damage details belong to "Damage visible" (owner, 2026-10-21): once it
+ *  is gone — unticked, or cleared by "Looks intact" — so are they, as a new
+ *  state clears the old one's follow-up (the server refuses them without it). */
 export function changeConditions(answers: Answers, next: ConditionFlag[]): ContextPatch {
   const current = conditionsOf(answers);
   const added = next.find((flag) => !current.includes(flag));
@@ -160,7 +169,23 @@ export function changeConditions(answers: Answers, next: ConditionFlag[]): Conte
         ? next.filter((flag) => flag !== 'looks_intact')
         : next;
   const state = stateOf(answers);
-  return { contextFlags: [...(state ? [state] : []), ...resolved] };
+  return {
+    contextFlags: [...(state ? [state] : []), ...resolved],
+    ...(resolved.includes('damage_visible')
+      ? {}
+      : { damageKinds: undefined, damageNote: undefined }),
+  };
+}
+
+/** Ticks or unticks one kind of damage, kept in the order tapped (the server
+ *  stores its own order). */
+export function toggleDamageKind(answers: Answers, kind: DamageKind): ContextPatch {
+  const kinds = answers.damageKinds ?? [];
+  return {
+    damageKinds: kinds.includes(kind)
+      ? kinds.filter((existing) => existing !== kind)
+      : [...kinds, kind],
+  };
 }
 
 /** Ticks or unticks one of the owner's marks. */
@@ -175,7 +200,7 @@ export function toggleMark(answers: Answers, id: string): ContextPatch {
 
 /** The report's context steps, one question each (reportSightingFlow). */
 export type ContextStepId =
-  'state' | 'staying' | 'direction' | 'people' | 'condition' | 'marks' | 'note';
+  'state' | 'staying' | 'direction' | 'people' | 'condition' | 'damage' | 'marks' | 'note';
 
 /** The context steps in the order the spotter meets them. */
 export const CONTEXT_STEP_IDS: readonly ContextStepId[] = [
@@ -184,6 +209,7 @@ export const CONTEXT_STEP_IDS: readonly ContextStepId[] = [
   'direction',
   'people',
   'condition',
+  'damage',
   'marks',
   'note',
 ];
@@ -205,6 +231,8 @@ export function stepTouched(answers: Answers, id: ContextStepId): boolean {
       return Boolean(answers.peoplePresence) || isUnsure(answers, 'people');
     case 'condition':
       return conditionsOf(answers).length > 0;
+    case 'damage':
+      return (answers.damageKinds ?? []).length > 0 || Boolean(answers.damageNote?.trim());
     case 'marks':
       return (answers.confirmedFeatureIds ?? []).length > 0;
     case 'note':
@@ -231,6 +259,7 @@ export function stepAnswered(answers: Answers, id: ContextStepId): boolean {
 export function stepApplies(answers: Answers, id: ContextStepId): boolean {
   if (id === 'staying') return isParked(answers);
   if (id === 'direction') return isMoving(answers);
+  if (id === 'damage') return hasDamage(answers);
   if (id === 'marks') return hasMarks(answers);
   return true;
 }

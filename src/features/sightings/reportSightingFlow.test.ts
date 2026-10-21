@@ -3,7 +3,8 @@
  *        (no intro screens, the camera first, one context question per step,
  *        confirm carries "Send report"), the photo gating (1–3 evidence
  *        photos), the never-blocking context steps (when each shows, Skip /
- *        Continue, the edit's follow-up), and the confirm step's privacy line
+ *        Continue, the edits' follow-ups, the funnel event never carrying the
+ *        damage words), and the confirm step's privacy line
  *        (footerNote, pinned word for word). The safety gate is no longer a step
  *        (ReportSafetySheet.test.tsx).
  * WHY:   The wizard framework warns that a typo'd schema key compiles but can
@@ -13,10 +14,11 @@
  * LINKS: src/features/sightings/reportSightingFlow.tsx, docs/TESTING.md.
  */
 
+import { getRecentLogs } from '@/shared/lib/logger';
 import { flattenFlow } from '@/shared/wizard';
 
 import { reportSightingFlow } from './reportSightingFlow';
-import { MAX_NOTE_LENGTH } from './types';
+import { MAX_DAMAGE_NOTE_LENGTH, MAX_NOTE_LENGTH } from './types';
 
 // The flow config imports its step components, which pull native leaves the
 // jest environment can't register — stub them (the steps render elsewhere).
@@ -59,6 +61,7 @@ describe('reportSightingFlow shape', () => {
       'direction',
       'people',
       'condition',
+      'damage',
       'marks',
       'note',
       'confirm',
@@ -99,7 +102,16 @@ describe('reportSightingFlow shape', () => {
     expect(schema.safeParse({ photos: [{ ...photo, lat: 51.5, lng: -0.12 }] }).success).toBe(true);
   });
 
-  const CONTEXT_STEPS = ['state', 'staying', 'direction', 'people', 'condition', 'marks', 'note'];
+  const CONTEXT_STEPS = [
+    'state',
+    'staying',
+    'direction',
+    'people',
+    'condition',
+    'damage',
+    'marks',
+    'note',
+  ];
   const step = (id: string) => {
     const found = steps.find((candidate) => candidate.id === id);
     if (!found) throw new Error(`missing step ${id}`);
@@ -116,6 +128,14 @@ describe('reportSightingFlow shape', () => {
     expect(
       schemaFor('note').safeParse({ note: 'x'.repeat(MAX_NOTE_LENGTH + 1) }).success,
     ).toBe(false);
+    expect(
+      schemaFor('damage').safeParse({ damageKinds: ['smashed_window'], damageNote: 'Glass' })
+        .success,
+    ).toBe(true);
+    expect(schemaFor('damage').safeParse({ damageKinds: ['flood_damage'] }).success).toBe(false);
+    expect(
+      schemaFor('damage').safeParse({ damageNote: 'x'.repeat(MAX_DAMAGE_NOTE_LENGTH + 1) }).success,
+    ).toBe(false);
   });
 
   it('the follow-ups and the marks show only when they apply', () => {
@@ -127,6 +147,9 @@ describe('reportSightingFlow shape', () => {
     expect(shown('marks', { confirmableFeatures: [{ id: 'm1', description: 'Dent' }] })).toBe(true);
     expect(shown('marks', { confirmableFeatures: [] })).toBe(false);
     expect(shown('people', {})).toBe(true);
+    expect(shown('damage', { contextFlags: ['damage_visible'] })).toBe(true);
+    expect(shown('damage', { contextFlags: ['plate_changed'] })).toBe(false);
+    expect(shown('damage', {})).toBe(false);
   });
 
   it('each step is one way on: "Skip" until answered, then "Continue" — "Not sure" is an answer', () => {
@@ -142,6 +165,9 @@ describe('reportSightingFlow shape', () => {
     expect(label('condition', { contextFlags: ['parked'] })).toBe('Skip'); // a state isn't a condition
     expect(label('note', { note: '  ' })).toBe('Skip');
     expect(label('note', { note: 'By the bins' })).toBe('Continue');
+    expect(label('damage', { contextFlags: ['damage_visible'] })).toBe('Skip');
+    expect(label('damage', { damageKinds: ['fire_damage'] })).toBe('Continue');
+    expect(label('damage', { damageNote: 'Scorched' })).toBe('Continue');
   });
 
   it('⚠️ SAFETY: no context step hint asks the spotter to follow, watch or go closer', () => {
@@ -157,6 +183,28 @@ describe('reportSightingFlow shape', () => {
     expect(onward?.({ contextFlags: ['parked'] })).toBe('staying');
     expect(onward?.({ contextFlags: ['driving'] })).toBe('direction');
     expect(onward?.({ contextFlags: ['being_loaded'] })).toBeUndefined();
+  });
+
+  it('an edit of its condition continues to what damage — with "Damage visible" only', () => {
+    const onward = step('condition').editContinuesTo;
+    expect(onward?.({ contextFlags: ['parked', 'damage_visible'] })).toBe('damage');
+    expect(onward?.({ contextFlags: ['being_stripped'] })).toBeUndefined();
+    expect(onward?.({})).toBeUndefined();
+  });
+
+  it('⚠️ logs how much damage was described — never their words', async () => {
+    await step('note').onContinue?.({
+      contextFlags: ['damage_visible'],
+      damageKinds: ['smashed_window', 'fire_damage'],
+      damageNote: 'PRIVATEDAMAGEWORDS',
+      note: '',
+    });
+    expect(JSON.stringify(getRecentLogs())).not.toContain('PRIVATEDAMAGEWORDS');
+    expect(getRecentLogs().findLast((e) => e.message === 'context_summary')?.data).toMatchObject({
+      damageKinds: 2,
+      hasDamageNote: true,
+      answered: ['condition', 'damage'],
+    });
   });
 
   it('says who sees what above "Send report", word for word', () => {

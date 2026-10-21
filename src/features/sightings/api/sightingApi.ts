@@ -28,6 +28,7 @@ import {
 import { supabase } from '@/shared/api';
 import { SightingWithdrawError } from '../lib/sightingWithdrawError';
 import {
+  cleanSpotterWords,
   cleanWithdrawNote,
   MAX_WITHDRAW_NOTE_LENGTH,
   WITHDRAW_REASONS,
@@ -46,7 +47,9 @@ import type {
   SightingQuota,
 } from '../types';
 import {
+  DAMAGE_KINDS,
   DRIVING_DIRECTIONS,
+  MAX_DAMAGE_NOTE_LENGTH,
   MAX_NOTE_LENGTH,
   MAX_SIGHTING_PHOTOS,
   MIN_SIGHTING_PHOTOS,
@@ -148,6 +151,11 @@ export const submitAnswersSchema = z.object({
     .max(8)
     .optional()
     .catch(undefined),
+  // What damage was seen and their words about it (2026-10-21). Sent only
+  // beside 'damage_visible' — buildCreateSightingParams' rule, the server's
+  // too (INVALID_INPUT otherwise).
+  damageKinds: z.array(z.enum(DAMAGE_KINDS)).max(DAMAGE_KINDS.length).optional(),
+  damageNote: z.string().max(MAX_DAMAGE_NOTE_LENGTH).optional(),
 });
 
 const createSightingResultSchema = z.object({ sighting_id: z.guid() });
@@ -166,6 +174,11 @@ export function buildCreateSightingParams(
   answers: z.infer<typeof submitAnswersSchema>,
   uploadedPaths: string[],
 ): CreateSightingParams {
+  // The damage details belong to "Damage visible": without it they are never
+  // sent (the wizard clears them as it goes; this is the backstop, because
+  // the server refuses them without the flag).
+  const damaged = answers.contextFlags.includes('damage_visible');
+  const damageKinds = damaged ? (answers.damageKinds ?? []) : [];
   return {
     p_post_id: postId,
     p_photos: answers.photos.map((photo, index) => ({
@@ -189,6 +202,10 @@ export function buildCreateSightingParams(
     p_offered_feature_ids: answers.confirmableFeatures
       ? answers.confirmableFeatures.map((feature) => feature.id)
       : null,
+    p_damage_kinds: damageKinds.length > 0 ? damageKinds : null,
+    // Hidden characters stripped (the server refuses them), trimmed, and
+    // null when nothing visible is left.
+    p_damage_note: damaged ? cleanSpotterWords(answers.damageNote) : null,
   };
 }
 
@@ -375,6 +392,15 @@ const ownerSightingSchema = z.object({
   // The marks this spotter was asked about (2026-10-19). Optional AND nullable:
   // absent from a server before that migration, null for older reports.
   offered_feature_ids: z.array(z.guid()).nullable().optional(),
+  // What damage they saw, and their words about it (20261021100000). Optional
+  // AND nullable, like the marks above. ⚠️ Deliberately loose: the kinds are
+  // plain strings (a kind from a newer server is skipped on screen —
+  // contextLabels), the note has no length check (the server's 300 is in
+  // characters, zod's .max in UTF-16 units), and a malformed value reads as
+  // "not answered" — one row's extra detail must never cost the owner the
+  // whole list.
+  damage_kinds: z.array(z.string()).nullable().optional().catch(null),
+  damage_note: z.string().nullable().optional().catch(null),
   photos: z.array(
     z.object({
       path: z.string(),
@@ -473,6 +499,8 @@ export async function fetchPostSightings(postId: string): Promise<OwnerSighting[
     peoplePresence: row.people_presence,
     confirmedFeatures: row.confirmed_features,
     offeredFeatureIds: row.offered_feature_ids ?? null,
+    damageKinds: row.damage_kinds ?? null,
+    damageNote: row.damage_note ?? null,
     photos: row.photos.map((photo) => ({
       path: photo.path,
       lat: photo.lat,

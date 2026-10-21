@@ -1,7 +1,8 @@
 /**
  * WHAT:  The report-sighting WizardFlow — one intro-less phase: photos, then
  *        the optional context one question per step (state → staying /
- *        direction → people → condition → marks → note, 2026-10-20), then
+ *        direction → people → condition → damage → marks → note, 2026-10-20;
+ *        damage, after "Damage visible", 2026-10-21), then
  *        confirm. No built-in review (the confirm step IS the review), final
  *        CTA "Send report". The safety gate comes BEFORE it, as
  *        ReportSafetySheet (2026-09-30).
@@ -27,6 +28,7 @@ import type { WizardStep, WizardFlow } from '@/shared/wizard';
 import { ConfirmStep, REPORT_PRIVACY_LINE } from './components/ConfirmStep';
 import {
   ConditionStep,
+  DamageStep,
   DirectionStep,
   MarksStep,
   NoteStep,
@@ -38,6 +40,7 @@ import { PhotosStep } from './components/sightingSteps';
 import { derivePlaceLabels } from './lib/areaLabel';
 import {
   CONTEXT_STEP_IDS,
+  hasDamage,
   isMoving,
   isParked,
   stepApplies,
@@ -46,7 +49,9 @@ import {
 } from './lib/contextAnswers';
 import { CONTEXT_STEP_QUESTIONS, contextDetailCount } from './lib/contextLabels';
 import {
+  DAMAGE_KINDS,
   DRIVING_DIRECTIONS,
+  MAX_DAMAGE_NOTE_LENGTH,
   MAX_NOTE_LENGTH,
   MAX_SIGHTING_PHOTOS,
   MIN_SIGHTING_PHOTOS,
@@ -192,6 +197,19 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
           helper: 'Any that apply.',
           component: ConditionStep,
           schema: z.object({ contextFlags: contextFlagsSchema }),
+          // Ticking "Damage visible" from Confirm asks what damage too.
+          editContinuesTo: (answers) => (hasDamage(answers) ? 'damage' : undefined),
+        }),
+        // "Damage visible"'s follow-up, its own step as Parked's is (owner,
+        // 2026-10-21). The words are the spotter's own, unmoderated: never
+        // logged (the funnel event below carries only whether there are any).
+        contextStep('damage', {
+          helper: 'Any you can see from where you are.',
+          component: DamageStep,
+          schema: z.object({
+            damageKinds: z.array(z.enum(DAMAGE_KINDS)).optional(),
+            damageNote: z.string().max(MAX_DAMAGE_NOTE_LENGTH).optional(),
+          }),
         }),
         contextStep('marks', {
           helper: 'The owner’s marks. Tick any you could see from where you were.',
@@ -210,6 +228,9 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
               details: contextDetailCount(answers),
               flags: answers.contextFlags?.length ?? 0,
               hasNote: Boolean(answers.note?.trim()),
+              // How many kinds, and whether they added words — never the words.
+              damageKinds: answers.damageKinds?.length ?? 0,
+              hasDamageNote: Boolean(answers.damageNote?.trim()),
               unsure: answers.contextUnsure?.length ?? 0,
               answered: CONTEXT_STEP_IDS.filter(
                 (id) => stepApplies(answers, id) && stepTouched(answers, id),

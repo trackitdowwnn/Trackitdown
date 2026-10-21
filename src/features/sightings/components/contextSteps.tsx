@@ -6,9 +6,11 @@
  *          direction  Which way was it heading?          (only after Moving)
  *          people     Anyone in or near it?
  *          condition  Its condition                      (any that apply)
+ *          damage     What damage can you see?           (only after Damage visible)
  *          marks      Could you see any of these?        (only if the car has marks)
  *          note       A note for the owner
  *        Every single-answer question ends with an equal "Not sure" card.
+ *        The multi-choice cards (condition, damage) are title-only.
  * WHY:   The owner asked (2026-10-20) for "Anything else that helps?" — one
  *        page of chips — to become separate steps "with more detail on each
  *        step", as cards "instead of just badges". The answers and what is
@@ -39,10 +41,16 @@
 
 import { Feather } from '@expo/vector-icons';
 import {
+  AppWindow,
   Car,
   CarFront,
+  CircleOff,
   CircleParking,
   CircleQuestionMark,
+  Flame,
+  Hammer,
+  LightbulbOff,
+  Puzzle,
   RectangleHorizontal,
   ShieldCheck,
   SquareParking,
@@ -91,6 +99,7 @@ import {
   stateShowsSafetyLine,
   shownAnswer,
   stateOf,
+  toggleDamageKind,
   toggleMark,
   type MaybeUnsure,
 } from '../lib/contextAnswers';
@@ -98,6 +107,8 @@ import {
   CONDITION_OPTIONS,
   CONTEXT_OPTION_DESCRIPTIONS,
   CONTEXT_STEP_QUESTIONS,
+  DAMAGE_KIND_LABELS,
+  DAMAGE_OPTIONS,
   FLAG_LABELS,
   PARKED_LIKELIHOOD_LABELS,
   PEOPLE_OPTIONS,
@@ -106,9 +117,12 @@ import {
   STAYING_OPTIONS,
   directionLabel,
 } from '../lib/contextLabels';
+import { stripHiddenCharacters } from '../lib/withdrawReasons';
 import {
+  MAX_DAMAGE_NOTE_LENGTH,
   MAX_NOTE_LENGTH,
   type ConditionFlag,
+  type DamageKind,
   type ParkedLikelihood,
   type PeoplePresence,
   type ReportSightingAnswers,
@@ -146,6 +160,14 @@ const CONDITION_ICONS: Record<ConditionFlag, LucideIcon> = {
   damage_visible: TriangleAlert,
   being_stripped: Wrench,
   looks_intact: ShieldCheck,
+};
+const DAMAGE_ICONS: Record<DamageKind, LucideIcon> = {
+  smashed_window: AppWindow,
+  dents_scrapes: Hammer,
+  broken_lights: LightbulbOff,
+  missing_wheels: CircleOff,
+  missing_parts: Puzzle,
+  fire_damage: Flame,
 };
 
 /** SAFETY: say "Don't approach" out loud as it appears. iOS has no live
@@ -382,6 +404,51 @@ export function ConditionStep({ answers, setAnswers }: StepProps) {
         {showing ? <SafetyPresenceLine crimeInProgress /> : null}
       </View>
     </LayoutAnimationConfig>
+  );
+}
+
+/** What damage can you see? — only after "Damage visible" (owner, 2026-10-21).
+ *  Any that apply, then "Anything else?" in their own words. Never moves on by
+ *  itself: a multi-choice is done when the spotter says so, and the box may
+ *  still be wanted. Hidden characters are stripped as typed — the server
+ *  refuses them, and a spotter can't fix what they can't see. */
+export function DamageStep({ answers, setAnswers }: StepProps) {
+  const styles = useThemedStyles(makeStyles);
+  const note = answers.damageNote ?? '';
+  return (
+    <View style={styles.stack}>
+      <CardSelectMulti
+        options={DAMAGE_OPTIONS.map((value) => ({
+          value,
+          label: DAMAGE_KIND_LABELS[value],
+          icon: DAMAGE_ICONS[value],
+        }))}
+        value={answers.damageKinds ?? []}
+        onChange={(next) => {
+          // One card changes per tap: whichever is in one list but not the other.
+          const current = answers.damageKinds ?? [];
+          const changed =
+            next.find((kind) => !current.includes(kind)) ??
+            current.find((kind) => !next.includes(kind));
+          if (changed) setAnswers(toggleDamageKind(answers, changed));
+        }}
+        accessibilityLabel={CONTEXT_STEP_QUESTIONS.damage}
+        testID="context-damage"
+      />
+      <TextField
+        label="Anything else?"
+        variant="multiline"
+        value={note}
+        onChangeText={(text) => setAnswers({ damageNote: stripHiddenCharacters(text) })}
+        // Characters, as the server counts them (an emoji is one).
+        counter={`${[...note].length}/${MAX_DAMAGE_NOTE_LENGTH}`}
+        // The counter is hidden from screen readers (TextField's contract);
+        // the limit goes here instead, read once on focus.
+        accessibilityHint={`Up to ${MAX_DAMAGE_NOTE_LENGTH} characters`}
+        maxLength={MAX_DAMAGE_NOTE_LENGTH}
+        testID="context-damage-note"
+      />
+    </View>
   );
 }
 

@@ -3,7 +3,8 @@
  *        option lists the context step renders and its questions,
  *        sightingAnswerGroups() (the owner's "What they saw" answers, per
  *        question), contextReviewRows() (the
- *        check-and-send rows), and contextDetailCount().
+ *        check-and-send rows), and contextDetailCount(); the damage seen
+ *        (2026-10-21) on the "Damage visible" line, and its own words.
  * WHY:   The spotter's chips and the owner's summaries share these words; a
  *        drift between them is the bug the 2026-10-01 redesign removed. The
  *        detail count drives the step's Skip / Continue label, so a "Not sure"
@@ -18,6 +19,8 @@ import {
   CONTEXT_QUESTIONS,
   CONTEXT_SHORT_LABELS,
   CONTEXT_STEP_QUESTIONS,
+  DAMAGE_KIND_LABELS,
+  DAMAGE_OPTIONS,
   FLAG_LABELS,
   PARKED_LIKELIHOOD_LABELS,
   PEOPLE_OPTIONS,
@@ -148,6 +151,89 @@ describe('the context steps’ cards (2026-10-20)', () => {
     expect(CONTEXT_STEP_QUESTIONS.state).toBe(CONTEXT_QUESTIONS.state);
     expect(CONTEXT_STEP_QUESTIONS.people).toBe(CONTEXT_QUESTIONS.people);
     expect(CONTEXT_STEP_QUESTIONS.condition).toBe(CONTEXT_QUESTIONS.condition);
+    expect(CONTEXT_STEP_QUESTIONS.damage).toBe('What damage can you see?');
+  });
+});
+
+describe('what damage (owner, 2026-10-21)', () => {
+  it('offers the six kinds in the server’s order, each in plain words', () => {
+    expect(DAMAGE_OPTIONS).toEqual([
+      'smashed_window',
+      'dents_scrapes',
+      'broken_lights',
+      'missing_wheels',
+      'missing_parts',
+      'fire_damage',
+    ]);
+    expect(DAMAGE_OPTIONS.map((kind) => DAMAGE_KIND_LABELS[kind])).toEqual([
+      'Smashed window',
+      'Dents or scrapes',
+      'Broken lights',
+      'Missing wheels',
+      'Missing panels or parts',
+      'Fire damage',
+    ]);
+  });
+
+  it('puts the damage seen on the "Damage visible" line — for the owner and the spotter alike', () => {
+    const source = {
+      contextFlags: ['damage_visible', 'plate_changed'] as const,
+      damageKinds: ['smashed_window', 'dents_scrapes'],
+    };
+    expect(sightingAnswerGroups({ ...source, contextFlags: [...source.contextFlags] })).toEqual([
+      {
+        key: 'condition',
+        label: 'Condition',
+        answers: ['Damage visible · Smashed window, Dents or scrapes', 'Plate changed or missing'],
+      },
+    ]);
+    expect(
+      contextReviewRows({
+        contextFlags: [...source.contextFlags],
+        damageKinds: ['smashed_window', 'dents_scrapes'],
+      }),
+    ).toEqual([
+      {
+        key: 'condition',
+        label: 'Its condition',
+        value: 'Damage visible · Smashed window, Dents or scrapes · Plate changed or missing',
+      },
+    ]);
+  });
+
+  it('⚠️ skips a kind this app doesn’t know (a newer server’s) — never a crash', () => {
+    expect(
+      sightingAnswerGroups({
+        contextFlags: ['damage_visible'],
+        damageKinds: ['flood_damage', 'broken_lights', 'toString'],
+      }),
+    ).toEqual([
+      { key: 'condition', label: 'Condition', answers: ['Damage visible · Broken lights'] },
+    ]);
+    // Nothing known at all: the plain flag, as before.
+    expect(
+      sightingAnswerGroups({ contextFlags: ['damage_visible'], damageKinds: ['flood_damage'] }),
+    ).toEqual([{ key: 'condition', label: 'Condition', answers: ['Damage visible'] }]);
+    expect(sightingAnswerGroups({ contextFlags: ['damage_visible'], damageKinds: null })).toEqual([
+      { key: 'condition', label: 'Condition', answers: ['Damage visible'] },
+    ]);
+  });
+
+  it('gives their words about the damage a row of their own, after the condition', () => {
+    expect(
+      contextReviewRows({
+        contextFlags: ['damage_visible'],
+        damageNote: '  Driver’s mirror hanging off  ',
+        note: 'By the bins',
+      }),
+    ).toEqual([
+      { key: 'condition', label: 'Its condition', value: 'Damage visible' },
+      { key: 'damage', label: 'About the damage', value: 'Driver’s mirror hanging off' },
+      { key: 'note', label: 'Your note', value: 'By the bins' },
+    ]);
+    expect(contextReviewRows({ contextFlags: ['damage_visible'], damageNote: '   ' })).toEqual([
+      { key: 'condition', label: 'Its condition', value: 'Damage visible' },
+    ]);
   });
 });
 
@@ -174,6 +260,17 @@ describe('contextDetailCount', () => {
         note: 'By the bins',
       }),
     ).toBe(7);
+  });
+
+  it('counts each kind of damage, and their words about it once — a blank box not at all', () => {
+    expect(
+      contextDetailCount({
+        contextFlags: ['damage_visible'],
+        damageKinds: ['smashed_window', 'fire_damage'],
+        damageNote: 'Scorched bonnet',
+      }),
+    ).toBe(4);
+    expect(contextDetailCount({ contextFlags: ['damage_visible'], damageNote: '  ' })).toBe(1);
   });
 });
 

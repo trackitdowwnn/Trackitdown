@@ -1,6 +1,7 @@
 /**
  * WHAT:  The one vocabulary for a sighting's structured context: the labels
- *        for every flag, follow-up and presence answer; the option lists the
+ *        for every flag, follow-up, presence answer and kind of damage
+ *        (DAMAGE_KIND_LABELS, 2026-10-21); the option lists the
  *        context steps render as cards, each card's one short line
  *        (CONTEXT_OPTION_DESCRIPTIONS), and every step's question
  *        (CONTEXT_STEP_QUESTIONS; CONTEXT_QUESTIONS for the shared three);
@@ -29,6 +30,7 @@ import {
   CONDITION_FLAGS,
   VEHICLE_STATE_FLAGS,
   type ConditionFlag,
+  type DamageKind,
   type DrivingDirection,
   type ParkedLikelihood,
   type PeoplePresence,
@@ -75,6 +77,34 @@ export const CONDITION_OPTIONS: readonly ConditionFlag[] = [
   'looks_intact',
 ];
 
+/** What damage was seen — the cards' titles after "Damage visible" (owner,
+ *  2026-10-21), and the words the owner reads after it. What it LOOKS like
+ *  from where they stand: "Missing panels or parts", not "Stripped". */
+export const DAMAGE_KIND_LABELS: Record<DamageKind, string> = {
+  smashed_window: 'Smashed window',
+  dents_scrapes: 'Dents or scrapes',
+  broken_lights: 'Broken lights',
+  missing_wheels: 'Missing wheels',
+  missing_parts: 'Missing panels or parts',
+  fire_damage: 'Fire damage',
+};
+export const DAMAGE_OPTIONS: readonly DamageKind[] = [
+  'smashed_window',
+  'dents_scrapes',
+  'broken_lights',
+  'missing_wheels',
+  'missing_parts',
+  'fire_damage',
+];
+
+/** The damage kinds' words, in the order given, skipping any this app
+ *  doesn't know (a newer server's kind is left out, never a crash). */
+function damageKindLabels(kinds: readonly string[] | null | undefined): string[] {
+  return (kinds ?? [])
+    .filter((kind): kind is DamageKind => Object.hasOwn(DAMAGE_KIND_LABELS, kind))
+    .map((kind) => DAMAGE_KIND_LABELS[kind]);
+}
+
 const DIRECTION_LABELS: Record<DrivingDirection, string> = {
   N: 'north',
   NE: 'north-east',
@@ -97,11 +127,13 @@ export interface ContextSummarySource {
   parkedLikelihood?: ParkedLikelihood | null;
   direction?: DrivingDirection | null;
   peoplePresence?: PeoplePresence | null;
+  /** Plain strings: the owner's list keeps a kind this app doesn't know. */
+  damageKinds?: readonly string[] | null;
 }
 
 /** One labelled row of the check-and-send step's "What you saw". */
 export interface ContextReviewRow {
-  key: 'state' | 'people' | 'condition' | 'marks' | 'note';
+  key: 'state' | 'people' | 'condition' | 'damage' | 'marks' | 'note';
   label: string;
   value: string;
 }
@@ -135,6 +167,9 @@ export const FOLLOW_UP_QUESTIONS = {
   direction: 'Which way was it heading?',
 } as const;
 
+/** "Damage visible"'s follow-up — its own step (owner, 2026-10-21). */
+export const DAMAGE_QUESTION = 'What damage can you see?';
+
 /** The last two context steps' questions. */
 export const MARKS_QUESTION = 'Could you see any of these?';
 export const NOTE_QUESTION = 'A note for the owner';
@@ -147,6 +182,7 @@ export const CONTEXT_STEP_QUESTIONS: Record<ContextStepId, string> = {
   direction: FOLLOW_UP_QUESTIONS.direction,
   people: CONTEXT_QUESTIONS.people,
   condition: CONTEXT_QUESTIONS.condition,
+  damage: DAMAGE_QUESTION,
   marks: MARKS_QUESTION,
   note: NOTE_QUESTION,
 };
@@ -206,6 +242,9 @@ export interface ContextAnswerGroup {
  * Legacy rows are shown as stored, never guessed at: two state flags (from
  * the old multi-select) list both; the old `people_nearby` flag stands in for
  * the 3-way answer only when that is absent.
+ *
+ * The damage seen rides on "Damage visible", as a follow-up rides on its
+ * state: "Damage visible · Smashed window, Dents or scrapes" (2026-10-21).
  */
 function answeredContext(source: ContextSummarySource): Record<ContextQuestionKey, string[]> {
   const flags = source.contextFlags ?? [];
@@ -227,9 +266,14 @@ function answeredContext(source: ContextSummarySource): Record<ContextQuestionKe
       ? FLAG_LABELS.people_nearby
       : null;
 
+  const damage = damageKindLabels(source.damageKinds);
   const condition = flags
     .filter((flag) => (CONDITION_FLAGS as readonly string[]).includes(flag))
-    .map((flag) => FLAG_LABELS[flag]);
+    .map((flag) =>
+      flag === 'damage_visible' && damage.length > 0
+        ? `${FLAG_LABELS[flag]} · ${damage.join(', ')}`
+        : FLAG_LABELS[flag],
+    );
 
   return { state, people: people ? [people] : [], condition };
 }
@@ -251,8 +295,8 @@ function answeredContextRows(source: ContextSummarySource): ContextReviewRow[] {
  * answered, under its short label, with their answers in the words of the
  * chips they tapped — the page sets them out as a label | answers table
  * (owner, 2026-10-20; chips under the full questions before that). Only what
- * was chosen, so a skipped question isn't there at all. The marks and the
- * note have blocks of their own.
+ * was chosen, so a skipped question isn't there at all. The marks, the words
+ * about the damage and the note have blocks of their own.
  */
 export function sightingAnswerGroups(source: ContextSummarySource): ContextAnswerGroup[] {
   const answered = answeredContext(source);
@@ -265,13 +309,18 @@ export function sightingAnswerGroups(source: ContextSummarySource): ContextAnswe
 
 /**
  * Everything the spotter said, as labelled rows for the check-and-send step:
- * the state with its follow-up, the people, the condition, the marks they
- * saw, and the note. The SAME answers the owner reads (sightingAnswerGroups);
+ * the state with its follow-up, the people, the condition (with the damage
+ * seen), their words about the damage, the marks they saw, and the note. The
+ * SAME answers the owner reads (sightingAnswerGroups);
  * only answered questions appear, and "Not sure" appears nowhere (it stores
  * nothing). The marks keep the owner's order.
  */
 export function contextReviewRows(answers: Partial<ReportSightingAnswers>): ContextReviewRow[] {
   const rows = answeredContextRows(answers);
+
+  // The kinds ride on the condition row; their words about it, their own.
+  const damageNote = answers.damageNote?.trim();
+  if (damageNote) rows.push({ key: 'damage', label: 'About the damage', value: damageNote });
 
   const confirmed = answers.confirmedFeatureIds ?? [];
   const marks = (answers.confirmableFeatures ?? [])
@@ -289,7 +338,8 @@ export function contextReviewRows(answers: Partial<ReportSightingAnswers>): Cont
 
 /**
  * How many details the context steps captured: each answered question, each
- * condition, each confirmed mark, and a note. "Not sure" isn't a detail (it
+ * condition, each kind of damage, each confirmed mark, the words about the
+ * damage, and a note. "Not sure" isn't a detail (it
  * sends nothing), so it doesn't count. Feeds the funnel's `context_summary`
  * (each step's own Skip / Continue is contextAnswers' `stepTouched`).
  * Trusts the steps to keep the answers consistent (a follow-up only under its
@@ -303,6 +353,8 @@ export function contextDetailCount(answers: Partial<ReportSightingAnswers>): num
     (answers.parkedLikelihood ? 1 : 0) +
     (answers.direction ? 1 : 0) +
     (answers.peoplePresence ? 1 : 0) +
+    (answers.damageKinds?.length ?? 0) +
+    (answers.damageNote?.trim() ? 1 : 0) +
     (answers.confirmedFeatureIds?.length ?? 0) +
     (answers.note?.trim() ? 1 : 0)
   );

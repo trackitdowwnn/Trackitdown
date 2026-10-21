@@ -7,7 +7,8 @@
  *        the answer given; the decision shown honestly afterwards (a rejected
  *        sighting is "Not your car", never "Marked helpful"), with when it was
  *        made; one toast whatever `counted` says; the sections (what they
- *        saw, the marks, where with its street address, the spotter); the
+ *        saw, the marks, the damage seen and their words about it, where with
+ *        its street address, the spotter); the
  *        safety notice beside the point and again before the map; Google Maps
  *        or Waze dropping a pin; Message opening the thread.
  * WHY:   This page had no test of its own, and shipped two bugs a test would
@@ -743,6 +744,52 @@ describe('the evidence', () => {
     } finally {
       dimensions.mockRestore();
     }
+  });
+
+  it('names the damage they saw on its Condition line (2026-10-21)', async () => {
+    ready(
+      sighting({
+        contextFlags: ['parked', 'damage_visible', 'plate_changed'],
+        damageKinds: ['smashed_window', 'dents_scrapes'],
+      }),
+    );
+    const view = await renderScreen();
+    expect(view.getByText('Damage visible · Smashed window, Dents or scrapes')).toBeTruthy();
+    expect(view.getByText('Plate changed or missing')).toBeTruthy();
+    expect(view.queryByTestId('seen-damage-note')).toBeNull();
+  });
+
+  it('quotes their words about the damage under the table, before "In their words"', async () => {
+    ready(
+      sighting({
+        contextFlags: ['parked', 'damage_visible'],
+        damageKinds: ['fire_damage'],
+        damageNote: '  Scorched bonnet  ',
+      }),
+    );
+    const view = await renderScreen();
+    expect(view.getByTestId('seen-damage-note')).toBeTruthy();
+    const texts = textsInOrder(view);
+    const at = (text: string) => texts.indexOf(text);
+    expect(at('Condition')).toBeLessThan(at('About the damage'));
+    expect(at('About the damage')).toBeLessThan(at('Scorched bonnet'));
+    expect(at('Scorched bonnet')).toBeLessThan(at('In their words'));
+  });
+
+  it('shows "Details" for their words about the damage alone', async () => {
+    ready(
+      sighting({
+        contextFlags: [],
+        parkedLikelihood: null,
+        peoplePresence: null,
+        note: null,
+        damageNote: 'Mirror hanging off',
+      }),
+    );
+    const view = await renderScreen();
+    expect(view.getByRole('header', { name: 'Details' })).toBeTruthy();
+    expect(view.queryByTestId('sighting-answers')).toBeNull();
+    expect(view.getByText('Mirror hanging off')).toBeTruthy();
   });
 
   it('shows no table at all when no question was answered', async () => {
