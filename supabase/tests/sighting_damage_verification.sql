@@ -20,9 +20,9 @@
 -- get_post_sightings returns damage_kinds + damage_note to the owner (values,
 -- and JSON null when not answered) · 8 a non-owner gets NOT_OWNER · 9 ⚠️ no
 -- client role can read or write either column directly · 10 ⚠️ exactly ONE
--- create_sighting, 13 args (8 defaulted, the two new ones last), the 11-arg
--- signature gone, grants authenticated/service_role only · 11 the three
--- table CHECKs reject a direct bad write as service_role (constraint names
+-- create_sighting, 15 since 20261021120000 (10 defaulted, the damage args
+-- 12th and 13th), the 11- and 13-arg signatures gone, grants
+-- authenticated/service_role only · 11 the three table CHECKs reject a direct bad write as service_role (constraint names
 -- asserted), and a direct good write passes.
 -- HOW:   Self-asserting, RAISE on failure (CI's db job, ON_ERROR_STOP=1),
 --        everything inside begin/rollback. The suite creates its OWN active
@@ -33,7 +33,9 @@
 --        no invisible character sits in this file.
 -- LINKS: supabase/migrations/20261021100000_a_sighting_says_what_damage.sql;
 --        supabase/tests/sighting_marks_offered_verification.sql (the harness
---          this follows; its CHECKS 11/12 now pin the 13-arg signature);
+--          this follows);
+--        supabase/tests/sighting_missing_parts_verification.sql (CHECK 10 here
+--          pins the 15-arg signature since 20261021120000);
 --        supabase/tests/withdraw_sighting_verification.sql (CHECK 12 — the
 --          same hidden-character set on withdraw_note).
 -- =============================================================================
@@ -472,13 +474,15 @@ end $$;
 
 
 -- -----------------------------------------------------------------------------
--- CHECK 10 — ⚠️ exactly ONE create_sighting, 13 args. A surviving 11-arg
+-- CHECK 10 — ⚠️ exactly ONE create_sighting, 15 args (13 here; 20261021120000
+-- appended p_missing_parts, p_missing_parts_note). A surviving 11-arg
 -- overload would make every PostgREST call that omits the damage args
 -- ambiguous; the grants must not have come back open after the drop/create.
 -- -----------------------------------------------------------------------------
 do $$
 declare
-  v_fn       text := 'public.create_sighting(uuid, jsonb, text[], text, text, text, text, text, text, uuid[], uuid[], text[], text)';
+  -- 15 args since 20261021120000 (the missing-parts args appended).
+  v_fn       text := 'public.create_sighting(uuid, jsonb, text[], text, text, text, text, text, text, uuid[], uuid[], text[], text, text[], text)';
   v_n        int;
   v_nargs    int;
   v_defaults int;
@@ -492,13 +496,13 @@ begin
   if v_n <> 1 then
     raise exception 'CHECK 10 FAILED: % create_sighting functions exist — an overload makes PostgREST calls ambiguous', v_n;
   end if;
-  if v_nargs <> 13 then
-    raise exception 'CHECK 10 FAILED: create_sighting should take 13 args, takes %', v_nargs;
+  if v_nargs <> 15 then
+    raise exception 'CHECK 10 FAILED: create_sighting should take 15 args (20261021120000), takes %', v_nargs;
   end if;
-  -- p_locality onward (8 params) defaulted: every older named-arg call — 5,
-  -- 10 or 11 args — must still bind.
-  if v_defaults <> 8 then
-    raise exception 'CHECK 10 FAILED: create_sighting should have 8 defaulted params, has %', v_defaults;
+  -- p_locality onward (10 params) defaulted: every older named-arg call — 5,
+  -- 10, 11 or 13 args — must still bind.
+  if v_defaults <> 10 then
+    raise exception 'CHECK 10 FAILED: create_sighting should have 10 defaulted params, has %', v_defaults;
   end if;
   select p.proargnames into v_names
   from pg_proc p
@@ -507,10 +511,13 @@ begin
   -- Element by element: array equality also compares lower bounds.
   if v_names[12] is distinct from 'p_damage_kinds'
      or v_names[13] is distinct from 'p_damage_note' then
-    raise exception 'CHECK 10 FAILED: the last two params should be p_damage_kinds, p_damage_note (the names the app sends), got %, %', v_names[12], v_names[13];
+    raise exception 'CHECK 10 FAILED: params 12 and 13 should be p_damage_kinds, p_damage_note (the names the app sends), got %, %', v_names[12], v_names[13];
   end if;
   if to_regprocedure('public.create_sighting(uuid, jsonb, text[], text, text, text, text, text, text, uuid[], uuid[])') is not null then
     raise exception 'CHECK 10 FAILED: the old 11-arg signature still exists';
+  end if;
+  if to_regprocedure('public.create_sighting(uuid, jsonb, text[], text, text, text, text, text, text, uuid[], uuid[], text[], text)') is not null then
+    raise exception 'CHECK 10 FAILED: the 13-arg signature (this suite''s migration) still exists beside the 15-arg one';
   end if;
   if to_regprocedure(v_fn) is null then
     raise exception 'CHECK 10 FAILED: % does not exist', v_fn;
@@ -528,7 +535,7 @@ begin
     raise exception 'CHECK 10 FAILED: anon can EXECUTE get_post_sightings';
   end if;
 
-  raise notice 'CHECK 10 passed: one create_sighting, 13 args (8 defaulted, damage last), no 11-arg overload, authenticated/service_role only';
+  raise notice 'CHECK 10 passed: one create_sighting, 15 args (10 defaulted, damage 12-13), no 11- or 13-arg overload, authenticated/service_role only';
 end $$;
 
 
