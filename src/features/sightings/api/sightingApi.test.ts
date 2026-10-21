@@ -28,6 +28,47 @@ import {
   SightingSubmissionError,
   withdrawSighting,
 } from './sightingApi';
+import * as contextRules from '../lib/contextAnswers';
+import type { ReportSightingAnswers } from '../types';
+
+// The golden payloads (see "GOLDEN" below). Literal on purpose: computed values
+// would follow a regression instead of catching it.
+const GOLDEN_PARKED = {
+  p_post_id: 'aaaaaaaa-0000-0000-0000-000000000001',
+  p_context_flags: ['parked', 'damage_visible', 'plate_changed'],
+  p_note: 'grey tarp over the bonnet',
+  p_area_label: null,
+  p_locality: null,
+  p_parked_likelihood: 'settled',
+  p_direction: null,
+  p_people_presence: 'nearby',
+  p_confirmed_feature_ids: ['dddddddd-0000-0000-0000-000000000001'],
+  p_offered_feature_ids: ['dddddddd-0000-0000-0000-000000000001'],
+};
+const GOLDEN_MOVED = {
+  p_post_id: 'aaaaaaaa-0000-0000-0000-000000000001',
+  p_context_flags: ['driving', 'looks_intact'],
+  p_note: null,
+  p_area_label: null,
+  p_locality: null,
+  p_parked_likelihood: null,
+  p_direction: 'NE',
+  p_people_presence: null,
+  p_confirmed_feature_ids: null,
+  p_offered_feature_ids: ['dddddddd-0000-0000-0000-000000000001'],
+};
+const GOLDEN_SKIPPED = {
+  p_post_id: 'aaaaaaaa-0000-0000-0000-000000000001',
+  p_context_flags: [],
+  p_note: null,
+  p_area_label: null,
+  p_locality: null,
+  p_parked_likelihood: null,
+  p_direction: null,
+  p_people_presence: null,
+  p_confirmed_feature_ids: null,
+  p_offered_feature_ids: ['dddddddd-0000-0000-0000-000000000001'],
+};
 
 const mockRpc = jest.fn();
 const mockGetUser = jest.fn();
@@ -207,6 +248,73 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
     } as unknown as Parameters<typeof buildCreateSightingParams>[1];
     const params = buildCreateSightingParams(POST_ID, answers, ['p/1.jpg']);
     expect(JSON.stringify(params)).not.toMatch(/unsure/i);
+  });
+
+  describe('⚠️ GOLDEN: the context answers reach create_sighting unchanged', () => {
+    // Picks made the way the wizard makes them — through lib/contextAnswers'
+    // rules — and the exact params that leave the app. The 2026-10-20 split of
+    // the context page into one step per question promised the SAME payload;
+    // this literal is that promise. Changing it means the server sees
+    // something new: that needs its own decision, not a UI refactor.
+    // The rules work on the wizard's answers; the params are built from the
+    // fields the API takes — every context field, mapped one for one.
+    type Answers = Partial<ReportSightingAnswers>;
+    const pick = (answers: Answers, patch: Answers): Answers => ({ ...answers, ...patch });
+    const mark = 'dddddddd-0000-0000-0000-000000000001';
+    const start: Answers = {
+      contextFlags: [],
+      note: '',
+      confirmedFeatureIds: [],
+      confirmableFeatures: [{ id: mark, description: 'Bee sticker' }],
+    };
+    const send = (a: Answers) =>
+      buildCreateSightingParams(
+        POST_ID,
+        {
+          photos: [located],
+          contextFlags: a.contextFlags ?? [],
+          note: a.note ?? '',
+          parkedLikelihood: a.parkedLikelihood,
+          direction: a.direction,
+          peoplePresence: a.peoplePresence,
+          confirmedFeatureIds: a.confirmedFeatureIds ?? [],
+          confirmableFeatures: (a.confirmableFeatures ?? []).map(({ id }) => ({ id })),
+        },
+        ['p/1.jpg'],
+      );
+
+    it('parked, settled, people near it, two conditions, a mark and a note', () => {
+      let a = start;
+      a = pick(a, contextRules.selectState(a, 'parked'));
+      a = pick(a, contextRules.selectStaying(a, 'settled'));
+      a = pick(a, contextRules.selectPeople(a, 'nearby'));
+      a = pick(a, contextRules.changeConditions(a, ['damage_visible']));
+      a = pick(a, contextRules.changeConditions(a, ['damage_visible', 'plate_changed']));
+      a = pick(a, contextRules.toggleMark(a, mark));
+      a = pick(a, { note: ' grey tarp over the bonnet ' });
+
+      const { p_photos: _photos, ...params } = send(a);
+      expect(params).toEqual(GOLDEN_PARKED);
+    });
+
+    it('a state changed midway keeps nothing of the old one; "Looks intact" stands alone', () => {
+      let a = start;
+      a = pick(a, contextRules.selectState(a, 'parked'));
+      a = pick(a, contextRules.selectStaying(a, 'moving'));
+      a = pick(a, contextRules.selectState(a, 'driving'));
+      a = pick(a, contextRules.selectDirection(a, 'NE'));
+      a = pick(a, contextRules.selectPeople(a, contextRules.UNSURE));
+      a = pick(a, contextRules.changeConditions(a, ['damage_visible']));
+      a = pick(a, contextRules.changeConditions(a, ['damage_visible', 'looks_intact']));
+
+      const { p_photos: _photos, ...params } = send(a);
+      expect(params).toEqual(GOLDEN_MOVED);
+    });
+
+    it('every question skipped: still a report, and the offered marks still recorded', () => {
+      const { p_photos: _photos, ...params } = send(start);
+      expect(params).toEqual(GOLDEN_SKIPPED);
+    });
   });
 
   it('never sends the read-only seeds (the car and the offered marks)', () => {
