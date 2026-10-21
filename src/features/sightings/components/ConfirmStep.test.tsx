@@ -134,17 +134,46 @@ describe('ConfirmStep — sections and Edit links', () => {
     expect(view.queryByRole('header', { name: 'You’re reporting' })).toBeNull();
   });
 
-  it('sends each Edit to its step, and offers none on Where and when', async () => {
+  it('sends each Edit to its own step — one per answer — and offers none on Where and when', async () => {
     const { view, editStep } = await renderConfirm({
       photos: [live(0)],
-      contextFlags: ['parked'],
+      contextFlags: ['parked', 'damage_visible'],
+      peoplePresence: 'nobody',
+      note: 'By the bins',
     });
     await press(view.getByRole('button', { name: 'Edit photos' }));
     expect(editStep).toHaveBeenLastCalledWith('photos');
-    await press(view.getByRole('button', { name: 'Edit what you saw' }));
-    expect(editStep).toHaveBeenLastCalledWith('context');
-    // Exactly two: the location is the evidence, never edited here.
-    expect(view.getAllByRole('button', { name: /^Edit / })).toHaveLength(2);
+    for (const [name, stepId] of [
+      ['Edit what it was doing', 'state'],
+      ['Edit anyone in or near it', 'people'],
+      ['Edit its condition', 'condition'],
+      ['Edit your note', 'note'],
+    ]) {
+      await press(view.getByRole('button', { name }));
+      expect(editStep).toHaveBeenLastCalledWith(stepId);
+    }
+    // Photos plus one per answer: the location is the evidence, never edited here.
+    expect(view.getAllByRole('button', { name: /^Edit / })).toHaveLength(5);
+  });
+
+  it('"Add details" opens the first question still unanswered — "Not sure" counts as answered', async () => {
+    const { view, editStep } = await renderConfirm({
+      photos: [live(0)],
+      contextFlags: ['parked'],
+      contextUnsure: ['staying'],
+    });
+    await press(view.getByRole('button', { name: 'Add details: Anyone in or near it?' }));
+    expect(editStep).toHaveBeenLastCalledWith('people');
+  });
+
+  it('offers no "Add details" once every question is answered', async () => {
+    const { view } = await renderConfirm({
+      photos: [live(0)],
+      contextFlags: ['being_loaded', 'looks_intact'],
+      peoplePresence: 'nobody',
+      note: 'By the bins',
+    });
+    expect(view.queryByRole('button', { name: /^Add details/ })).toBeNull();
   });
 
   it('offers no links at all without editStep (on an edit spur)', async () => {
@@ -299,8 +328,10 @@ describe('ConfirmStep — what you saw', () => {
       contextUnsure: ['state'],
     });
     expect(view.getByText('Nothing added')).toBeTruthy();
-    expect(view.queryByRole('button', { name: 'Edit what you saw' })).toBeNull();
-    await press(view.getByRole('button', { name: 'Add what you saw' }));
-    expect(editStep).toHaveBeenCalledWith('context');
+    // Only the photos' Edit — no answers, so no answer to edit.
+    expect(view.getAllByRole('button', { name: /^Edit / })).toHaveLength(1);
+    // "Not sure" on what it was doing is an answer: Add opens the next question.
+    await press(view.getByRole('button', { name: 'Add details: Anyone in or near it?' }));
+    expect(editStep).toHaveBeenCalledWith('people');
   });
 });

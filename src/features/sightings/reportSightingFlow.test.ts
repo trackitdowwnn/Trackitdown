@@ -1,8 +1,9 @@
 /**
  * WHAT:  Smoke tests for the report-sighting flow config — the speed shape
- *        (no intro screens, three steps with the camera first, confirm carries
- *        "Send report"), the photo gating (1–3 evidence photos), the
- *        never-blocking context step, and the confirm step's privacy line
+ *        (no intro screens, the camera first, one context question per step,
+ *        confirm carries "Send report"), the photo gating (1–3 evidence
+ *        photos), the never-blocking context steps (when each shows, Skip /
+ *        Continue, the edit's follow-up), and the confirm step's privacy line
  *        (footerNote, pinned word for word). The safety gate is no longer a step
  *        (ReportSafetySheet.test.tsx).
  * WHY:   The wizard framework warns that a typo'd schema key compiles but can
@@ -45,11 +46,22 @@ const galleryPhoto = {
 };
 
 describe('reportSightingFlow shape', () => {
-  it('is one intro-less phase of three steps, camera first, ending in Send report', () => {
+  it('is one intro-less phase: camera first, one context question per step, ending in Send report', () => {
     // The safety gate is ReportSafetySheet, BEFORE the flow, not a step in it.
+    // The context is one question per step since 2026-10-20 (owner).
     const screens = flattenFlow(reportSightingFlow);
-    expect(screens.map((screen) => screen.kind)).toEqual(['step', 'step', 'step']);
-    expect(steps.map((step) => step.id)).toEqual(['photos', 'context', 'confirm']);
+    expect(screens.every((screen) => screen.kind === 'step')).toBe(true);
+    expect(steps.map((step) => step.id)).toEqual([
+      'photos',
+      'state',
+      'staying',
+      'direction',
+      'people',
+      'condition',
+      'marks',
+      'note',
+      'confirm',
+    ]);
     expect(reportSightingFlow.finalCtaLabel).toBe('Send report');
   });
 
@@ -86,20 +98,54 @@ describe('reportSightingFlow shape', () => {
     expect(schema.safeParse({ photos: [{ ...photo, lat: 51.5, lng: -0.12 }] }).success).toBe(true);
   });
 
-  it('context step passes completely empty (skipping must cost nothing)', () => {
-    const schema = schemaFor('context');
-    expect(schema.safeParse({}).success).toBe(true);
-    expect(schema.safeParse({ contextFlags: ['parked'], note: 'heading north' }).success).toBe(true);
+  const CONTEXT_STEPS = ['state', 'staying', 'direction', 'people', 'condition', 'marks', 'note'];
+  const step = (id: string) => {
+    const found = steps.find((candidate) => candidate.id === id);
+    if (!found) throw new Error(`missing step ${id}`);
+    return found;
+  };
+
+  it('every context step is optional and passes completely empty (skipping costs nothing)', () => {
+    for (const id of CONTEXT_STEPS) {
+      expect(step(id).optional).toBe(true);
+      expect(schemaFor(id).safeParse({}).success).toBe(true);
+    }
+    expect(schemaFor('state').safeParse({ contextFlags: ['parked'] }).success).toBe(true);
+    expect(schemaFor('direction').safeParse({ direction: 'NE' }).success).toBe(true);
+    expect(schemaFor('note').safeParse({ note: 'x'.repeat(501) }).success).toBe(false);
   });
 
-  it('context step is one way on: "Skip" while empty, "Continue" once a detail is added', () => {
-    const label = steps.find((step) => step.id === 'context')?.ctaLabel;
-    if (typeof label !== 'function') throw new Error('context ctaLabel should be a function');
-    expect(label({})).toBe('Skip');
-    // "Not sure" is not a detail: still a skip.
-    expect(label({ contextFlags: [], contextUnsure: ['state'] })).toBe('Skip');
-    expect(label({ contextFlags: ['parked'] })).toBe('Continue');
-    expect(label({ note: 'By the bins' })).toBe('Continue');
+  it('the follow-ups and the marks show only when they apply', () => {
+    const shown = (id: string, answers: object) => step(id).when?.(answers) ?? true;
+    expect(shown('staying', { contextFlags: ['parked'] })).toBe(true);
+    expect(shown('staying', { contextFlags: ['driving'] })).toBe(false);
+    expect(shown('direction', { contextFlags: ['driving'] })).toBe(true);
+    expect(shown('direction', {})).toBe(false);
+    expect(shown('marks', { confirmableFeatures: [{ id: 'm1', description: 'Dent' }] })).toBe(true);
+    expect(shown('marks', { confirmableFeatures: [] })).toBe(false);
+    expect(shown('people', {})).toBe(true);
+  });
+
+  it('each step is one way on: "Skip" until answered, then "Continue" — "Not sure" is an answer', () => {
+    const label = (id: string, answers: object) => {
+      const cta = step(id).ctaLabel;
+      if (typeof cta !== 'function') throw new Error(`${id} ctaLabel should be a function`);
+      return cta(answers);
+    };
+    expect(label('state', {})).toBe('Skip');
+    expect(label('state', { contextFlags: ['parked'] })).toBe('Continue');
+    expect(label('state', { contextUnsure: ['state'] })).toBe('Continue');
+    expect(label('people', { peoplePresence: 'nobody' })).toBe('Continue');
+    expect(label('condition', { contextFlags: ['parked'] })).toBe('Skip'); // a state isn't a condition
+    expect(label('note', { note: '  ' })).toBe('Skip');
+    expect(label('note', { note: 'By the bins' })).toBe('Continue');
+  });
+
+  it('an edit of what it was doing continues to its follow-up', () => {
+    const onward = step('state').editContinuesTo;
+    expect(onward?.({ contextFlags: ['parked'] })).toBe('staying');
+    expect(onward?.({ contextFlags: ['driving'] })).toBe('direction');
+    expect(onward?.({ contextFlags: ['being_loaded'] })).toBeUndefined();
   });
 
   it('says who sees what above "Send report", word for word', () => {

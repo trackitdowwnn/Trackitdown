@@ -56,7 +56,8 @@ import { AppMap, AppMapMarker } from '@/shared/ui/AppMap';
 import type { WizardStepProps } from '@/shared/wizard';
 
 import { firstLocatedPhoto, isApproximateFix } from '../lib/areaLabel';
-import { contextReviewRows } from '../lib/contextLabels';
+import { CONTEXT_STEP_IDS, stepApplies, stepTouched } from '../lib/contextAnswers';
+import { CONTEXT_STEP_QUESTIONS, contextReviewRows } from '../lib/contextLabels';
 import { MAX_SIGHTING_PHOTOS, type ReportedCar, type ReportSightingAnswers } from '../types';
 
 type StepProps = WizardStepProps<ReportSightingAnswers>;
@@ -312,6 +313,11 @@ export function ConfirmStep({ answers, editStep, busy = false }: StepProps) {
   const ago = useTimeAgo(timePhoto?.capturedAt ?? 0);
   const takenAgo = timePhoto ? ago : null;
   const rows = contextReviewRows(answers);
+  // The first question that applies and is still unanswered ("Not sure" is an
+  // answer): where "Add details" goes. None left, no link.
+  const nextToAdd = CONTEXT_STEP_IDS.find(
+    (id) => stepApplies(answers, id) && !stepTouched(answers, id),
+  );
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const car = answers.reportedCar;
 
@@ -343,38 +349,55 @@ export function ConfirmStep({ answers, editStep, busy = false }: StepProps) {
         <WhereAndWhen areaLabel={answers.areaLabel} located={located} takenAgo={takenAgo} />
       </ReviewSection>
 
-      <ReviewSection
-        title="What you saw"
-        action={
-          editStep && rows.length > 0 ? (
-            <EditLink
-              accessibilityLabel="Edit what you saw"
-              onPress={() => editStep('context')}
-              disabled={busy}
-            />
-          ) : null
-        }
-      >
+      {/* Each answer edits on its own step (one question per step since
+          2026-10-20): its Edit opens that question and Done comes straight
+          back — "what it was doing" also asks its follow-up on the way. Only
+          what was answered is listed (owner's pick); one "Add details" opens
+          the first question still unanswered, and again after that. */}
+      <ReviewSection title="What you saw">
         {rows.length > 0 ? (
           <View>
             {rows.map((row, index) => (
               <View
                 key={row.key}
-                style={[styles.row, index < rows.length - 1 ? styles.rowRuled : null]}
+                style={[
+                  styles.row,
+                  styles.rowWithEdit,
+                  index < rows.length - 1 || nextToAdd ? styles.rowRuled : null,
+                ]}
               >
-                <Text style={styles.rowLabel}>{row.label}</Text>
-                <Text style={styles.rowValue}>{row.value}</Text>
+                <View style={styles.rowText}>
+                  <Text style={styles.rowLabel}>{row.label}</Text>
+                  <Text style={styles.rowValue}>{row.value}</Text>
+                </View>
+                {editStep ? (
+                  <EditLink
+                    accessibilityLabel={`Edit ${row.label.toLowerCase()}`}
+                    onPress={() => editStep(row.key)}
+                    disabled={busy}
+                  />
+                ) : null}
               </View>
             ))}
+            {editStep && nextToAdd ? (
+              <View style={styles.addRow}>
+                <EditLink
+                  text="Add details"
+                  accessibilityLabel={`Add details: ${CONTEXT_STEP_QUESTIONS[nextToAdd]}`}
+                  onPress={() => editStep(nextToAdd)}
+                  disabled={busy}
+                />
+              </View>
+            ) : null}
           </View>
         ) : (
           <View style={styles.emptyRow}>
             <Text style={styles.rowValueQuiet}>Nothing added</Text>
-            {editStep ? (
+            {editStep && nextToAdd ? (
               <EditLink
                 text="Add"
-                accessibilityLabel="Add what you saw"
-                onPress={() => editStep('context')}
+                accessibilityLabel={`Add details: ${CONTEXT_STEP_QUESTIONS[nextToAdd]}`}
+                onPress={() => editStep(nextToAdd)}
                 disabled={busy}
               />
             ) : null}
@@ -553,6 +576,21 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   rowRuled: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: c.border,
+  },
+  // An answer and its own Edit, side by side; the words wrap before they push
+  // the link off the row.
+  rowWithEdit: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.lg,
+  },
+  rowText: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  addRow: {
+    alignItems: 'flex-start',
+    paddingTop: spacing.sm,
   },
   rowLabel: {
     ...typography.caption,

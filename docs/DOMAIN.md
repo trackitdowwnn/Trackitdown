@@ -632,11 +632,13 @@ Rules that follow, and are not implementation details:
   (`parked_likelihood`: settled / street / moving — what the spotter saw,
   asked as "Did it look like it was staying?" since 2026-10-01; `street` is
   no longer offered but old rows keep it),
-  a driving follow-up (`direction`: 8-way compass heading), condition chips
-  (plate changed-missing / damage visible / being stripped / looks intact),
-  a 3-way people observation (`people_presence`: nobody / nearby /
-  in_vehicle — supersedes the `people_nearby` flag for new reports; nearby,
-  in_vehicle and "Not sure" all bring up the don't-approach register inline),
+  a driving follow-up (`direction`: 8-way compass heading), conditions
+  (plate changed-missing / damage visible / being stripped / looks intact —
+  "being stripped" brings up the don't-approach register too, since
+  2026-10-20), a 3-way people observation (`people_presence`: nobody /
+  nearby / in_vehicle — supersedes the `people_nearby` flag for new reports;
+  nearby, in_vehicle and "Not sure" all bring up the don't-approach register
+  inline),
   and
   confirmed distinctive marks (`confirmed_feature_ids` — the post's
   registered marks the spotter ticked "could you see…?"; ids validated
@@ -648,8 +650,9 @@ Rules that follow, and are not implementation details:
   seen" is what the spotter could see from where they stood — never
   evidence against crediting them. Mark ids are stable across edits
   (`update_post_distinctive_features` matches by photo, 2026-10-19), so a
-  caption fix no longer orphans earlier confirmations. Every field is skippable: an
-  empty context step is a valid report. "Not sure" stores nothing, and the
+  caption fix no longer orphans earlier confirmations. Every field is skippable: the
+  context is asked one question per step (2026-10-20), each with "Skip", and
+  skipping them all is a valid report. "Not sure" stores nothing, and the
   free-text note stays the catch-all. Nothing here is ever public — structured context is owner-only
   like the note (ADR-0008 unchanged).
 - Rate limit: a spotter can report at most 3 sightings per post per day

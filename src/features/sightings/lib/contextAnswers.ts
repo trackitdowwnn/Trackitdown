@@ -173,6 +173,53 @@ export function toggleMark(answers: Answers, id: string): ContextPatch {
   };
 }
 
+/** The report's context steps, one question each (reportSightingFlow). */
+export type ContextStepId =
+  'state' | 'staying' | 'direction' | 'people' | 'condition' | 'marks' | 'note';
+
+/** The context steps in the order the spotter meets them. */
+export const CONTEXT_STEP_IDS: readonly ContextStepId[] = [
+  'state',
+  'staying',
+  'direction',
+  'people',
+  'condition',
+  'marks',
+  'note',
+];
+
+/**
+ * Whether a step has been answered — "Not sure" included, since it IS an
+ * answer to the spotter (the button then says "Continue", not "Skip"), even
+ * though it sends nothing.
+ */
+export function stepTouched(answers: Answers, id: ContextStepId): boolean {
+  switch (id) {
+    case 'state':
+      return stateOf(answers) !== null || isUnsure(answers, 'state');
+    case 'staying':
+      return Boolean(answers.parkedLikelihood) || isUnsure(answers, 'staying');
+    case 'direction':
+      return Boolean(answers.direction) || isUnsure(answers, 'direction');
+    case 'people':
+      return Boolean(answers.peoplePresence) || isUnsure(answers, 'people');
+    case 'condition':
+      return conditionsOf(answers).length > 0;
+    case 'marks':
+      return (answers.confirmedFeatureIds ?? []).length > 0;
+    case 'note':
+      return Boolean(answers.note?.trim());
+  }
+}
+
+/** Whether a step is shown at all for these answers (the flow's `when`). */
+export function stepApplies(answers: Answers, id: ContextStepId): boolean {
+  if (id === 'staying') return isParked(answers);
+  if (id === 'direction') return isMoving(answers);
+  if (id === 'marks') return hasMarks(answers);
+  return true;
+}
+
 /** SAFETY: the people answers that bring up "Don't approach". "Not sure"
  *  counts: a spotter who can't tell is the one tempted to step closer. */
 export function peopleShowSafetyLine(answers: Answers): boolean {

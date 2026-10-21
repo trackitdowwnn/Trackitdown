@@ -10,6 +10,7 @@
 
 import type { ReportSightingAnswers } from '../types';
 import {
+  CONTEXT_STEP_IDS,
   UNSURE,
   changeConditions,
   conditionShowsSafetyLine,
@@ -25,6 +26,8 @@ import {
   setDirectionUnsure,
   shownAnswer,
   stateOf,
+  stepApplies,
+  stepTouched,
   toggleMark,
 } from './contextAnswers';
 
@@ -166,5 +169,35 @@ describe("the owner's marks", () => {
     const a = apply({}, toggleMark({}, 'm1'));
     expect(a.confirmedFeatureIds).toEqual(['m1']);
     expect(toggleMark(a, 'm1').confirmedFeatureIds).toEqual([]);
+  });
+});
+
+describe('the steps', () => {
+  it('counts a step answered once it has an answer — "Not sure" included', () => {
+    expect(stepTouched({}, 'state')).toBe(false);
+    expect(stepTouched({ contextUnsure: ['state'] }, 'state')).toBe(true);
+    expect(stepTouched({ contextFlags: ['parked'] }, 'state')).toBe(true);
+    // A state is not a condition, nor a condition a state.
+    expect(stepTouched({ contextFlags: ['parked'] }, 'condition')).toBe(false);
+    expect(stepTouched({ contextFlags: ['damage_visible'] }, 'state')).toBe(false);
+    expect(stepTouched({ direction: 'N' }, 'direction')).toBe(true);
+    expect(stepTouched({ note: '   ' }, 'note')).toBe(false);
+    expect(stepTouched({ confirmedFeatureIds: ['m1'] }, 'marks')).toBe(true);
+  });
+
+  it('applies the follow-ups and the marks only where they belong', () => {
+    expect(stepApplies({ contextFlags: ['parked'] }, 'staying')).toBe(true);
+    expect(stepApplies({ contextFlags: ['parked'] }, 'direction')).toBe(false);
+    expect(stepApplies({}, 'marks')).toBe(false);
+    expect(stepApplies({}, 'people')).toBe(true);
+    expect(CONTEXT_STEP_IDS).toEqual([
+      'state',
+      'staying',
+      'direction',
+      'people',
+      'condition',
+      'marks',
+      'note',
+    ]);
   });
 });

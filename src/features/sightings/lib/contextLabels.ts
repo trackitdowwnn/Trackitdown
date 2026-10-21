@@ -1,24 +1,26 @@
 /**
  * WHAT:  The one vocabulary for a sighting's structured context: the labels
  *        for every flag, follow-up and presence answer; the option lists the
- *        context step renders as chips, and its questions (CONTEXT_QUESTIONS);
+ *        context steps render as cards, each card's one short line
+ *        (CONTEXT_OPTION_DESCRIPTIONS), and every step's question
+ *        (CONTEXT_STEP_QUESTIONS; CONTEXT_QUESTIONS for the shared three);
  *        contextReviewRows(), the answers as labelled rows for the
  *        check-and-send step, and sightingAnswerGroups(), the same answers per
  *        question under short labels (CONTEXT_SHORT_LABELS) for the owner's
  *        sighting page ("What they saw", a label | answers table); and
  *        contextDetailCount(), how many details a report carries.
- * WHY:   The context step, the confirm step and the owner's sighting page all
+ * WHY:   The context steps, the confirm step and the owner's sighting page all
  *        describe the same facts. One module keeps
  *        the words identical everywhere: the step used to keep its own copies,
  *        so the spotter tapped "Being loaded or towed" and the owner read
- *        "Being loaded/towed" (2026-10-01 redesign). The step's chips ARE these
- *        labels now.
+ *        "Being loaded/towed" (2026-10-01 redesign). The cards' titles ARE
+ *        these labels (one question per step since 2026-10-20).
  *        WORDING is neutral and describes what was seen (eyewitness research:
  *        a leading word changes what people remember; a prediction is a guess).
  *        So "Looks about to move", not "Likely to stay?". Stored values never
  *        change: only the words do.
  * LINKS: src/features/sightings/types.ts (the vocabularies);
- *        src/features/sightings/components/sightingSteps.tsx (ContextStep),
+ *        src/features/sightings/components/contextSteps.tsx (the steps),
  *        components/ConfirmStep.tsx (contextReviewRows),
  *        components/SightingSeenSection.tsx (sightingAnswerGroups).
  */
@@ -34,6 +36,7 @@ import {
   type SightingContextFlag,
   type VehicleStateFlag,
 } from '../types';
+import type { ContextStepId } from './contextAnswers';
 
 export const FLAG_LABELS: Record<SightingContextFlag, string> = {
   parked: 'Parked',
@@ -124,6 +127,58 @@ export const CONTEXT_QUESTIONS: Record<ContextQuestionKey, string> = {
   people: 'Anyone in or near it?',
   condition: 'Its condition',
 };
+
+/** The follow-ups' questions — each its own step since 2026-10-20 (one
+ *  question per screen), shown only after the state they follow. */
+export const FOLLOW_UP_QUESTIONS = {
+  staying: 'Did it look like it was staying?',
+  direction: 'Which way was it heading?',
+} as const;
+
+/** The last two context steps' questions. */
+export const MARKS_QUESTION = 'Could you see any of these?';
+export const NOTE_QUESTION = 'A note for the owner';
+
+/** Every context step's question, by step id — the flow asks them, and the
+ *  check-and-send step's "Add details" names the one it opens. */
+export const CONTEXT_STEP_QUESTIONS: Record<ContextStepId, string> = {
+  state: 'What was it doing?',
+  staying: FOLLOW_UP_QUESTIONS.staying,
+  direction: FOLLOW_UP_QUESTIONS.direction,
+  people: 'Anyone in or near it?',
+  condition: 'Its condition',
+  marks: MARKS_QUESTION,
+  note: NOTE_QUESTION,
+};
+
+/**
+ * One short line under each card's title on the context steps (owner,
+ * 2026-10-20: "more detail on each step", as cards rather than chips). What
+ * the option LOOKS like from the pavement — never a guess at what happens
+ * next, and never a cue that needs a close look (no "forced lock").
+ */
+export const CONTEXT_OPTION_DESCRIPTIONS = {
+  state: {
+    parked: 'Standing still in a space',
+    driving: 'Being driven on the road',
+    being_loaded: 'On a trailer, truck or tow',
+  } satisfies Record<VehicleStateFlag, string>,
+  staying: {
+    settled: 'Settled, as if left there',
+    moving: 'Engine on or lights on',
+  } satisfies Partial<Record<ParkedLikelihood, string>>,
+  people: {
+    nobody: 'Nobody in or around it',
+    nearby: 'Someone standing close by',
+    in_vehicle: 'A person inside the car',
+  } satisfies Record<PeoplePresence, string>,
+  condition: {
+    plate_changed: 'Different plate, or none',
+    damage_visible: 'Dents or broken glass',
+    being_stripped: 'Parts being taken off',
+    looks_intact: 'No damage you could see',
+  } satisfies Record<ConditionFlag, string>,
+} as const;
 
 /**
  * The same questions as a table's left-hand labels on the owner's sighting
@@ -236,12 +291,12 @@ export function contextReviewRows(answers: Partial<ReportSightingAnswers>): Cont
 }
 
 /**
- * How many details the context step has captured: each answered question,
- * each condition, each confirmed mark, and a note. "Not sure" isn't a detail
- * (it sends nothing), so it doesn't count. Drives "3 details added" and the
- * step's Skip / Continue label.
- * Trusts the step to keep the answers consistent (a follow-up only under its
- * state, marks only from the offered list): ContextStep clears on every
+ * How many details the context steps captured: each answered question, each
+ * condition, each confirmed mark, and a note. "Not sure" isn't a detail (it
+ * sends nothing), so it doesn't count. Feeds the funnel's `context_summary`
+ * (each step's own Skip / Continue is contextAnswers' `stepTouched`).
+ * Trusts the steps to keep the answers consistent (a follow-up only under its
+ * state, marks only from the offered list): contextAnswers clears on every
  * change, so nothing stale is counted.
  */
 export function contextDetailCount(answers: Partial<ReportSightingAnswers>): number {
