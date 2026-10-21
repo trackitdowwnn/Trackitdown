@@ -58,7 +58,9 @@ export interface CardSelectMultiOption<V extends string = string> {
    */
   locked?: boolean;
   /** What a screen reader says instead of "label. description" — for an
-   *  option whose words lean on what's around it. */
+   *  option whose words lean on what's around it. It REPLACES the description,
+   *  and must contain the visible label (WCAG 2.5.3) so voice control still
+   *  finds the card by what it shows. */
   accessibilityLabel?: string;
 }
 
@@ -69,8 +71,11 @@ export interface CardSelectMultiProps<V extends string = string> {
   /** Receives the full next selection (the card's toggle is applied for you).
    *  Locked options never appear in a change — they cannot be toggled off. */
   onChange: (next: V[]) => void;
-  /** The QUESTION these options answer, when it sits in a separate heading
-   *  (see CardSelect's note: a heading is never read WITH the control). */
+  /** The QUESTION these options answer. A bonus, not the fix: TalkBack reads it
+   *  (it may make it its own stop); VoiceOver says nothing for a label on a
+   *  View that isn't itself accessible (ChoiceChipsMulti's note). The context
+   *  that works on both is the visible question as a header, plus a per-option
+   *  label on any card that needs it. */
   accessibilityLabel?: string;
   /** On the group. */
   testID?: string;

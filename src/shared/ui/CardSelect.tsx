@@ -43,7 +43,8 @@ export interface CardSelectOption<V extends string = string> {
   icon?: LucideIcon;
   /** What a screen reader says instead of "label. description" — for an
    *  option whose words lean on what's around it ("Not sure" → "Not sure
-   *  which way it went"). */
+   *  which way it went"). It REPLACES the description, and must contain the
+   *  visible label (WCAG 2.5.3) so voice control still finds the card. */
   accessibilityLabel?: string;
 }
 
