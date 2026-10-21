@@ -378,14 +378,23 @@ export function WizardScreen<TAnswers>({
     if (flow.phases.length > 1) {
       return `${flow.phases[phase].title}, part ${phase + 1} of ${flow.phases.length}`;
     }
+    // Only the screens the walk will stop on (2026-10-20, as the bar): a step
+    // being walked past would otherwise make "Step 3 of 9" skip to "5 of 9".
     const inPhase = controller.screens.filter(
-      (candidate) => candidate.kind !== 'review' && candidate.phaseIndex === phase,
+      (candidate, index) =>
+        candidate.kind !== 'review' &&
+        candidate.phaseIndex === phase &&
+        controller.visible[index] !== false,
     );
     return `Step ${inPhase.indexOf(progressScreen) + 1} of ${inPhase.length}`;
   })();
   // Screens done, not an average of the phases: a long first phase would
-  // otherwise read far behind.
-  const progressPercent = Math.round(((progressIndex + 1) / controller.screens.length) * 100);
+  // otherwise read far behind. Visible screens only, as above.
+  const shownScreens = controller.visible.filter((shown) => shown !== false).length;
+  const shownReached = controller.visible
+    .slice(0, progressIndex + 1)
+    .filter((shown) => shown !== false).length;
+  const progressPercent = Math.round((shownReached / Math.max(shownScreens, 1)) * 100);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -490,6 +499,7 @@ export function WizardScreen<TAnswers>({
                         // and must not flip to a placeholder as it goes.
                         settled={leaving ? true : controller.settled}
                         advanceSoon={controller.advanceSoon}
+                        cancelAdvanceSoon={controller.cancelAdvanceSoon}
                         claimNext={leaving ? undefined : claimNext}
                       />
                     </LayoutAnimationConfig>

@@ -314,6 +314,112 @@ describe('an edit from review that breaks another answer', () => {
   });
 });
 
+// 2026-10-20: the report's "what was it doing?" — changing Parked to Moving on
+// an edit must ask which way it went before returning.
+describe('an edit that continues to the step that belongs with it', () => {
+  interface SeenAnswers {
+    state: string;
+    heading: string;
+  }
+  const seenFlow: WizardFlow<SeenAnswers> = {
+    id: 'continue-test',
+    finalCtaLabel: 'Send',
+    review: {},
+    phases: [
+      {
+        id: 'seen',
+        title: 'Seen',
+        steps: [
+          {
+            id: 'state',
+            question: 'Doing?',
+            component: () => null,
+            optional: true,
+            schema: z.object({ state: z.string().optional() }),
+            editContinuesTo: (a) => (a.state === 'moving' ? 'heading' : undefined),
+          },
+          {
+            id: 'heading',
+            question: 'Which way?',
+            component: () => null,
+            optional: true,
+            when: (a) => a.state === 'moving',
+            schema: z.object({ heading: z.string().optional() }),
+          },
+        ],
+      },
+    ],
+  };
+  // state(0), heading(1), review(2)
+  async function onReviewEditingState(initialAnswers: Partial<SeenAnswers>) {
+    const rendered = await renderHook(() =>
+      useWizardController<SeenAnswers>(seenFlow, { onExit: jest.fn(), initialAnswers }),
+    );
+    const { result } = rendered;
+    // Walk to review (the heading step stands in the way when moving).
+    while (result.current.screen.kind !== 'review') {
+      await act(async () => result.current.next());
+    }
+    await act(async () => result.current.editStep(0));
+    return rendered;
+  }
+
+  it('Done goes on to the follow-up, still on the edit, then back to review', async () => {
+    const { result } = await onReviewEditingState({ state: 'parked' });
+    await act(async () => result.current.setAnswers({ state: 'moving' }));
+    await act(async () => result.current.next());
+    expect(result.current.screenIndex).toBe(1);
+    expect(result.current.ctaLabel).toBe('Done');
+
+    await act(async () => result.current.setAnswers({ heading: 'NE' }));
+    await act(async () => result.current.next());
+    expect(result.current.screen.kind).toBe('review');
+  });
+
+  it('Back from the follow-up cancels the WHOLE edit', async () => {
+    const { result } = await onReviewEditingState({ state: 'parked' });
+    await act(async () => result.current.setAnswers({ state: 'moving' }));
+    await act(async () => result.current.next());
+    await act(async () => result.current.back());
+    expect(result.current.screen.kind).toBe('review');
+    expect(result.current.answers).toEqual({ state: 'parked' });
+  });
+
+  it('returns straight to review when the follow-up does not apply', async () => {
+    const { result } = await onReviewEditingState({ state: 'moving', heading: 'N' });
+    await act(async () => result.current.setAnswers({ state: 'parked' }));
+    await act(async () => result.current.next());
+    expect(result.current.screen.kind).toBe('review');
+  });
+
+  it('counts only the steps that will be shown', async () => {
+    const { result } = await renderHook(() =>
+      useWizardController<SeenAnswers>(seenFlow, { onExit: jest.fn() }),
+    );
+    expect(result.current.progress).toEqual([1]); // one visible step, on it
+  });
+});
+
+describe('cancelAdvanceSoon', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('drops a pending auto-advance — a later pick on the same step keeps the screen', async () => {
+    jest.useFakeTimers();
+    const { result } = await renderHook(() =>
+      useWizardController<Answers>(flow, { onExit: jest.fn(), initialAnswers: { name: 'Sam' } }),
+    );
+    await act(async () => result.current.next()); // onto the name step
+    await act(async () => result.current.advanceSoon());
+    await act(async () => result.current.cancelAdvanceSoon());
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+    });
+    expect(result.current.screenIndex).toBe(1);
+  });
+});
+
 describe('useWizardController', () => {
   afterEach(() => {
     jest.restoreAllMocks();

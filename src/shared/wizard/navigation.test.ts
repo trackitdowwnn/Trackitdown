@@ -171,6 +171,46 @@ describe('wizardReducer', () => {
     expect(done).toMatchObject(target(REVIEW_INDEX));
   });
 
+  // 2026-10-20: the report's "what was it doing?" continues to its follow-up.
+  it('Done on an edit goes on to a step that belongs with it, still on the spur', () => {
+    const onward = wizardReducer(navState(1, REVIEW_INDEX), {
+      type: 'next',
+      visible: ALL_VISIBLE,
+      continueTo: 2,
+    });
+    expect(onward).toMatchObject(target(2, REVIEW_INDEX, 1));
+  });
+
+  it('a step the edit broke still comes first', () => {
+    const blocking = ALL_VISIBLE.map((_, index) => index === 4);
+    const onward = wizardReducer(navState(1, REVIEW_INDEX), {
+      type: 'next',
+      visible: ALL_VISIBLE,
+      blocking,
+      continueTo: 2,
+    });
+    expect(onward).toMatchObject(target(4, REVIEW_INDEX, 1));
+  });
+
+  it('ignores continueTo off a spur, onto a hidden screen, or onto itself', () => {
+    expect(
+      wizardReducer(navState(1), { type: 'next', visible: ALL_VISIBLE, continueTo: 4 }),
+    ).toMatchObject(target(2));
+
+    const hidden2 = ALL_VISIBLE.map((_, index) => index !== 2);
+    expect(
+      wizardReducer(navState(1, REVIEW_INDEX), { type: 'next', visible: hidden2, continueTo: 2 }),
+    ).toMatchObject(target(REVIEW_INDEX));
+
+    expect(
+      wizardReducer(navState(1, REVIEW_INDEX), {
+        type: 'next',
+        visible: ALL_VISIBLE,
+        continueTo: 1,
+      }),
+    ).toMatchObject(target(REVIEW_INDEX));
+  });
+
   it('returns to review when the user backs out of an edit', () => {
     const cancelled = wizardReducer(navState(1, REVIEW_INDEX), { type: 'back', visible: ALL_VISIBLE });
     expect(cancelled).toMatchObject(target(REVIEW_INDEX, null, -1));
@@ -296,6 +336,15 @@ describe('phaseProgress', () => {
   it('fills earlier phases fully once passed', () => {
     expect(phaseProgress(flow, 3)).toEqual([1, 1 / 2]);
     expect(phaseProgress(flow, 4)).toEqual([1, 1]);
+  });
+
+  // 2026-10-20: a step being walked past no longer holds a share of its
+  // segment — the bar used to stall short, then jump.
+  it('with `visible`, counts only the screens the walk stops on', () => {
+    const colourHidden = ALL_VISIBLE.map((_, index) => index !== 2);
+    expect(phaseProgress(flow, 0, colourHidden)).toEqual([1 / 2, 0]);
+    expect(phaseProgress(flow, 1, colourHidden)).toEqual([1, 0]); // phase 1 done
+    expect(phaseProgress(flow, 1, ALL_VISIBLE)).toEqual([2 / 3, 0]); // same as without
   });
 
   it('shows every segment full on the review screen', () => {
