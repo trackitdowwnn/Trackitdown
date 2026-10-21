@@ -538,6 +538,8 @@ end $$;
 -- -----------------------------------------------------------------------------
 -- CHECK 11 — ⚠️ exactly ONE create_sighting. A surviving 10-arg overload would
 -- make every PostgREST call that omits p_offered_feature_ids ambiguous.
+-- Since 20261021100000 it takes 13 args (p_damage_kinds, p_damage_note
+-- appended), so the 11-arg signature this migration created must be gone too.
 -- -----------------------------------------------------------------------------
 do $$
 declare
@@ -551,14 +553,17 @@ begin
   if v_n <> 1 then
     raise exception 'CHECK 11 FAILED: % create_sighting functions exist — an overload makes PostgREST calls ambiguous', v_n;
   end if;
-  if v_nargs <> 11 then
-    raise exception 'CHECK 11 FAILED: create_sighting should take 11 args, takes %', v_nargs;
+  if v_nargs <> 13 then
+    raise exception 'CHECK 11 FAILED: create_sighting should take 13 args (20261021100000), takes %', v_nargs;
   end if;
   if to_regprocedure('public.create_sighting(uuid, jsonb, text[], text, text, text, text, text, text, uuid[])') is not null then
     raise exception 'CHECK 11 FAILED: the old 10-arg signature still exists';
   end if;
+  if to_regprocedure('public.create_sighting(uuid, jsonb, text[], text, text, text, text, text, text, uuid[], uuid[])') is not null then
+    raise exception 'CHECK 11 FAILED: the 11-arg signature (this suite''s migration) still exists beside the 13-arg one';
+  end if;
 
-  raise notice 'CHECK 11 passed: one create_sighting, 11 args, no 10-arg overload';
+  raise notice 'CHECK 11 passed: one create_sighting, 13 args, no 10- or 11-arg overload';
 end $$;
 
 
@@ -568,7 +573,8 @@ end $$;
 -- -----------------------------------------------------------------------------
 do $$
 declare
-  v_fn   text := 'public.create_sighting(uuid, jsonb, text[], text, text, text, text, text, text, uuid[], uuid[])';
+  -- The 13-arg signature since 20261021100000 (damage args appended).
+  v_fn   text := 'public.create_sighting(uuid, jsonb, text[], text, text, text, text, text, text, uuid[], uuid[], text[], text)';
   v_role text;
   v_priv text;
 begin

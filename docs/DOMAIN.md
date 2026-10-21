@@ -654,7 +654,11 @@ Rules that follow, and are not implementation details:
   caption fix no longer orphans earlier confirmations. Every field is skippable: the
   context is asked one question per step (2026-10-20), each with "Skip", and
   skipping them all is a valid report. "Not sure" stores nothing, and the
-  free-text note stays the catch-all. Nothing here is ever public — structured context is owner-only
+  free-text note stays the catch-all. Since 2026-10-21 "damage visible" can
+  say what was seen (`damage_kinds`: smashed window / dents or scrapes /
+  broken lights / missing wheels / missing panels or parts / fire damage)
+  plus a short `damage_note` (≤300) — both only beside that flag, both
+  owner-only like the note. Nothing here is ever public — structured context is owner-only
   like the note (ADR-0008 unchanged).
 - Rate limit: a spotter can report at most 3 sightings per post per day
   (a rolling 24-hour window, not a midnight reset).
