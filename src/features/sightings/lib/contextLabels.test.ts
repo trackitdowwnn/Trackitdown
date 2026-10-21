@@ -121,11 +121,10 @@ describe('the context steps’ cards (2026-10-20)', () => {
       (value) => CONTEXT_OPTION_DESCRIPTIONS.staying[value as 'settled' | 'moving'],
     ),
     ...PEOPLE_OPTIONS.map((value) => CONTEXT_OPTION_DESCRIPTIONS.people[value]),
-    ...CONDITION_OPTIONS.map((value) => CONTEXT_OPTION_DESCRIPTIONS.condition[value]),
   ];
 
-  it('gives every offered answer one short line — six words at most (fewer words)', () => {
-    expect(lines).toHaveLength(12);
+  it('gives every single-answer card one short line — six words at most (fewer words)', () => {
+    expect(lines).toHaveLength(8);
     for (const line of lines) {
       expect(line).toBeTruthy();
       expect(line.split(/\s+/).length).toBeLessThanOrEqual(6);
@@ -138,6 +137,11 @@ describe('the context steps’ cards (2026-10-20)', () => {
         /follow|watch|track|approach|closer|nearer|check|inspect|wait|meet|get close|go to/i,
       );
     }
+  });
+
+  it('keeps the condition cards title-only (owner, 2026-10-21)', () => {
+    expect('condition' in CONTEXT_OPTION_DESCRIPTIONS).toBe(false);
+    expect(CONDITION_OPTIONS).toHaveLength(4);
   });
 
   it('asks each step’s question in the same words the rest of the app uses', () => {

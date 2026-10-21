@@ -173,12 +173,8 @@ export const CONTEXT_OPTION_DESCRIPTIONS = {
     nearby: 'Someone standing close by',
     in_vehicle: 'A person inside the car',
   } satisfies Record<PeoplePresence, string>,
-  condition: {
-    plate_changed: 'Different plate, or none',
-    damage_visible: 'Dents or broken glass',
-    being_stripped: 'Parts being taken off',
-    looks_intact: 'No damage you could see',
-  } satisfies Record<ConditionFlag, string>,
+  // No `condition`: its cards are title-only (owner, 2026-10-21 — the titles
+  // say it, and "Damage visible" now opens its own "What damage?" step).
 } as const;
 
 /**
