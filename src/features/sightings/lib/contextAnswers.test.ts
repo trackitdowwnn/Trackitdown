@@ -1,6 +1,7 @@
 /**
  * WHAT:  Tests for the report's context rules — each pick's patch, the
- *        cross-question clearing (the damage details with "Damage visible"),
+ *        cross-question clearing (the damage details with "Damage visible",
+ *        the missing parts with "Missing panels or parts"),
  *        "Looks intact"'s exclusivity, "Not sure", and the safety-line checks.
  * WHY:   Once the questions sit on separate steps (owner, 2026-10-20) these
  *        rules are the only thing holding them together; no screen sees them
@@ -33,6 +34,7 @@ import {
   stepTouched,
   toggleDamageKind,
   toggleMark,
+  toggleMissingPart,
 } from './contextAnswers';
 
 type Answers = Partial<ReportSightingAnswers>;
@@ -224,6 +226,56 @@ describe('what damage', () => {
   });
 });
 
+describe('what’s missing', () => {
+  /** Damage visible → Missing panels or parts → two parts and their words. */
+  const withParts = (): Answers => {
+    let a: Answers = {};
+    a = apply(a, changeConditions(a, ['damage_visible']));
+    a = apply(a, toggleDamageKind(a, 'smashed_window'));
+    a = apply(a, toggleDamageKind(a, 'missing_parts'));
+    a = apply(a, toggleMissingPart(a, 'doors'));
+    a = apply(a, toggleMissingPart(a, 'bonnet'));
+    return apply(a, { missingPartsNote: 'Bonnet on the verge' });
+  };
+
+  it('toggles a part in and out, in the order tapped', () => {
+    const a = withParts();
+    expect(a.missingParts).toEqual(['doors', 'bonnet']);
+    expect(toggleMissingPart(a, 'doors').missingParts).toEqual(['bonnet']);
+  });
+
+  it('⚠️ unticking "Missing panels or parts" drops which parts — the server would refuse them', () => {
+    const a = apply(withParts(), toggleDamageKind(withParts(), 'missing_parts'));
+    expect(a.damageKinds).toEqual(['smashed_window']);
+    expect(a.missingParts).toBeUndefined();
+    expect(a.missingPartsNote).toBeUndefined();
+  });
+
+  it('unticking ANOTHER kind keeps them', () => {
+    const a = apply(withParts(), toggleDamageKind(withParts(), 'smashed_window'));
+    expect(a.missingParts).toEqual(['doors', 'bonnet']);
+    expect(a.missingPartsNote).toBe('Bonnet on the verge');
+  });
+
+  it('⚠️ losing "Damage visible" drops them too — unticked, or by "Looks intact"', () => {
+    const unticked = apply(withParts(), changeConditions(withParts(), []));
+    expect([unticked.missingParts, unticked.missingPartsNote]).toEqual([undefined, undefined]);
+    const intact = apply(
+      withParts(),
+      changeConditions(withParts(), ['damage_visible', 'looks_intact']),
+    );
+    expect([intact.missingParts, intact.missingPartsNote]).toEqual([undefined, undefined]);
+  });
+
+  it('ticking another condition keeps them', () => {
+    const a = apply(
+      withParts(),
+      changeConditions(withParts(), ['damage_visible', 'plate_changed']),
+    );
+    expect(a.missingParts).toEqual(['doors', 'bonnet']);
+  });
+});
+
 describe("the owner's marks", () => {
   it('toggles a mark in and out', () => {
     const a = apply({}, toggleMark({}, 'm1'));
@@ -249,6 +301,11 @@ describe('the steps', () => {
     expect(stepTouched({ damageKinds: ['broken_lights'] }, 'damage')).toBe(true);
     expect(stepTouched({ damageNote: 'Mirror hanging off' }, 'damage')).toBe(true);
     expect(stepAnswered({ damageNote: 'Mirror hanging off' }, 'damage')).toBe(true);
+    // What's missing: a part, or words — a blank box is neither.
+    expect(stepTouched({}, 'parts')).toBe(false);
+    expect(stepTouched({ missingParts: [], missingPartsNote: '  ' }, 'parts')).toBe(false);
+    expect(stepTouched({ missingParts: ['lights'] }, 'parts')).toBe(true);
+    expect(stepAnswered({ missingPartsNote: 'Both mirrors' }, 'parts')).toBe(true);
   });
 
   it('a step holds a real answer only when something is sent — "Not sure" is not one', () => {
@@ -267,6 +324,14 @@ describe('the steps', () => {
     expect(stepApplies({ contextFlags: ['parked', 'damage_visible'] }, 'damage')).toBe(true);
     expect(stepApplies({ contextFlags: ['being_stripped'] }, 'damage')).toBe(false);
     expect(stepApplies({}, 'damage')).toBe(false);
+    // What's missing: only after "Missing panels or parts" — under "Damage visible".
+    expect(
+      stepApplies({ contextFlags: ['damage_visible'], damageKinds: ['missing_parts'] }, 'parts'),
+    ).toBe(true);
+    expect(
+      stepApplies({ contextFlags: ['damage_visible'], damageKinds: ['missing_wheels'] }, 'parts'),
+    ).toBe(false);
+    expect(stepApplies({ damageKinds: ['missing_parts'] }, 'parts')).toBe(false);
     expect(CONTEXT_STEP_IDS).toEqual([
       'state',
       'staying',
@@ -274,6 +339,7 @@ describe('the steps', () => {
       'people',
       'condition',
       'damage',
+      'parts',
       'marks',
       'note',
     ]);

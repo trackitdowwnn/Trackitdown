@@ -49,9 +49,14 @@ import {
   CircleDashed,
   CircleParking,
   CircleQuestionMark,
+  DoorOpen,
   Flame,
+  FlipHorizontal2,
   Hammer,
+  Lightbulb,
   LightbulbOff,
+  PanelBottom,
+  RectangleEllipsis,
   RectangleHorizontal,
   ShieldCheck,
   SquareDashed,
@@ -106,6 +111,7 @@ import {
   stateOf,
   toggleDamageKind,
   toggleMark,
+  toggleMissingPart,
   type MaybeUnsure,
 } from '../lib/contextAnswers';
 import {
@@ -114,6 +120,7 @@ import {
   CONTEXT_STEP_QUESTIONS,
   DAMAGE_KIND_LABELS,
   FLAG_LABELS,
+  MISSING_PART_LABELS,
   PARKED_LIKELIHOOD_LABELS,
   PEOPLE_OPTIONS,
   PEOPLE_PRESENCE_LABELS,
@@ -125,9 +132,12 @@ import { stripHiddenCharacters } from '../lib/withdrawReasons';
 import {
   DAMAGE_KINDS,
   MAX_DAMAGE_NOTE_LENGTH,
+  MAX_MISSING_PARTS_NOTE_LENGTH,
   MAX_NOTE_LENGTH,
+  MISSING_PARTS,
   type ConditionFlag,
   type DamageKind,
+  type MissingPart,
   type ParkedLikelihood,
   type PeoplePresence,
   type ReportSightingAnswers,
@@ -174,6 +184,14 @@ const DAMAGE_ICONS: Record<DamageKind, LucideIcon> = {
   missing_wheels: CircleDashed,
   missing_parts: SquareDashed,
   fire_damage: Flame,
+};
+const MISSING_PART_ICONS: Record<MissingPart, LucideIcon> = {
+  bumpers: PanelBottom,
+  bonnet: CarFront,
+  doors: DoorOpen,
+  lights: Lightbulb,
+  wing_mirrors: FlipHorizontal2,
+  number_plates: RectangleEllipsis,
 };
 
 /** SAFETY: say "Don't approach" out loud as it appears. iOS has no live
@@ -473,6 +491,49 @@ export function DamageStep({ answers, setAnswers }: StepProps) {
         />
       </View>
     </LayoutAnimationConfig>
+  );
+}
+
+/** What's missing? — only after "Missing panels or parts" (owner,
+ *  2026-10-21). The damage step's shape exactly: any that apply, then
+ *  "Anything else?" in their own words; never moves on by itself; hidden
+ *  characters stripped as typed. Only parts seen from where they stand
+ *  (SECURITY_AND_TRUST §1) — nothing under the car or inside it. */
+export function PartsStep({ answers, setAnswers }: StepProps) {
+  const styles = useThemedStyles(makeStyles);
+  const note = answers.missingPartsNote ?? '';
+  return (
+    <View style={styles.stack}>
+      <CardSelectMulti
+        options={MISSING_PARTS.map((value) => ({
+          value,
+          label: MISSING_PART_LABELS[value],
+          icon: MISSING_PART_ICONS[value],
+        }))}
+        value={answers.missingParts ?? []}
+        onChange={(next) => {
+          // One card changes per tap: whichever is in one list but not the other.
+          const current = answers.missingParts ?? [];
+          const changed =
+            next.find((part) => !current.includes(part)) ??
+            current.find((part) => !next.includes(part));
+          if (changed) setAnswers(toggleMissingPart(answers, changed));
+        }}
+        accessibilityLabel={CONTEXT_STEP_QUESTIONS.parts}
+        testID="context-parts"
+      />
+      <TextField
+        label="Anything else?"
+        variant="multiline"
+        value={note}
+        onChangeText={(text) => setAnswers({ missingPartsNote: stripHiddenCharacters(text) })}
+        // UTF-16 units, as maxLength counts them (like the damage step).
+        counter={`${note.length}/${MAX_MISSING_PARTS_NOTE_LENGTH}`}
+        accessibilityHint={`Up to ${MAX_MISSING_PARTS_NOTE_LENGTH} characters`}
+        maxLength={MAX_MISSING_PARTS_NOTE_LENGTH}
+        testID="context-parts-note"
+      />
+    </View>
   );
 }
 

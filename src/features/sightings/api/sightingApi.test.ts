@@ -47,8 +47,12 @@ const GOLDEN_PARKED = {
   p_confirmed_feature_ids: ['dddddddd-0000-0000-0000-000000000001'],
   p_offered_feature_ids: ['dddddddd-0000-0000-0000-000000000001'],
   // 2026-10-21, owner-approved: what damage, and their words about it.
-  p_damage_kinds: ['smashed_window', 'dents_scrapes'],
+  p_damage_kinds: ['smashed_window', 'dents_scrapes', 'missing_parts'],
   p_damage_note: 'Glass on the pavement',
+  // 2026-10-21, owner-approved: which parts are missing, and their words.
+  // In the order tapped — the server stores its own order.
+  p_missing_parts: ['doors', 'bumpers'],
+  p_missing_parts_note: 'Rear bumper on the pavement',
 };
 const GOLDEN_MOVED = {
   p_post_id: 'aaaaaaaa-0000-0000-0000-000000000001',
@@ -61,9 +65,12 @@ const GOLDEN_MOVED = {
   p_people_presence: null,
   p_confirmed_feature_ids: null,
   p_offered_feature_ids: ['dddddddd-0000-0000-0000-000000000001'],
-  // Said, then taken back by "Looks intact": nothing of it is sent.
+  // Said, then taken back by "Looks intact": nothing of it is sent — the
+  // missing parts included.
   p_damage_kinds: null,
   p_damage_note: null,
+  p_missing_parts: null,
+  p_missing_parts_note: null,
 };
 const GOLDEN_SKIPPED = {
   p_post_id: 'aaaaaaaa-0000-0000-0000-000000000001',
@@ -78,6 +85,8 @@ const GOLDEN_SKIPPED = {
   p_offered_feature_ids: ['dddddddd-0000-0000-0000-000000000001'],
   p_damage_kinds: null,
   p_damage_note: null,
+  p_missing_parts: null,
+  p_missing_parts_note: null,
 };
 
 const mockRpc = jest.fn();
@@ -266,7 +275,8 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
     // the context page into one step per question promised the SAME payload;
     // this literal is that promise. Changing it means the server sees
     // something new: that needs its own decision, not a UI refactor. (The
-    // damage params, 2026-10-21, were one: owner-approved, server live first.)
+    // damage params, 2026-10-21, were one: owner-approved, server live first;
+    // the missing-parts params, the same day, another.)
     // The rules work on the wizard's answers; those go through the SAME parse
     // submitSighting runs (which drops the UI-only keys) and on to the params.
     type Answers = Partial<ReportSightingAnswers>;
@@ -285,7 +295,7 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
         ['p/1.jpg'],
       );
 
-    it('parked, settled, people near it, two conditions, what damage, a mark and a note', () => {
+    it('parked, settled, people near it, two conditions, what damage and what’s missing, a mark and a note', () => {
       let a = start;
       a = pick(a, contextRules.selectState(a, 'parked'));
       a = pick(a, contextRules.selectStaying(a, 'settled'));
@@ -294,7 +304,11 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
       a = pick(a, contextRules.changeConditions(a, ['damage_visible', 'plate_changed']));
       a = pick(a, contextRules.toggleDamageKind(a, 'smashed_window'));
       a = pick(a, contextRules.toggleDamageKind(a, 'dents_scrapes'));
+      a = pick(a, contextRules.toggleDamageKind(a, 'missing_parts'));
       a = pick(a, { damageNote: '  Glass on the pavement ' });
+      a = pick(a, contextRules.toggleMissingPart(a, 'doors'));
+      a = pick(a, contextRules.toggleMissingPart(a, 'bumpers'));
+      a = pick(a, { missingPartsNote: ' Rear bumper on the pavement  ' });
       a = pick(a, contextRules.toggleMark(a, mark));
       a = pick(a, { note: ' grey tarp over the bonnet ' });
 
@@ -312,6 +326,9 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
       a = pick(a, contextRules.changeConditions(a, ['damage_visible']));
       a = pick(a, contextRules.toggleDamageKind(a, 'fire_damage'));
       a = pick(a, { damageNote: 'Scorched bonnet' });
+      a = pick(a, contextRules.toggleDamageKind(a, 'missing_parts'));
+      a = pick(a, contextRules.toggleMissingPart(a, 'wing_mirrors'));
+      a = pick(a, { missingPartsNote: 'Both mirrors' });
       a = pick(a, contextRules.changeConditions(a, ['damage_visible', 'looks_intact']));
 
       const { p_photos: _photos, ...params } = send(a);
@@ -386,6 +403,63 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
       expect(
         submitAnswersSchema.safeParse({ ...base, damageKinds: ['flood_damage'] }).success,
       ).toBe(false);
+    });
+  });
+
+  describe('what’s missing (2026-10-21)', () => {
+    const base = {
+      photos: [located],
+      contextFlags: ['damage_visible' as const],
+      note: '',
+      confirmedFeatureIds: [],
+      damageKinds: ['missing_parts' as const],
+    };
+
+    it('sends the parts and their words beside "Missing panels or parts"', () => {
+      const params = buildCreateSightingParams(
+        POST_ID,
+        { ...base, missingParts: ['bonnet'], missingPartsNote: ' Bonnet gone ' },
+        ['p/1.jpg'],
+      );
+      expect(params.p_missing_parts).toEqual(['bonnet']);
+      expect(params.p_missing_parts_note).toBe('Bonnet gone');
+    });
+
+    it('⚠️ sends no parts without "Missing panels or parts" in the kinds sent — the server would refuse them', () => {
+      const otherKind = buildCreateSightingParams(
+        POST_ID,
+        {
+          ...base,
+          damageKinds: ['smashed_window'],
+          missingParts: ['doors'],
+          missingPartsNote: 'Doors',
+        },
+        ['p/1.jpg'],
+      );
+      expect([otherKind.p_missing_parts, otherKind.p_missing_parts_note]).toEqual([null, null]);
+      // The kind itself is dropped without "Damage visible", so the parts are too.
+      const noFlag = buildCreateSightingParams(
+        POST_ID,
+        { ...base, contextFlags: ['parked'], missingParts: ['doors'], missingPartsNote: 'Doors' },
+        ['p/1.jpg'],
+      );
+      expect([noFlag.p_missing_parts, noFlag.p_missing_parts_note]).toEqual([null, null]);
+    });
+
+    it('sends no parts for an empty pick, and no note for a blank or hidden one', () => {
+      const hidden = String.fromCharCode(0x200b) + String.fromCharCode(0x3164);
+      const params = buildCreateSightingParams(
+        POST_ID,
+        { ...base, missingParts: [], missingPartsNote: ` ${hidden} ` },
+        ['p/1.jpg'],
+      );
+      expect([params.p_missing_parts, params.p_missing_parts_note]).toEqual([null, null]);
+    });
+
+    it('refuses a part the server doesn’t know — wheels are a damage kind', () => {
+      expect(submitAnswersSchema.safeParse({ ...base, missingParts: ['wheels'] }).success).toBe(
+        false,
+      );
     });
   });
 
@@ -706,6 +780,35 @@ describe('fetchPostSightings (PRIVACY strictness)', () => {
     expect([rows[1].damageKinds, rows[1].damageNote]).toEqual([null, null]);
     expect(rows[1].spotter.firstName).toBe('Beth');
     expect([...(rows[2].damageNote ?? '')]).toHaveLength(300);
+  });
+
+  // 2026-10-21: which parts were missing — loose in exactly the same way.
+  it('reads which parts were missing — absent, null, unknown and malformed all parse', async () => {
+    mockRpc.mockResolvedValue({
+      data: [
+        {
+          ...baseRow,
+          context_flags: ['damage_visible'],
+          damage_kinds: ['missing_parts'],
+          missing_parts: ['bumpers', 'doors'],
+          missing_parts_note: 'Rear bumper on the pavement',
+        },
+        { ...baseRow, missing_parts: null, missing_parts_note: null },
+        baseRow,
+        { ...baseRow, missing_parts: ['spoiler'] },
+        { ...baseRow, missing_parts: 'doors', missing_parts_note: 7 },
+      ],
+      error: null,
+    });
+    const rows = await fetchPostSightings(POST_ID);
+    expect(rows.map((row) => [row.missingParts, row.missingPartsNote])).toEqual([
+      [['bumpers', 'doors'], 'Rear bumper on the pavement'],
+      [null, null],
+      [null, null],
+      [['spoiler'], null],
+      [null, null],
+    ]);
+    expect(rows[4].spotter.firstName).toBe('Beth');
   });
 
   it('REJECTS a payload whose spotter block carries an extra field (e.g. spotter_id)', async () => {

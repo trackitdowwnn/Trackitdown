@@ -361,7 +361,8 @@ export function ConfirmStep({ answers, editStep, busy = false }: StepProps) {
           2026-10-20): its Edit opens that question and Done comes straight
           back — "what it was doing" also asks its follow-up on the way, and
           "its condition" what damage, with "Damage visible" (2026-10-21);
-          "About the damage" opens that step itself. Only
+          "About the damage" opens that step itself, and "What's missing"
+          the parts step (an edit's onward hop is one step only). Only
           what was answered is listed (owner's pick); one "Add details" opens
           the first question still unanswered, and again after that. */}
       <ReviewSection title="What you saw">

@@ -1,7 +1,8 @@
 /**
  * WHAT:  The one vocabulary for a sighting's structured context: the labels
- *        for every flag, follow-up, presence answer and kind of damage
- *        (DAMAGE_KIND_LABELS, 2026-10-21); the option lists the
+ *        for every flag, follow-up, presence answer, kind of damage
+ *        (DAMAGE_KIND_LABELS, 2026-10-21) and missing part
+ *        (MISSING_PART_LABELS, 2026-10-21); the option lists the
  *        context steps render as cards, each card's one short line
  *        (CONTEXT_OPTION_DESCRIPTIONS), and every step's question
  *        (CONTEXT_STEP_QUESTIONS; CONTEXT_QUESTIONS for the shared three);
@@ -32,6 +33,7 @@ import {
   type ConditionFlag,
   type DamageKind,
   type DrivingDirection,
+  type MissingPart,
   type ParkedLikelihood,
   type PeoplePresence,
   type ReportSightingAnswers,
@@ -92,12 +94,48 @@ export const DAMAGE_KIND_LABELS: Record<DamageKind, string> = {
 // The cards are offered in DAMAGE_KINDS' order (types.ts) — the one list,
 // which mirrors the server's whitelist — so there is no second copy here.
 
-/** The damage kinds' words, in the order given, skipping any this app
- *  doesn't know (a newer server's kind is left out, never a crash). */
-function damageKindLabels(kinds: readonly string[] | null | undefined): string[] {
-  return (kinds ?? [])
-    .filter((kind): kind is DamageKind => Object.hasOwn(DAMAGE_KIND_LABELS, kind))
-    .map((kind) => DAMAGE_KIND_LABELS[kind]);
+/** Which parts are missing — the cards' titles after "Missing panels or
+ *  parts" (owner, 2026-10-21), and the words the owner reads in brackets
+ *  after it. Only parts seen from where the spotter stands. */
+export const MISSING_PART_LABELS: Record<MissingPart, string> = {
+  bumpers: 'Bumpers',
+  bonnet: 'Bonnet',
+  doors: 'Doors',
+  lights: 'Lights',
+  wing_mirrors: 'Wing mirrors',
+  number_plates: 'Number plates',
+};
+// Offered in MISSING_PARTS' order (types.ts), the server's whitelist's.
+
+/** Known words for the values given, in the order given, skipping any this
+ *  app doesn't know (a newer server's value is left out, never a crash). */
+function knownLabels<K extends string>(
+  table: Record<K, string>,
+  values: readonly string[] | null | undefined,
+): string[] {
+  return (values ?? [])
+    .filter((value): value is K => Object.hasOwn(table, value))
+    .map((value) => table[value]);
+}
+
+/** The missing parts' words, as listed on the check-and-send step's row. */
+export function missingPartLabels(parts: readonly string[] | null | undefined): string[] {
+  return knownLabels(MISSING_PART_LABELS, parts);
+}
+
+/** The damage kinds' words. With `parts`, "Missing panels or parts" names
+ *  them in brackets — "Missing panels or parts (Bumpers, Doors)" — and stays
+ *  plain when none are known (never "()"). */
+function damageKindLabels(
+  kinds: readonly string[] | null | undefined,
+  parts?: readonly string[] | null,
+): string[] {
+  const named = missingPartLabels(parts);
+  return knownLabels(DAMAGE_KIND_LABELS, kinds).map((label) =>
+    label === DAMAGE_KIND_LABELS.missing_parts && named.length > 0
+      ? `${label} (${named.join(', ')})`
+      : label,
+  );
 }
 
 const DIRECTION_LABELS: Record<DrivingDirection, string> = {
@@ -124,11 +162,13 @@ export interface ContextSummarySource {
   peoplePresence?: PeoplePresence | null;
   /** Plain strings: the owner's list keeps a kind this app doesn't know. */
   damageKinds?: readonly string[] | null;
+  /** Plain strings, likewise (2026-10-21). */
+  missingParts?: readonly string[] | null;
 }
 
 /** One labelled row of the check-and-send step's "What you saw". */
 export interface ContextReviewRow {
-  key: 'state' | 'people' | 'condition' | 'damage' | 'marks' | 'note';
+  key: 'state' | 'people' | 'condition' | 'damage' | 'parts' | 'marks' | 'note';
   label: string;
   value: string;
 }
@@ -165,6 +205,9 @@ export const FOLLOW_UP_QUESTIONS = {
 /** "Damage visible"'s follow-up — its own step (owner, 2026-10-21). */
 export const DAMAGE_QUESTION = 'What damage can you see?';
 
+/** "Missing panels or parts"'s follow-up — its own step (owner, 2026-10-21). */
+export const PARTS_QUESTION = 'What’s missing?';
+
 /** The last two context steps' questions. */
 export const MARKS_QUESTION = 'Could you see any of these?';
 export const NOTE_QUESTION = 'A note for the owner';
@@ -178,6 +221,7 @@ export const CONTEXT_STEP_QUESTIONS: Record<ContextStepId, string> = {
   people: CONTEXT_QUESTIONS.people,
   condition: CONTEXT_QUESTIONS.condition,
   damage: DAMAGE_QUESTION,
+  parts: PARTS_QUESTION,
   marks: MARKS_QUESTION,
   note: NOTE_QUESTION,
 };
@@ -239,9 +283,15 @@ export interface ContextAnswerGroup {
  * the 3-way answer only when that is absent.
  *
  * The damage seen rides on "Damage visible", as a follow-up rides on its
- * state: "Damage visible · Smashed window, Dents or scrapes" (2026-10-21).
+ * state: "Damage visible · Smashed window, Dents or scrapes" (2026-10-21) —
+ * and, with `withParts`, which parts ride on "Missing panels or parts" in
+ * brackets (the owner's page; check-and-send gives the parts a row of their
+ * own, with its own Edit).
  */
-function answeredContext(source: ContextSummarySource): Record<ContextQuestionKey, string[]> {
+function answeredContext(
+  source: ContextSummarySource,
+  withParts: boolean,
+): Record<ContextQuestionKey, string[]> {
   const flags = source.contextFlags ?? [];
 
   const state: string[] = [];
@@ -261,7 +311,7 @@ function answeredContext(source: ContextSummarySource): Record<ContextQuestionKe
       ? FLAG_LABELS.people_nearby
       : null;
 
-  const damage = damageKindLabels(source.damageKinds);
+  const damage = damageKindLabels(source.damageKinds, withParts ? source.missingParts : null);
   const condition = flags
     .filter((flag) => (CONDITION_FLAGS as readonly string[]).includes(flag))
     .map((flag) =>
@@ -277,7 +327,7 @@ const QUESTION_ORDER: readonly ContextQuestionKey[] = ['state', 'people', 'condi
 
 /** The check-and-send step's rows: each answered question, one line. */
 function answeredContextRows(source: ContextSummarySource): ContextReviewRow[] {
-  const answered = answeredContext(source);
+  const answered = answeredContext(source, false);
   return QUESTION_ORDER.filter((key) => answered[key].length > 0).map((key) => ({
     key,
     label: CONTEXT_ROW_LABELS[key],
@@ -290,11 +340,13 @@ function answeredContextRows(source: ContextSummarySource): ContextReviewRow[] {
  * answered, under its short label, with their answers in the words of the
  * chips they tapped — the page sets them out as a label | answers table
  * (owner, 2026-10-20; chips under the full questions before that). Only what
- * was chosen, so a skipped question isn't there at all. The marks, the words
- * about the damage and the note have blocks of their own.
+ * was chosen, so a skipped question isn't there at all. Which parts are
+ * missing ride in brackets on "Missing panels or parts". The marks, the words
+ * about the damage and about what's missing, and the note have blocks of
+ * their own.
  */
 export function sightingAnswerGroups(source: ContextSummarySource): ContextAnswerGroup[] {
-  const answered = answeredContext(source);
+  const answered = answeredContext(source, true);
   return QUESTION_ORDER.filter((key) => answered[key].length > 0).map((key) => ({
     key,
     label: CONTEXT_SHORT_LABELS[key],
@@ -305,7 +357,8 @@ export function sightingAnswerGroups(source: ContextSummarySource): ContextAnswe
 /**
  * Everything the spotter said, as labelled rows for the check-and-send step:
  * the state with its follow-up, the people, the condition (with the damage
- * seen), their words about the damage, the marks they saw, and the note. The
+ * seen), their words about the damage, what's missing (the parts and their
+ * words, one row), the marks they saw, and the note. The
  * SAME answers the owner reads (sightingAnswerGroups);
  * only answered questions appear, and "Not sure" appears nowhere (it stores
  * nothing). The marks keep the owner's order.
@@ -318,6 +371,17 @@ export function contextReviewRows(answers: Partial<ReportSightingAnswers>): Cont
   const damageNote = cleanSpotterWords(answers.damageNote);
   if (damageNote !== null) {
     rows.push({ key: 'damage', label: 'About the damage', value: damageNote });
+  }
+
+  // Which parts, and their words about it, on ONE row whose Edit opens the
+  // parts step: the condition's Edit carries on to the damage step but no
+  // further (editContinuesTo is one hop), so the parts need a door of their own.
+  const whatsMissing = [
+    missingPartLabels(answers.missingParts).join(', '),
+    cleanSpotterWords(answers.missingPartsNote) ?? '',
+  ].filter((part) => part !== '');
+  if (whatsMissing.length > 0) {
+    rows.push({ key: 'parts', label: 'What’s missing', value: whatsMissing.join(' · ') });
   }
 
   const confirmed = answers.confirmedFeatureIds ?? [];
@@ -336,8 +400,8 @@ export function contextReviewRows(answers: Partial<ReportSightingAnswers>): Cont
 
 /**
  * How many details the context steps captured: each answered question, each
- * condition, each kind of damage, each confirmed mark, the words about the
- * damage, and a note. "Not sure" isn't a detail (it
+ * condition, each kind of damage, each missing part, each confirmed mark,
+ * the words about the damage and about what's missing, and a note. "Not sure" isn't a detail (it
  * sends nothing), so it doesn't count. Feeds the funnel's `context_summary`
  * (each step's own Skip / Continue is contextAnswers' `stepTouched`).
  * Trusts the steps to keep the answers consistent (a follow-up only under its
@@ -353,6 +417,8 @@ export function contextDetailCount(answers: Partial<ReportSightingAnswers>): num
     (answers.peoplePresence ? 1 : 0) +
     (answers.damageKinds?.length ?? 0) +
     (cleanSpotterWords(answers.damageNote) !== null ? 1 : 0) +
+    (answers.missingParts?.length ?? 0) +
+    (cleanSpotterWords(answers.missingPartsNote) !== null ? 1 : 0) +
     (answers.confirmedFeatureIds?.length ?? 0) +
     (answers.note?.trim() ? 1 : 0)
   );

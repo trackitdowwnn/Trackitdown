@@ -658,7 +658,10 @@ Rules that follow, and are not implementation details:
   say what was seen (`damage_kinds`: smashed window / dents or scrapes /
   broken lights / missing wheels / missing panels or parts / fire damage)
   plus a short `damage_note` (≤300) — both only beside that flag, both
-  owner-only like the note. Nothing here is ever public — structured context is owner-only
+  owner-only like the note. "Missing panels or parts" can in turn say which
+  (`missing_parts`: bumpers / bonnet / doors / lights / wing mirrors / number
+  plates — only what is seen from where the spotter stands) plus a short
+  `missing_parts_note` (≤300), only beside that kind, owner-only alike. Nothing here is ever public — structured context is owner-only
   like the note (ADR-0008 unchanged).
 - Rate limit: a spotter can report at most 3 sightings per post per day
   (a rolling 24-hour window, not a midnight reset).

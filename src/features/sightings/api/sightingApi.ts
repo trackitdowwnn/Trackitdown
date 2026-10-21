@@ -50,9 +50,11 @@ import {
   DAMAGE_KINDS,
   DRIVING_DIRECTIONS,
   MAX_DAMAGE_NOTE_LENGTH,
+  MAX_MISSING_PARTS_NOTE_LENGTH,
   MAX_NOTE_LENGTH,
   MAX_SIGHTING_PHOTOS,
   MIN_SIGHTING_PHOTOS,
+  MISSING_PARTS,
   PARKED_LIKELIHOOD,
   PEOPLE_PRESENCE,
   SIGHTING_CONTEXT_FLAGS,
@@ -156,6 +158,11 @@ export const submitAnswersSchema = z.object({
   // too (INVALID_INPUT otherwise).
   damageKinds: z.array(z.enum(DAMAGE_KINDS)).max(DAMAGE_KINDS.length).optional(),
   damageNote: z.string().max(MAX_DAMAGE_NOTE_LENGTH).optional(),
+  // Which parts are missing and their words about it (2026-10-21). Sent only
+  // beside the 'missing_parts' damage kind — the same backstop, the same
+  // server rule.
+  missingParts: z.array(z.enum(MISSING_PARTS)).max(MISSING_PARTS.length).optional(),
+  missingPartsNote: z.string().max(MAX_MISSING_PARTS_NOTE_LENGTH).optional(),
 });
 
 const createSightingResultSchema = z.object({ sighting_id: z.guid() });
@@ -179,6 +186,10 @@ export function buildCreateSightingParams(
   // the server refuses them without the flag).
   const damaged = answers.contextFlags.includes('damage_visible');
   const damageKinds = damaged ? (answers.damageKinds ?? []) : [];
+  // Which parts belong to "Missing panels or parts" in the kinds SENT, the
+  // same way (the server refuses them without it).
+  const partsMissing = damageKinds.includes('missing_parts');
+  const missingParts = partsMissing ? (answers.missingParts ?? []) : [];
   return {
     p_post_id: postId,
     p_photos: answers.photos.map((photo, index) => ({
@@ -206,6 +217,8 @@ export function buildCreateSightingParams(
     // Hidden characters stripped (the server refuses them), trimmed, and
     // null when nothing visible is left.
     p_damage_note: damaged ? cleanSpotterWords(answers.damageNote) : null,
+    p_missing_parts: missingParts.length > 0 ? missingParts : null,
+    p_missing_parts_note: partsMissing ? cleanSpotterWords(answers.missingPartsNote) : null,
   };
 }
 
@@ -401,6 +414,10 @@ const ownerSightingSchema = z.object({
   // whole list.
   damage_kinds: z.array(z.string()).nullable().optional().catch(null),
   damage_note: z.string().nullable().optional().catch(null),
+  // Which parts were missing, and their words (20261021120000) — loose in
+  // exactly the same way, for the same reason.
+  missing_parts: z.array(z.string()).nullable().optional().catch(null),
+  missing_parts_note: z.string().nullable().optional().catch(null),
   photos: z.array(
     z.object({
       path: z.string(),
@@ -501,6 +518,8 @@ export async function fetchPostSightings(postId: string): Promise<OwnerSighting[
     offeredFeatureIds: row.offered_feature_ids ?? null,
     damageKinds: row.damage_kinds ?? null,
     damageNote: row.damage_note ?? null,
+    missingParts: row.missing_parts ?? null,
+    missingPartsNote: row.missing_parts_note ?? null,
     photos: row.photos.map((photo) => ({
       path: photo.path,
       lat: photo.lat,

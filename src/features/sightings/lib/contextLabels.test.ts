@@ -4,7 +4,9 @@
  *        sightingAnswerGroups() (the owner's "What they saw" answers, per
  *        question), contextReviewRows() (the
  *        check-and-send rows), and contextDetailCount(); the damage seen
- *        (2026-10-21) on the "Damage visible" line, and its own words.
+ *        (2026-10-21) on the "Damage visible" line, and its own words; which
+ *        parts are missing (2026-10-21) in brackets for the owner, a row of
+ *        their own for the spotter.
  * WHY:   The spotter's chips and the owner's summaries share these words; a
  *        drift between them is the bug the 2026-10-01 redesign removed. The
  *        detail count drives the step's Skip / Continue label, so a "Not sure"
@@ -21,6 +23,7 @@ import {
   CONTEXT_STEP_QUESTIONS,
   DAMAGE_KIND_LABELS,
   FLAG_LABELS,
+  MISSING_PART_LABELS,
   PARKED_LIKELIHOOD_LABELS,
   PEOPLE_OPTIONS,
   STATE_OPTIONS,
@@ -29,7 +32,7 @@ import {
   contextReviewRows,
   sightingAnswerGroups,
 } from './contextLabels';
-import { DAMAGE_KINDS } from '../types';
+import { DAMAGE_KINDS, MISSING_PARTS } from '../types';
 
 describe('contextLabels — the shared words', () => {
   it('offers the step\'s options in order, with no retired value', () => {
@@ -152,6 +155,7 @@ describe('the context steps’ cards (2026-10-20)', () => {
     expect(CONTEXT_STEP_QUESTIONS.people).toBe(CONTEXT_QUESTIONS.people);
     expect(CONTEXT_STEP_QUESTIONS.condition).toBe(CONTEXT_QUESTIONS.condition);
     expect(CONTEXT_STEP_QUESTIONS.damage).toBe('What damage can you see?');
+    expect(CONTEXT_STEP_QUESTIONS.parts).toBe('What’s missing?');
   });
 });
 
@@ -238,6 +242,96 @@ describe('what damage (owner, 2026-10-21)', () => {
   });
 });
 
+describe('what’s missing (owner, 2026-10-21)', () => {
+  it('offers six parts you can see from where you stand, in the server’s order', () => {
+    expect(MISSING_PARTS).toEqual([
+      'bumpers',
+      'bonnet',
+      'doors',
+      'lights',
+      'wing_mirrors',
+      'number_plates',
+    ]);
+    expect(MISSING_PARTS.map((part) => MISSING_PART_LABELS[part])).toEqual([
+      'Bumpers',
+      'Bonnet',
+      'Doors',
+      'Lights',
+      'Wing mirrors',
+      'Number plates',
+    ]);
+  });
+
+  const source = {
+    contextFlags: ['damage_visible' as const],
+    damageKinds: ['smashed_window', 'missing_parts'],
+    missingParts: ['bumpers', 'doors'],
+  };
+
+  it('names the parts in brackets on "Missing panels or parts" for the owner', () => {
+    expect(sightingAnswerGroups(source)).toEqual([
+      {
+        key: 'condition',
+        label: 'Condition',
+        answers: ['Damage visible · Smashed window, Missing panels or parts (Bumpers, Doors)'],
+      },
+    ]);
+  });
+
+  it('⚠️ never shows empty brackets — no parts, or none this app knows, read plain', () => {
+    const plain = [
+      {
+        key: 'condition',
+        label: 'Condition',
+        answers: ['Damage visible · Smashed window, Missing panels or parts'],
+      },
+    ];
+    expect(sightingAnswerGroups({ ...source, missingParts: null })).toEqual(plain);
+    expect(sightingAnswerGroups({ ...source, missingParts: [] })).toEqual(plain);
+    expect(sightingAnswerGroups({ ...source, missingParts: ['spoiler', 'toString'] })).toEqual(
+      plain,
+    );
+    // A known part beside an unknown one: the known one alone.
+    expect(
+      sightingAnswerGroups({ ...source, missingParts: ['spoiler', 'bonnet'] })[0].answers,
+    ).toEqual(['Damage visible · Smashed window, Missing panels or parts (Bonnet)']);
+  });
+
+  it('gives the spotter one "What’s missing" row — the parts and their words — after the damage', () => {
+    expect(
+      contextReviewRows({
+        ...source,
+        contextFlags: ['damage_visible'],
+        damageKinds: ['smashed_window', 'missing_parts'],
+        missingParts: ['bumpers', 'doors'],
+        damageNote: 'Glass everywhere',
+        missingPartsNote: '  Rear bumper on the pavement ',
+      }),
+    ).toEqual([
+      {
+        key: 'condition',
+        label: 'Its condition',
+        // No brackets here: the parts have their own row, with its own Edit.
+        value: 'Damage visible · Smashed window, Missing panels or parts',
+      },
+      { key: 'damage', label: 'About the damage', value: 'Glass everywhere' },
+      {
+        key: 'parts',
+        label: 'What’s missing',
+        value: 'Bumpers, Doors · Rear bumper on the pavement',
+      },
+    ]);
+    // Words alone, parts alone, and neither.
+    const row = (answers: object) =>
+      contextReviewRows({ contextFlags: ['damage_visible'], ...answers }).find(
+        (candidate) => candidate.key === 'parts',
+      )?.value;
+    expect(row({ missingPartsNote: 'Both mirrors' })).toBe('Both mirrors');
+    expect(row({ missingParts: ['lights'] })).toBe('Lights');
+    expect(row({ missingParts: [], missingPartsNote: '   ' })).toBeUndefined();
+  });
+});
+
 describe('contextDetailCount', () => {
   it('is 0 for a skipped step, "Not sure" marks and a blank note', () => {
     expect(contextDetailCount({})).toBe(0);
@@ -272,6 +366,24 @@ describe('contextDetailCount', () => {
       }),
     ).toBe(4);
     expect(contextDetailCount({ contextFlags: ['damage_visible'], damageNote: '  ' })).toBe(1);
+  });
+
+  it('counts each missing part, and their words about it once', () => {
+    expect(
+      contextDetailCount({
+        contextFlags: ['damage_visible'],
+        damageKinds: ['missing_parts'],
+        missingParts: ['doors', 'bonnet'],
+        missingPartsNote: 'Bonnet on the verge',
+      }),
+    ).toBe(5);
+    expect(
+      contextDetailCount({
+        contextFlags: ['damage_visible'],
+        damageKinds: ['missing_parts'],
+        missingPartsNote: '  ',
+      }),
+    ).toBe(2);
   });
 });
 

@@ -10,7 +10,9 @@
  *          table just like the What they saw") — the spotter's answers as a
  *          small TABLE, label | answers, one row per question they answered
  *          (Doing | Parked · Looks settled), their words about the damage as
- *          a short quote just under it ("About the damage", 2026-10-21), then
+ *          a short quote just under it ("About the damage", 2026-10-21) and
+ *          their words about what's missing likewise ("About what's
+ *          missing"), then
  *          their note under "In their words" (set apart by a rule).
  * WHY:   - The marks read back the report wizard the way the spotter filled
  *          it in (owner, 2026-10-19): the SAME rows (MarkTile, read-only),
@@ -24,7 +26,9 @@
  *          skipped and "Not sure" store nothing, so those rows aren't here.
  *          A state's follow-up stays on its line (Parked · Looks settled);
  *          conditions take a line each, the damage seen on its own ("Damage
- *          visible · Smashed window, Dents or scrapes", owner, 2026-10-21).
+ *          visible · Smashed window, Dents or scrapes", owner, 2026-10-21),
+ *          and which parts in brackets on "Missing panels or parts"
+ *          ("Missing panels or parts (Bumpers, Doors)").
  *        Before: chips under the full questions (2026-10-19), caption/text
  *        rows (2026-10-08), and before THAT one dense unlabelled line.
  *
@@ -56,11 +60,12 @@ import type { OwnerSighting } from '../types';
 import { MarkTile } from './MarkTile';
 
 /** True when the "Details" section has anything to show: an answered
- *  question, their words about the damage, or a note. */
+ *  question, their words about the damage or about what's missing, or a note. */
 export function hasSightingDetails(sighting: OwnerSighting): boolean {
   return (
     sightingAnswerGroups(sighting).length > 0 ||
     Boolean(sighting.damageNote?.trim()) ||
+    Boolean(sighting.missingPartsNote?.trim()) ||
     Boolean(sighting.note?.trim())
   );
 }
@@ -111,12 +116,13 @@ export function SightingDetails({ sighting }: { sighting: OwnerSighting }) {
   const groups = sightingAnswerGroups(sighting);
   const note = sighting.note?.trim();
   const damageNote = sighting.damageNote?.trim();
+  const partsNote = sighting.missingPartsNote?.trim();
 
   return (
     <View style={styles.root}>
-      {groups.length > 0 || damageNote ? (
-        // The table and the words about the damage read as one block: the
-        // quote sits close under the row it qualifies.
+      {groups.length > 0 || damageNote || partsNote ? (
+        // The table and their words about the damage and what's missing read
+        // as one block: the quotes sit close under the row they qualify.
         <View style={styles.answers}>
           {groups.length > 0 ? (
             <View testID="sighting-answers">
@@ -157,16 +163,10 @@ export function SightingDetails({ sighting }: { sighting: OwnerSighting }) {
             </View>
           ) : null}
           {damageNote ? (
-            // One screen-reader stop, read as a statement, like a table row.
-            <View
-              style={styles.quote}
-              accessible
-              accessibilityLabel={`About the damage: ${damageNote}`}
-              testID="seen-damage-note"
-            >
-              <Text style={styles.label}>About the damage</Text>
-              <Text style={styles.noteText}>{damageNote}</Text>
-            </View>
+            <SpotterQuote label="About the damage" words={damageNote} testID="seen-damage-note" />
+          ) : null}
+          {partsNote ? (
+            <SpotterQuote label="About what’s missing" words={partsNote} testID="seen-parts-note" />
           ) : null}
         </View>
       ) : null}
@@ -177,6 +177,18 @@ export function SightingDetails({ sighting }: { sighting: OwnerSighting }) {
           <Text style={styles.noteText}>{note}</Text>
         </View>
       ) : null}
+    </View>
+  );
+}
+
+/** The spotter's own words about one answer, as a short quote under the
+ *  table: one screen-reader stop, read as a statement, like a table row. */
+function SpotterQuote({ label, words, testID }: { label: string; words: string; testID: string }) {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View style={styles.quote} accessible accessibilityLabel={`${label}: ${words}`} testID={testID}>
+      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.noteText}>{words}</Text>
     </View>
   );
 }

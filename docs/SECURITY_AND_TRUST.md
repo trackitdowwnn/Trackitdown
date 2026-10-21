@@ -256,6 +256,15 @@ commenting standards.
     90-day location purge clears coordinates only, and a damage note can
     still name a place; the same open follow-up as the withdrawal note, and
     it belongs in the privacy policy / Art. 30 record beside the note.
+    **Which parts are missing follow them too** (2026-10-21,
+    `20261021120000_a_sighting_says_what_is_missing.sql`):
+    `sightings.missing_parts` (a closed six-part list — only parts seen from
+    where the spotter stands, §1: nothing under the car or inside it) and
+    `sightings.missing_parts_note` (≤300, the damage note's checks exactly,
+    pinned to the same set by `supabase/tests/withdrawReasons.test.ts`), both
+    only beside the `missing_parts` damage kind. Owner-only, never pushed or
+    logged (counts only), **unmoderated**, ⚠️ **kept as long as the row** —
+    the same retention follow-up and the same privacy policy / Art. 30 line.
   - The visible push — title or body — may name make, colour and a
     **district-grain** locality. ⚠️ Deliberately field-agnostic since
     2026-09-22, when the copy pass moved the alert's locality and the

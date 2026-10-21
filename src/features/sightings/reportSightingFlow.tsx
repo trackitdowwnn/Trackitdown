@@ -1,8 +1,9 @@
 /**
  * WHAT:  The report-sighting WizardFlow — one intro-less phase: photos, then
  *        the optional context one question per step (state → staying /
- *        direction → people → condition → damage → marks → note, 2026-10-20;
- *        damage, after "Damage visible", 2026-10-21), then
+ *        direction → people → condition → damage → parts → marks → note,
+ *        2026-10-20; damage, after "Damage visible", and parts, after "Missing
+ *        panels or parts", 2026-10-21), then
  *        confirm. No built-in review (the confirm step IS the review), final
  *        CTA "Send report". The safety gate comes BEFORE it, as
  *        ReportSafetySheet (2026-09-30).
@@ -32,6 +33,7 @@ import {
   DirectionStep,
   MarksStep,
   NoteStep,
+  PartsStep,
   PeopleStep,
   StateStep,
   StayingStep,
@@ -41,6 +43,7 @@ import { derivePlaceLabels } from './lib/areaLabel';
 import {
   CONTEXT_STEP_IDS,
   hasDamage,
+  hasMissingParts,
   isMoving,
   isParked,
   stepApplies,
@@ -53,9 +56,11 @@ import {
   DAMAGE_KINDS,
   DRIVING_DIRECTIONS,
   MAX_DAMAGE_NOTE_LENGTH,
+  MAX_MISSING_PARTS_NOTE_LENGTH,
   MAX_NOTE_LENGTH,
   MAX_SIGHTING_PHOTOS,
   MIN_SIGHTING_PHOTOS,
+  MISSING_PARTS,
   PARKED_LIKELIHOOD,
   PEOPLE_PRESENCE,
   SIGHTING_CONTEXT_FLAGS,
@@ -211,6 +216,18 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
             damageKinds: z.array(z.enum(DAMAGE_KINDS)).optional(),
             damageNote: z.string().max(MAX_DAMAGE_NOTE_LENGTH).optional(),
           }),
+          // Ticking "Missing panels or parts" from Confirm asks which, too.
+          editContinuesTo: (answers) => (hasMissingParts(answers) ? 'parts' : undefined),
+        }),
+        // "Missing panels or parts"'s follow-up, its own step as the damage
+        // step is (owner, 2026-10-21). The same rules: never logged.
+        contextStep('parts', {
+          helper: 'Any you can see from where you are.',
+          component: PartsStep,
+          schema: z.object({
+            missingParts: z.array(z.enum(MISSING_PARTS)).optional(),
+            missingPartsNote: z.string().max(MAX_MISSING_PARTS_NOTE_LENGTH).optional(),
+          }),
         }),
         contextStep('marks', {
           helper: 'The owner’s marks. Tick any you could see from where you were.',
@@ -233,6 +250,8 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
               damageKinds: answers.damageKinds?.length ?? 0,
               // Judged as it is sent: blank-looking words are no words.
               hasDamageNote: cleanSpotterWords(answers.damageNote) !== null,
+              missingParts: answers.missingParts?.length ?? 0,
+              hasMissingPartsNote: cleanSpotterWords(answers.missingPartsNote) !== null,
               unsure: answers.contextUnsure?.length ?? 0,
               answered: CONTEXT_STEP_IDS.filter(
                 (id) => stepApplies(answers, id) && stepTouched(answers, id),

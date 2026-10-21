@@ -4,7 +4,8 @@
  *        Where and when), links gone on a spur and inert while sending, the
  *        full-screen photo preview, the location lines (approximate, no
  *        area, no fix), the time from the first LIVE photo, the car card, the
- *        "What you saw" rows (the damage seen, and its own row and Edit) and
+ *        "What you saw" rows (the damage seen, and its own row and Edit; what's
+ *        missing, with its own row and Edit) and
  *        their empty state, and the "Library" badge
  *        (moved here from sightingSteps.test.tsx).
  * WHY:   This is the spotter's last look before the owner sees it. A wrong
@@ -193,6 +194,30 @@ describe('ConfirmStep — sections and Edit links', () => {
     ).toBeNull();
   });
 
+  it('"Add details" reaches what’s missing once "Missing panels or parts" is ticked', async () => {
+    const { view, editStep } = await renderConfirm({
+      photos: [live(0)],
+      contextFlags: ['parked', 'damage_visible'],
+      parkedLikelihood: 'settled',
+      peoplePresence: 'nobody',
+      damageKinds: ['missing_parts'],
+    });
+    await press(view.getByRole('button', { name: 'Add details: What’s missing?' }));
+    expect(editStep).toHaveBeenLastCalledWith('parts');
+  });
+
+  it('⚠️ what’s missing edits on its own step — the condition’s Edit stops at the damage step', async () => {
+    const { view, editStep } = await renderConfirm({
+      photos: [live(0)],
+      contextFlags: ['damage_visible'],
+      damageKinds: ['missing_parts'],
+      missingParts: ['doors'],
+    });
+    await press(view.getByRole('button', { name: 'Edit: What’s missing' }));
+    expect(editStep).toHaveBeenLastCalledWith('parts');
+    expect(view.queryByRole('button', { name: 'Add details: What’s missing?' })).toBeNull();
+  });
+
   it('"Add details" offers a "Not sure" question again — it has no row, and they may now know', async () => {
     const { view, editStep } = await renderConfirm({
       photos: [live(0)],
@@ -368,6 +393,19 @@ describe('ConfirmStep — what you saw', () => {
     expect(view.getByText('Damage visible · Smashed window, Dents or scrapes')).toBeTruthy();
     expect(view.getByText('About the damage')).toBeTruthy();
     expect(view.getByText('Glass on the pavement')).toBeTruthy();
+  });
+
+  it('lists what’s missing on a row of its own — the parts, then their words', async () => {
+    const { view } = await renderConfirm({
+      photos: [live(0)],
+      contextFlags: ['damage_visible'],
+      damageKinds: ['smashed_window', 'missing_parts'],
+      missingParts: ['bumpers', 'doors'],
+      missingPartsNote: ' Rear bumper on the pavement ',
+    });
+    expect(view.getByText('Damage visible · Smashed window, Missing panels or parts')).toBeTruthy();
+    expect(view.getByText('What’s missing')).toBeTruthy();
+    expect(view.getByText('Bumpers, Doors · Rear bumper on the pavement')).toBeTruthy();
   });
 
   it('says "Nothing added" with an Add link when the step was skipped', async () => {
