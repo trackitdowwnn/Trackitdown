@@ -317,9 +317,8 @@ describe('ConfirmStep — where and when', () => {
     expect(view.getByText('Photo taken 5m ago')).toBeTruthy();
     // Spoken in full: VoiceOver reads a bare "5m" as five metres.
     expect(view.getByLabelText('Photo taken 5 minutes ago')).toBeTruthy();
-    expect(
-      view.getByText('This comes from where you took the photo, so the owner can trust it.'),
-    ).toBeTruthy();
+    // No explainer under the map (owner, 2026-10-22).
+    expect(view.queryByText(/so the owner can trust it/)).toBeNull();
     // Hidden from screen readers on purpose: the lines say it in words.
     expect(view.getByTestId('confirm-map', { includeHiddenElements: true })).toBeTruthy();
   });
@@ -343,9 +342,6 @@ describe('ConfirmStep — where and when', () => {
     expect(view.getByText('No location on this report — your photos still help.')).toBeTruthy();
     expect(view.getByText('Photo taken 5m ago')).toBeTruthy();
     expect(view.queryByTestId('confirm-map', { includeHiddenElements: true })).toBeNull();
-    expect(
-      view.queryByText('This comes from where you took the photo, so the owner can trust it.'),
-    ).toBeNull();
   });
 });
 
@@ -368,6 +364,28 @@ describe('ConfirmStep — the car', () => {
     const nameAt = line.findIndex((child) => child.props.children === 'Blue BMW 3 Series');
     expect(plateAt).toBe(0);
     expect(nameAt).toBe(1);
+  });
+
+  it('says what else the listing says: year · body type · finish, then the reward', async () => {
+    const { view } = await renderConfirm({
+      photos: [live(0)],
+      reportedCar: { ...CAR, year: 2018, bodyType: 'Hatchback', finish: 'Metallic', rewardPence: 20000 },
+    });
+    expect(view.getByTestId('reported-car-details').props.children).toBe(
+      '2018 · Hatchback · Metallic',
+    );
+    expect(view.getByText('£200 reward')).toBeTruthy();
+  });
+
+  it('shows only the parts the owner gave, and no reward line without one', async () => {
+    const { view } = await renderConfirm({
+      photos: [live(0)],
+      reportedCar: { ...CAR, bodyType: 'Saloon' },
+    });
+    expect(view.getByTestId('reported-car-details').props.children).toBe('Saloon');
+    expect(view.queryByTestId('reported-car-reward')).toBeNull();
+    const bare = await renderConfirm({ photos: [live(0)], reportedCar: CAR });
+    expect(bare.view.queryByTestId('reported-car-details')).toBeNull();
   });
 
   it('drops a photo that fails to load, rather than leaving a grey slab', async () => {

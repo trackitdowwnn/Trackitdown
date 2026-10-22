@@ -45,7 +45,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { useTimeAgo } from '@/shared/hooks';
-import { spokenAgo } from '@/shared/lib';
+import { formatPounds, spokenAgo } from '@/shared/lib';
 import {
   cardSurface,
   listRowStackFontScale,
@@ -176,6 +176,10 @@ function ReviewSection({
 function ReportedCarCard({ car }: { car: ReportedCar }) {
   const styles = useThemedStyles(makeStyles);
   const name = [car.colour, car.make, car.model].filter(Boolean).join(' ') || 'This car';
+  // "2018 · Hatchback · Metallic", the listing's own separator.
+  const details = [car.year ? String(car.year) : null, car.bodyType, car.finish]
+    .filter(Boolean)
+    .join(' · ');
   // A dead URL (a deleted or moved listing photo) would otherwise leave a
   // screen-wide grey slab where the car should be. The URL that failed, not a
   // flag, so a different photo would still get its chance.
@@ -193,9 +197,23 @@ function ReportedCarCard({ car }: { car: ReportedCar }) {
           testID="reported-car-photo"
         />
       ) : null}
-      <View style={styles.carText} testID="reported-car-line">
-        {car.plate ? <PlateChip plate={car.plate} onPress={null} /> : null}
-        <Text style={styles.carName}>{name}</Text>
+      <View style={styles.carBody}>
+        <View style={styles.carText} testID="reported-car-line">
+          {car.plate ? <PlateChip plate={car.plate} onPress={null} /> : null}
+          <Text style={styles.carName}>{name}</Text>
+        </View>
+        {/* What else the listing says (owner, 2026-10-22: more than the car
+            and colour) — only what the owner gave. */}
+        {details ? (
+          <Text style={styles.carMeta} testID="reported-car-details">
+            {details}
+          </Text>
+        ) : null}
+        {car.rewardPence ? (
+          <Text style={styles.carMeta} testID="reported-car-reward">
+            {formatPounds(car.rewardPence)} reward
+          </Text>
+        ) : null}
       </View>
     </View>
   );
@@ -316,9 +334,6 @@ function WhereAndWhen({
         </Text>
         {isApproximateFix(located) ? <Text style={styles.meta}>Approximate location</Text> : null}
         <TakenLine ago={takenAgo} />
-        <Text style={styles.meta}>
-          This comes from where you took the photo, so the owner can trust it.
-        </Text>
       </View>
     </View>
   );
@@ -567,8 +582,11 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   // a plate, the 26pt PlateChip sets the first line's height (it pins itself
   // to flex-start) and the 22pt name centres against it; don't "fix" the
   // centring in the chip.
-  carText: {
+  carBody: {
     padding: spacing.lg,
+    gap: spacing.xs,
+  },
+  carText: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
@@ -583,6 +601,10 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     color: c.textPrimary,
     flexShrink: 1,
     includeFontPadding: false,
+  },
+  carMeta: {
+    ...typography.caption,
+    color: c.textSecondary,
   },
   photos: {
     flexDirection: 'row',

@@ -18,6 +18,7 @@
  */
 
 import type { PostDetailResult } from '@/features/vehicles';
+import { colourFinishLabel, savedColourFinish } from '@/shared/lib';
 
 import type { ConfirmableFeature, ReportedCar } from '../types';
 
@@ -43,10 +44,16 @@ export const EMPTY_REPORT_SEED: ReportSeed = Object.freeze({
 });
 
 /** The seed from a post-detail result. Best-effort: anything but a visible
- *  post yields EMPTY_REPORT_SEED. */
-export function reportSeedFromDetail(result: PostDetailResult): ReportSeed {
+ *  post yields EMPTY_REPORT_SEED. `bodyTypeUnknown` is the vehicles feature's
+ *  BODY_TYPE_UNKNOWN ("Not sure" — stored, but not a fact), passed in by the
+ *  caller's deferred import so this module stays off the vehicles graph. */
+export function reportSeedFromDetail(
+  result: PostDetailResult,
+  bodyTypeUnknown?: string,
+): ReportSeed {
   if (result.kind !== 'visible') return EMPTY_REPORT_SEED;
   const { post } = result;
+  const bodyType = post.bodyType?.trim();
   return {
     // A mark without an id (an old cached payload) can't be confirmed: the
     // sighting references marks by id. The photo goes too, so the context
@@ -62,6 +69,11 @@ export function reportSeedFromDetail(result: PostDetailResult): ReportSeed {
       colour: post.colour,
       plate: post.plate,
       photoUrl: post.photos[0]?.uri || undefined,
+      year: post.year || undefined,
+      bodyType: bodyType && bodyType !== bodyTypeUnknown ? bodyType : undefined,
+      finish: colourFinishLabel(savedColourFinish(post.colour, post.colourFinish)) ?? undefined,
+      // ADR-0020: a null bounty is no reward OR one that has ended — neither shows.
+      rewardPence: post.bountyPence && !post.rewardEnded ? post.bountyPence : undefined,
     },
     reward: { bountyPence: post.bountyPence, rewardEnded: post.rewardEnded },
   };
