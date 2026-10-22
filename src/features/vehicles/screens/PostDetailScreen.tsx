@@ -66,6 +66,7 @@ import { PostDetailBody } from '../components/PostDetailBody';
 import { PostHero } from '../components/PostHero';
 import { PostOwnerActions, type PostOwnerActionsHandle } from '../components/PostOwnerActions';
 import { StillMissingBanner } from '../components/StillMissingBanner';
+import { useGoingLive } from '../hooks/useGoingLive';
 import { usePostDetail } from '../hooks/usePostDetail';
 import { useSimilarPosts } from '../hooks/useSimilarPosts';
 import { useStillMissingAsk } from '../hooks/useStillMissingAsk';
@@ -89,9 +90,13 @@ const FADE_TRAVEL = 48;
 
 export interface PostDetailScreenProps {
   postId: string;
+  /** Arrived straight from paying for this listing (`?paid=1`, set only by
+   *  PostACarScreen): the badge says "Going live" until it is (useGoingLive).
+   *  Never set otherwise, so an unpaid draft opened later never spins. */
+  justPaid?: boolean;
 }
 
-export function PostDetailScreen({ postId }: PostDetailScreenProps) {
+export function PostDetailScreen({ postId, justPaid = false }: PostDetailScreenProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const router = useRouter();
@@ -106,7 +111,24 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   // bottom bar's "Manage listing", the pencils, the body's deactivate button.
   const ownerRef = useRef<PostOwnerActionsHandle>(null);
 
-  const { status, result, retry, refreshing, refresh } = usePostDetail(postId);
+  const { status, result, retry, refreshing, refresh, reload } = usePostDetail(postId);
+  // Owner, 2026-10-22: no confirmation page after paying — the listing, with
+  // "Going live" where "Live" will be. Watches until the server says active,
+  // then reloads quietly so the badge reads "Live".
+  const loadedStatus =
+    status === 'ready' && result?.kind === 'visible' ? result.post.status : null;
+  const goingLive = useGoingLive(postId, {
+    justPaid,
+    status: loadedStatus,
+    onLive: () => void reload(),
+  });
+  // ⚠️ MONEY: a paid listing is still a `draft` until the server confirms the
+  // payment, and a draft offers the draft-only editors — the REWARD among
+  // them. Changing it now would make the payment the wrong amount, so the
+  // server would refund it and the listing would never go live (code review,
+  // 2026-10-22). Locked while it goes live.
+  const paymentPending = goingLive !== null;
+  const draftEditable = (post: PostDetail) => canEditDraftSection(post) && !paymentPending;
 
   // Guards a double-tap on "Yes, still missing" (ADR-0019).
   const [confirmingMissing, setConfirmingMissing] = useState(false);
@@ -428,6 +450,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
               ) : null}
               <PostDetailBody
                 post={result.post}
+                goingLive={goingLive}
                 rewardOutcome={rewardHistory?.outcome ?? null}
                 onOpenMap={() => onOpenMap(result.post)}
                 onReport={onReport}
@@ -446,11 +469,9 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
                 onEditCarDetails={
                   canEditSafeSection(result.post) ? () => edit('car_details') : undefined
                 }
-                onEditPhotos={canEditDraftSection(result.post) ? () => edit('photos') : undefined}
-                onEditLastSeen={
-                  canEditDraftSection(result.post) ? () => edit('last_seen') : undefined
-                }
-                onEditBounty={canEditDraftSection(result.post) ? () => edit('bounty') : undefined}
+                onEditPhotos={draftEditable(result.post) ? () => edit('photos') : undefined}
+                onEditLastSeen={draftEditable(result.post) ? () => edit('last_seen') : undefined}
+                onEditBounty={draftEditable(result.post) ? () => edit('bounty') : undefined}
                 onEditDescription={
                   canEditSafeSection(result.post) ? () => edit('description') : undefined
                 }
@@ -519,6 +540,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
           onSeen={() => onSeen(visiblePost)}
           onMessageOwner={() => onMessageOwner(visiblePost)}
           onManage={onManage}
+          goingLive={goingLive}
         />
       ) : null}
 
@@ -544,6 +566,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
         post={visiblePost}
         refresh={retry}
         onDeleted={() => router.replace('/my-posts')}
+        paymentPending={paymentPending}
       />
     </View>
   );

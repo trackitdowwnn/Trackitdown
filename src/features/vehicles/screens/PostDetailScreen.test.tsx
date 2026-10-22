@@ -67,6 +67,19 @@ jest.mock('../hooks/useStillMissingAsk', () => ({
   }),
 }));
 
+// The just-paid watch (owner, 2026-10-22) has its own hook test; here it is
+// what the screen asks of it and shows from it. Mocked, which also keeps
+// postApi's supabase client out of this suite's import graph.
+let mockGoingLive: 'confirming' | 'slow' | null = null;
+const mockGoingLiveArgs = jest.fn();
+jest.mock('../hooks/useGoingLive', () => ({
+  useGoingLive: (postId: string, options: { justPaid: boolean; status: string | null }) => {
+    mockGoingLiveArgs(postId, options);
+    // As the real hook: only a just-paid, loaded draft is watched.
+    return options.justPaid && options.status === 'draft' ? mockGoingLive : null;
+  },
+}));
+
 // The similar-posts rail has its own hook test; empty here so the screen
 // tests exercise the detail itself (also keeps supabase out of the import
 // graph via the search-map barrel).
@@ -442,6 +455,76 @@ describe('PostDetailScreen', () => {
       setResult('ready', { kind: 'visible', post: { ...post, isOwner: true, status: 'draft' } });
       const { queryByText } = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
       expect(queryByText('Deactivate & refund')).toBeNull();
+    });
+  });
+
+  // Owner, 2026-10-22: no confirmation page after paying — the listing, with
+  // "Going live" where "Live" will be, in the header and the owner's bar.
+  describe('straight after paying (?paid=1)', () => {
+    afterEach(() => {
+      mockGoingLive = null;
+    });
+
+    it('watches the just-paid draft and says "Going live" in both badges, never "Draft"', async () => {
+      mockGoingLive = 'confirming';
+      setResult('ready', { kind: 'visible', post: { ...post, isOwner: true, status: 'draft' } });
+      const { getAllByText, queryByText } = await render(
+        <PostDetailScreen postId="p1" justPaid />,
+        { wrapper: ToastProvider },
+      );
+      expect(mockGoingLiveArgs).toHaveBeenLastCalledWith('p1', expect.objectContaining({ justPaid: true, status: 'draft' }));
+      expect(getAllByText('Going live')).toHaveLength(2);
+      expect(queryByText('Draft')).toBeNull();
+    });
+
+    it('⚠️ MONEY: locks the reward and the other draft-only edits while it goes live', async () => {
+      // A paid listing is still a draft until the server confirms it; a new
+      // reward now would make the payment the wrong amount (code review).
+      mockGoingLive = 'confirming';
+      setResult('ready', { kind: 'visible', post: { ...post, isOwner: true, status: 'draft' } });
+      const { queryByTestId, getByTestId } = await render(
+        <PostDetailScreen postId="p1" justPaid />,
+        { wrapper: ToastProvider },
+      );
+      for (const id of ['edit-bounty', 'edit-photos', 'edit-last-seen', 'manage-edit-bounty', 'manage-edit-photos', 'manage-delete-draft']) {
+        expect(queryByTestId(id)).toBeNull();
+      }
+      // The safe sections stay editable.
+      expect(getByTestId('manage-edit-description')).toBeTruthy();
+    });
+
+    it('shows "Live" once the listing has loaded as live', async () => {
+      mockGoingLive = 'confirming';
+      setResult('ready', { kind: 'visible', post: { ...post, isOwner: true, status: 'active' } });
+      const { getAllByText, queryByText } = await render(
+        <PostDetailScreen postId="p1" justPaid />,
+        { wrapper: ToastProvider },
+      );
+      expect(getAllByText('Live').length).toBeGreaterThan(0);
+      expect(queryByText('Going live')).toBeNull();
+    });
+
+    it('⚠️ never puts "Going live" over a later status (cancelled, still on ?paid=1)', async () => {
+      mockGoingLive = 'confirming';
+      setResult('ready', { kind: 'visible', post: { ...post, isOwner: true, status: 'cancelled' } });
+      const { getAllByText, queryByText } = await render(
+        <PostDetailScreen postId="p1" justPaid />,
+        { wrapper: ToastProvider },
+      );
+      expect(getAllByText('Cancelled').length).toBeGreaterThan(0);
+      expect(queryByText('Going live')).toBeNull();
+    });
+
+    it('never watches a draft opened any other way (an unpaid draft never spins)', async () => {
+      mockGoingLive = 'confirming';
+      setResult('ready', { kind: 'visible', post: { ...post, isOwner: true, status: 'draft' } });
+      const { queryByText, getByTestId } = await render(<PostDetailScreen postId="p1" />, {
+        wrapper: ToastProvider,
+      });
+      expect(mockGoingLiveArgs).toHaveBeenLastCalledWith('p1', expect.objectContaining({ justPaid: false }));
+      expect(queryByText('Going live')).toBeNull();
+      // An unpaid draft keeps every edit.
+      expect(getByTestId('manage-edit-bounty')).toBeTruthy();
     });
   });
 

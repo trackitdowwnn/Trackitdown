@@ -118,6 +118,7 @@ jest.mock('../api/postApi', () => ({
 
 const mockCreateIntent = jest.fn();
 const mockPayBounty = jest.fn();
+const mockSyncPostPayment = jest.fn();
 // PaymentError is the real class so `throw`/`instanceof` semantics match.
 jest.mock('@/features/payments', () => {
   class PaymentError extends Error {
@@ -130,25 +131,10 @@ jest.mock('@/features/payments', () => {
   return {
     PaymentError,
     createBountyPaymentIntent: (...args: unknown[]) => mockCreateIntent(...args),
+    syncPostPayment: (...args: unknown[]) => mockSyncPostPayment(...args),
     useBountyPayment: () => ({ payBounty: (...args: unknown[]) => mockPayBounty(...args) }),
   };
 });
-
-// The confirmation that follows a payment (PR3): captured, not rendered — its
-// own suite covers what it shows; here it is what the screen hands it.
-let capturedConfirmation: {
-  postId: string;
-  mode: 'reward' | 'fee';
-  amountPence: number;
-  onViewListing: () => void;
-  onClose: () => void;
-} | null = null;
-jest.mock('../components/PaymentConfirmation', () => ({
-  PaymentConfirmation: (props: NonNullable<typeof capturedConfirmation>) => {
-    capturedConfirmation = props;
-    return null;
-  },
-}));
 
 const mockReplace = jest.fn();
 const mockBack = jest.fn();
@@ -172,15 +158,15 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockPeekDraft.mockReturnValue(undefined);
   wizardRenders = 0;
-  capturedConfirmation = null;
   mockSubmitPost.mockResolvedValue({ postId: 'p1', status: 'draft' });
   mockCreateIntent.mockResolvedValue('pi_secret_123');
 });
 
 describe('handleComplete', () => {
-  it('creates the draft, takes payment, and shows the confirmation on success', async () => {
+  it('creates the draft, takes payment, then goes straight to the listing as just paid', async () => {
+    const onAbandon = jest.fn();
     mockPayBounty.mockResolvedValue({ outcome: 'paid', message: null });
-    await mount();
+    await mount({ onAbandon });
 
     await act(async () => {
       await capturedOnComplete(ANSWERS);
@@ -190,48 +176,25 @@ describe('handleComplete', () => {
     expect(mockCreateIntent).toHaveBeenCalledWith('p1');
     expect(mockPayBounty).toHaveBeenCalledWith('pi_secret_123');
     expect(mockSuccessHaptic).toHaveBeenCalledTimes(1);
-    // ⚠️ NOT a toast and a jump (PR3, 2026-10-13): those landed on a listing
-    // the webhook hadn't made live yet. The confirmation watches for it.
+    // Owner, 2026-10-22: no confirmation page. The listing's badge says
+    // "Going live" until it is (`?paid=1`). REPLACE, so back never returns
+    // into the finished wizard — and never "only exploring" either.
+    expect(mockReplace).toHaveBeenCalledWith('/post/p1?paid=1');
     expect(mockToastShow).not.toHaveBeenCalled();
-    expect(capturedConfirmation).toMatchObject({ postId: 'p1', mode: 'reward', amountPence: 50000 });
-    expect(mockReplace).not.toHaveBeenCalled();
-  });
-
-  it('"View your listing" replaces the route — back never returns into the wizard', async () => {
-    mockPayBounty.mockResolvedValue({ outcome: 'paid', message: null });
-    await mount();
-    await act(async () => {
-      await capturedOnComplete(ANSWERS);
-    });
-
-    capturedConfirmation?.onViewListing();
-    expect(mockReplace).toHaveBeenCalledWith('/post/p1');
-  });
-
-  it('the ✕ after paying leaves the flow — and is never "only exploring"', async () => {
-    // onAbandon offers the garage to someone who was browsing; this person has
-    // just listed a stolen car.
-    const onAbandon = jest.fn();
-    mockPayBounty.mockResolvedValue({ outcome: 'paid', message: null });
-    await mount({ onAbandon });
-    await act(async () => {
-      await capturedOnComplete(ANSWERS);
-    });
-
-    capturedConfirmation?.onClose();
-    expect(mockBack).toHaveBeenCalledTimes(1);
     expect(onAbandon).not.toHaveBeenCalled();
   });
 
-  it('a £5 listing confirms as the fee, not as a reward', async () => {
+  it('⚠️ asks Stripe at once — it finishes even if the owner leaves the listing straight away', async () => {
+    // On 2026-10-22 this check was the only thing that made a real paid
+    // listing live (the webhook secret was wrong).
     mockPayBounty.mockResolvedValue({ outcome: 'paid', message: null });
     await mount();
     await act(async () => {
       await capturedOnComplete({ pricingMode: 'fee', bountyAmountPence: 50000 });
     });
 
-    // The slider always holds a value; the MODE decides what was paid.
-    expect(capturedConfirmation).toMatchObject({ mode: 'fee', amountPence: 500 });
+    expect(mockSyncPostPayment).toHaveBeenCalledWith('p1');
+    expect(mockReplace).toHaveBeenCalledWith('/post/p1?paid=1');
   });
 
   it('MONEY: a retry after a cancelled payment reuses the draft — no second submitPost', async () => {
@@ -250,7 +213,7 @@ describe('handleComplete', () => {
 
     expect(mockSubmitPost).toHaveBeenCalledTimes(1); // ← created once, reused on retry
     expect(mockCreateIntent).toHaveBeenCalledTimes(2); // ← intent reopened (server-idempotent)
-    expect(capturedConfirmation?.postId).toBe('p1');
+    expect(mockReplace).toHaveBeenCalledWith('/post/p1?paid=1');
   });
 
   it('records what was advised against what was chosen — once, on first creation', async () => {

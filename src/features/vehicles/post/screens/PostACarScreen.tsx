@@ -2,10 +2,10 @@
  * WHAT:  The post-a-car wizard screen — renders the flow via the shared
  *        WizardScreen, seeds the starting bounty, and owns the final submit:
  *        create the draft (submitPost), take the bounty into escrow via Stripe
- *        PaymentSheet, then show PaymentConfirmation (paid → held → live,
- *        watched until the listing is live) on the way to the new post. On
- *        failure it re-throws so the
- *        framework keeps the wizard fully intact with an inline error for retry —
+ *        PaymentSheet, then straight to the new listing (`?paid=1`: its badge
+ *        says "Going live" until the server makes it live — useGoingLive).
+ *        On failure it re-throws so the framework keeps the wizard fully
+ *        intact with an inline error for retry —
  *        and it remembers the created draft so a retry never makes a second draft
  *        or a second charge.
  * WHY:   The route file stays thin (ARCHITECTURE.md rule 3); this is where the
@@ -34,12 +34,12 @@ import {
   PAYMENT_CANCELLED_MESSAGE,
   PaymentError,
   createBountyPaymentIntent,
+  syncPostPayment,
   useBountyPayment,
 } from '@/features/payments';
 import { successHaptic } from '@/shared/lib/haptics';
 import { prefetchDefaultMapCentre } from '@/shared/lib/location/useDefaultMapCentre';
 import { useAfterTransition } from '@/shared/hooks/useAfterTransition';
-import { LISTING_FEE_PENCE } from '@/shared/lib/money';
 import { WizardScreen, type WizardFlow } from '@/shared/wizard';
 
 import { fetchBountyGuidance, logBountyRecommendation } from '../api/bountyGuidanceApi';
@@ -51,7 +51,6 @@ import {
   savePostDraft,
 } from '../lib/postDraftStorage';
 import { submitPost } from '../api/postApi';
-import { PaymentConfirmation } from '../components/PaymentConfirmation';
 import { POST_A_CAR_INITIAL_ANSWERS, postACarFlow } from '../postACarFlow';
 import type { PostACarAnswers } from '../types';
 
@@ -90,12 +89,6 @@ export function PostACarScreen({
 }: PostACarScreenProps = {}) {
   const router = useRouter();
   const { payBounty } = useBountyPayment();
-  // Set once the card is taken: the wizard gives way to the confirmation.
-  const [confirmation, setConfirmation] = useState<{
-    postId: string;
-    mode: 'reward' | 'fee';
-    amountPence: number;
-  } | null>(null);
 
   // The draft's id, kept across retries: created once, then reused so a retry
   // after a cancelled/declined payment never creates a second draft and (with
@@ -240,33 +233,19 @@ export function PostACarScreen({
       throw new PaymentError(message ?? 'Your payment didn’t go through. Please try again.', 'FAILED');
     }
 
-    // 4. Paid — the webhook flips the post to ACTIVE (live-on-payment). The
-    //    confirmation takes the screen and WATCHES for that moment (PR3 of the
-    //    payments UX plan, 2026-10-13): a toast and an instant jump used to
-    //    land on a listing that wasn't live yet, with nothing to say why.
+    // 4. Paid — the webhook flips the post to ACTIVE (live-on-payment).
+    //    Straight to the listing (owner, 2026-10-22: no confirmation page),
+    //    whose badge says "Going live" until the server says it is
+    //    (useGoingLive, `?paid=1`).
+    //    ⚠️ ASK STRIPE NOW, not only from the listing: a request already sent
+    //    finishes even if the owner leaves the listing at once — and on
+    //    2026-10-22 this check was the only thing that made a real paid
+    //    listing live (the webhook secret was wrong). Never throws.
     successHaptic();
-    setConfirmation({
-      postId,
-      mode: answers.pricingMode === 'fee' ? 'fee' : 'reward',
-      amountPence:
-        answers.pricingMode === 'fee'
-          ? LISTING_FEE_PENCE
-          : (answers.bountyAmountPence ?? LISTING_FEE_PENCE),
-    });
+    void syncPostPayment(postId);
+    // Replace, so back never returns into the finished wizard.
+    router.replace(`/post/${postId}?paid=1`);
   };
-
-  if (confirmation) {
-    return (
-      <PaymentConfirmation
-        {...confirmation}
-        // Replace, so back never returns into the finished wizard.
-        onViewListing={() => router.replace(`/post/${confirmation.postId}`)}
-        // Leaves the flow, as the wizard's ✕ did. NOT onAbandon: the car is
-        // listed — "you were only exploring" would be the wrong sentence.
-        onClose={() => router.back()}
-      />
-    );
-  }
 
   // ⚠️ NOTHING RENDERS UNTIL THE DRAFT CHECK RESOLVES — only on an entry that
   // didn't prime the draft (see above). A blank rather than a spinner: the read

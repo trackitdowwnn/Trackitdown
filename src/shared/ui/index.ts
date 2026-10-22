@@ -189,6 +189,7 @@ export {
   StatusPill,
   statusBadgeLabel,
   type BadgeTone,
+  type GoingLivePhase,
   type StatusBadgeProps,
   type StatusPillProps,
 } from './StatusBadge';

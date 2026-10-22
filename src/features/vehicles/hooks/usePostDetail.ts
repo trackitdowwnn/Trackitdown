@@ -40,6 +40,9 @@ export interface UsePostDetailResult {
   /** True only for a PULL. The focus poll stays silent by design. */
   refreshing: boolean;
   refresh: () => Promise<void>;
+  /** The focus poll's own silent fetch, on demand — no spinner, keeps what's
+   *  showing on failure (a just-paid listing turning live, useGoingLive). */
+  reload: () => Promise<void>;
 }
 
 export function usePostDetail(postId: string): UsePostDetailResult {
@@ -153,5 +156,12 @@ export function usePostDetail(postId: string): UsePostDetailResult {
     }
   }, [postId, session.status]);
 
-  return { status, result, retry, refreshing, refresh };
+  // The silent fetch on demand, with the pull's session wait (above): fired
+  // while the session restores, it would come back anonymous.
+  const reload = useCallback(async () => {
+    if (session.status === 'loading') return;
+    await silentRefresh();
+  }, [session.status, silentRefresh]);
+
+  return { status, result, retry, refreshing, refresh, reload };
 }

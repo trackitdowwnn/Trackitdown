@@ -4,7 +4,10 @@
  *        NOTHING for a plain `active` post by default, so callers drop it in
  *        unconditionally and a live listing stays calm in PUBLIC surfaces.
  *        Owner-context callers opt in (showLiveWhenActive) to a green "Live"
- *        badge so an owner can see which of their own posts are live.
+ *        badge so an owner can see which of their own posts are live, and —
+ *        straight after paying — `goingLive` puts "Going live" (a small
+ *        spinner in the dot's place; still under Reduce Motion) or "Going
+ *        live soon" over Draft until it is (owner, 2026-10-22).
  * WHY:   The status→{label,tone} map and its pill lived inline in
  *        VehicleCard; the post-detail title block needs the same badge, so
  *        it's the one source of truth here. The map stores a semantic TONE
@@ -17,7 +20,8 @@
  *        src/features/vehicles (detail title block); docs/DOMAIN.md (lifecycle).
  */
 
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import { radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '../theme';
 import type { PostStatus } from '../types';
@@ -81,14 +85,37 @@ export function statusBadgeLabel(
   return resolveBadge(status, showLiveWhenActive)?.label ?? null;
 }
 
+/** A just-paid listing the server hasn't made live yet (owner, 2026-10-22: no
+ *  confirmation page — the listing, with this where "Live" will be).
+ *  'confirming': the first ~12s of looks, a spinner; 'slow': still looking,
+ *  quietly, and it says so. */
+export type GoingLivePhase = 'confirming' | 'slow';
+
 export interface StatusBadgeProps {
   status: PostStatus;
   /** Owner-only: render a green "Live" badge for an active post. Public
    *  callers leave this false so a live listing shows no badge. */
   showLiveWhenActive?: boolean;
+  /** Owner-only, straight after paying: "Going live" (with a spinner) or
+   *  "Going live soon" in place of the post's own badge until it is active. */
+  goingLive?: GoingLivePhase | null;
 }
 
-export function StatusBadge({ status, showLiveWhenActive = false }: StatusBadgeProps) {
+export function StatusBadge({
+  status,
+  showLiveWhenActive = false,
+  goingLive = null,
+}: StatusBadgeProps) {
+  // Only over Draft — the one status a paid listing has before it is live. A
+  // real status (rejected, cancelled, …) is never hidden behind it. Neutral,
+  // not green: green is earned when it IS live (UI review, 2026-10-22).
+  if (goingLive && status === 'draft') {
+    return goingLive === 'confirming' ? (
+      <StatusPill label="Going live" tone="neutral" busy testID="status-going-live" />
+    ) : (
+      <StatusPill label="Going live soon" tone="neutral" testID="status-going-live-soon" />
+    );
+  }
   const badge = resolveBadge(status, showLiveWhenActive);
   if (!badge) {
     return null; // public active (or anything unmapped) shows no badge
@@ -99,6 +126,9 @@ export function StatusBadge({ status, showLiveWhenActive = false }: StatusBadgeP
 export interface StatusPillProps {
   label: string;
   tone: BadgeTone;
+  /** A small spinner where the dot goes — something is being confirmed.
+   *  With Reduce Motion on, the plain dot instead (the label says it). */
+  busy?: boolean;
   testID?: string;
 }
 
@@ -116,13 +146,27 @@ export interface StatusPillProps {
  * consumers see no change at all, which is what keeps a shared-component edit
  * on a release day cheap to review.
  */
-export function StatusPill({ label, tone, testID }: StatusPillProps) {
+export function StatusPill({ label, tone, busy = false, testID }: StatusPillProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
+  const reduceMotion = useReducedMotion();
 
   return (
     <View style={styles.badge} testID={testID}>
-      <View style={[styles.dot, { backgroundColor: toneColor(palette, tone) }]} />
+      {busy && !reduceMotion ? (
+        // The label's line tall (iconSm = 18), so the pill keeps its height. A
+        // number is Android-only; iOS takes 'small' inside the same box.
+        <ActivityIndicator
+          size={Platform.OS === 'android' ? sizes.iconSm : 'small'}
+          color={toneColor(palette, tone)}
+          style={styles.spinner}
+          importantForAccessibility="no"
+          accessibilityElementsHidden
+          testID={testID ? `${testID}-spinner` : undefined}
+        />
+      ) : (
+        <View style={[styles.dot, { backgroundColor: toneColor(palette, tone) }]} />
+      )}
       <Text style={styles.label}>{label}</Text>
     </View>
   );
@@ -144,6 +188,10 @@ const makeStyles = (c: Palette) =>
       width: sizes.progressDot,
       height: sizes.progressDot,
       borderRadius: radii.sm,
+    },
+    spinner: {
+      width: sizes.iconSm,
+      height: sizes.iconSm,
     },
     label: {
       ...typography.label,
