@@ -397,7 +397,8 @@ Deno.serve(async (request) => {
   // and pass ONLY what Stripe confirms `canceled` — the RPC treats the list
   // as evidence (delete_draft_post's proof rule). An intent that can neither
   // be cancelled nor read is left unnamed, so the delete refuses and the
-  // listing is counted as skipped, never kept silently. 25 a run: a backlog
+  // listing is counted as skipped, never kept silently. 25 a run, drawn at
+  // random (an unprovable listing must not starve the rest): a backlog
   // drains over hours, and Stripe calls stay bounded.
   try {
     const { data: strayRows, error: strayError } = await admin.rpc(

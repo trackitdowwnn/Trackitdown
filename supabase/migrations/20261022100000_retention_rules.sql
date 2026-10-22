@@ -367,6 +367,11 @@ grant execute on function public.purge_old_closed_posts() to service_role;
 -- Read-only: the sweep cancels each intent at Stripe, then calls
 -- delete_old_closed_post with the ids Stripe confirmed — the same proof an
 -- owner's own delete (delete-post) supplies.
+-- ⚠️ RANDOM ORDER, not oldest first: a listing Stripe can never prove (a
+-- 'failed' row that in fact succeeded; a test-mode intent read with live keys)
+-- would otherwise sit at the front of the LIMIT for ever and starve every
+-- listing behind it. Sampled, each due listing is reached within a few runs,
+-- and an unprovable one is counted as skipped each time it is drawn.
 create or replace function public.old_closed_posts_with_stray_intents(p_limit integer default 50)
 returns jsonb
 language sql
@@ -378,11 +383,10 @@ as $$
            jsonb_agg(jsonb_build_object(
              'post_id',    c.id,
              'owner_id',   c.owner_id,
-             'intent_ids', to_jsonb(c.intent_ids))
-           order by c.closed_at),
+             'intent_ids', to_jsonb(c.intent_ids))),
            '[]'::jsonb)
     from (
-      select p.id, p.owner_id, p.closed_at,
+      select p.id, p.owner_id,
              array(select pay.stripe_payment_intent_id
                      from public.payments pay
                     where pay.post_id = p.id
@@ -412,13 +416,13 @@ as $$
            select 1 from public.refund_holds h
             where h.post_id = p.id
               and h.expires_at > now())
-       order by p.closed_at
+       order by random()
        limit greatest(coalesce(p_limit, 50), 0)
     ) c;
 $$;
 
 comment on function public.old_closed_posts_with_stray_intents(integer) is
-  'Retention (2026-10-22): due recovered / recovered_no_spotter / expired listings (closed 12+ months, no money moving) that carry an abandoned or declined intent (requires_payment / failed) — [{post_id, owner_id, intent_ids}], oldest first. Read-only. The sweep (release-held-refunds Phase 0d2) cancels each intent at Stripe and calls delete_old_closed_post with the ids Stripe confirms. SERVICE ROLE ONLY.';
+  'Retention (2026-10-22): due recovered / recovered_no_spotter / expired listings (closed 12+ months, no money moving) that carry an abandoned or declined intent (requires_payment / failed) — [{post_id, owner_id, intent_ids}], a RANDOM sample (an unprovable listing must not starve the rest). Read-only. The sweep (release-held-refunds Phase 0d2) cancels each intent at Stripe and calls delete_old_closed_post with the ids Stripe confirms. SERVICE ROLE ONLY.';
 
 revoke execute on function public.old_closed_posts_with_stray_intents(integer) from public, anon, authenticated;
 grant execute on function public.old_closed_posts_with_stray_intents(integer) to service_role;

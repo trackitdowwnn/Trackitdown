@@ -83,9 +83,19 @@ select ('aeaeaeae-1111-0000-0000-0000000000' || n)::uuid,
        '22222222-2222-2222-2222-222222222222', 'unverified', 'Ancoats', true, 'Guarded ' || n
   from unnest(array['05', '06', '07', '08', '09', '0a']) as n;
 insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, created_at)
-values ('aeaeaeae-0000-0000-0000-000000000005', 'pi_ret_sup', 'superseded', 25000, now() - interval '200 days'),
-       ('aeaeaeae-0000-0000-0000-000000000009', 'pi_ret_recent', 'refunded', 25000, now() - interval '10 days'),
-       ('aeaeaeae-0000-0000-0000-00000000000a', 'pi_ret_aged', 'refunded', 25000, now() - interval '200 days');
+values ('aeaeaeae-0000-0000-0000-000000000009', 'pi_ret_recent', 'refunded', 25000, now() - interval '10 days'),
+       ('aeaeaeae-0000-0000-0000-00000000000a', 'pi_ret_aged', 'refunded', 25000, now() - interval '200 days'),
+       -- The live hold below must link a bounty payment (refund_holds.payment_id
+       -- is NOT NULL, filled by refund_holds_link_payment); 200 days old, so the
+       -- 180-day rule cannot be what keeps listing 08's words.
+       ('aeaeaeae-0000-0000-0000-000000000008', 'pi_ret_hold', 'refunded', 25000, now() - interval '200 days');
+-- A superseded row carries its capture and supersede times
+-- (payments_superseded_stamped_chk); all 200+ days old, so only the
+-- superseded STATUS can be what keeps listing 05's words.
+insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, created_at,
+                             captured_at, superseded_at)
+values ('aeaeaeae-0000-0000-0000-000000000005', 'pi_ret_sup', 'superseded', 25000,
+        now() - interval '200 days', now() - interval '200 days', now() - interval '190 days');
 insert into public.payout_reviews (post_id, owner_id, spotter_id, reasons)
 values ('aeaeaeae-0000-0000-0000-000000000006', '11111111-1111-1111-1111-111111111111',
         '22222222-2222-2222-2222-222222222222', array['shared_device']);
