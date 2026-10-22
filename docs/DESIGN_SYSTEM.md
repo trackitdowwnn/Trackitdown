@@ -660,6 +660,13 @@ Airbnb-style calendar, inside a `BottomSheet`. Maths and labels live in
 `src/shared/lib/calendarDates.ts`: day IDs ("2026-09-29"), never
 `new Date('YYYY-MM-DD')`, and day arithmetic in UTC so DST can't move it.
 
+**A time asked as a question** ("When did you last see it?", owner
+2026-10-22) is `CardSelect` cards like every one-question step: each preset
+card shows the exact time it means ("Last night" / "Yesterday, 22:00"), and
+the last, "Pick a date and time", opens the calendar sheet and then shows the
+time picked. A card moves the wizard on; in an editor sheet it only selects.
+The lit card never claims a time that isn't stored.
+
 **`CalendarMonth` (one month at a time)**
 - **Header:** the month title, left-aligned, in `cardTitle` (a step below the
   sheet's own `heading` title), and two bordered circular ‹ › buttons

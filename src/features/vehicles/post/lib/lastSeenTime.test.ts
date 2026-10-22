@@ -69,6 +69,30 @@ describe('lastSeenPresets', () => {
       new Date(2026, 8, 27, 22, 0),
     );
   });
+
+  // The UK clocks go back on Sun 25 Oct 2026 and forward on Sun 29 Mar 2026.
+  // The cards now SHOW these times ("Yesterday, 10:00"), so they must be the
+  // local clock times a person means, not "24 hours ago" — which is an hour
+  // out across a change. Asserted as local wall time, so it holds in any time
+  // zone and catches the 24-hour mistake when run on UK time.
+  it.each([
+    ['the day after the clocks go back', new Date(2026, 9, 26, 10, 0)],
+    ['the day the clocks go back', new Date(2026, 9, 25, 10, 0)],
+    ['the day after the clocks go forward', new Date(2026, 2, 30, 10, 0)],
+  ])('keeps "Yesterday" and "Last night" on the local clock on %s', (_, now) => {
+    const yesterday = presetValue(now, 'yesterday') as Date;
+    expect([yesterday.getDate(), yesterday.getHours(), yesterday.getMinutes()]).toEqual([
+      now.getDate() - 1,
+      10,
+      0,
+    ]);
+    const lastNight = presetValue(now, 'last-night') as Date;
+    expect([lastNight.getDate(), lastNight.getHours(), lastNight.getMinutes()]).toEqual([
+      now.getDate() - 1,
+      22,
+      0,
+    ]);
+  });
 });
 
 describe('lastSeenWindow', () => {

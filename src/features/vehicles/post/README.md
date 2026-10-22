@@ -140,11 +140,14 @@ never opens one person's last-seen location for the next.
 7. **Photos** — `PhotoGridPicker`, min 3 / max 6, first photo = cover.
 
 **Phase 2 — When and where**
-8. **Last seen when** — `LastSeenTimeField` (2026-09-28; it replaced
-   `DateTimeField` on this step). One-tap presets sit on the step: Just now,
-   About an hour ago, Earlier today (hidden before 04:00), Last night
-   (yesterday 22:00) and Yesterday (same clock time). Below them, the field
-   shows the stored answer and opens the app's custom picker (2026-09-29) in two
+8. **Last seen when** — `LastSeenTimeField`, as `CardSelect` cards (owner,
+   2026-10-22). Each card shows the exact time it means: Just now, About an
+   hour ago, Earlier today (hidden before 04:00), Last night (yesterday
+   22:00), Yesterday (same clock time). A card moves the wizard on
+   (`advanceSoon`). The last card, "Pick a date and time", opens the app's
+   custom picker (2026-09-29), then shows the time picked and moves on after
+   Confirm. A chosen card shows the STORED time; after Back, Edit or a
+   restored draft, "Pick a date and time" is lit with it. The picker has two
    stages:
    1. "Pick a date": a `CalendarMonth` (one month, ‹ › arrows). Tapping a day
       moves on.
