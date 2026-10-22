@@ -101,7 +101,8 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
      (`confirmed_feature_ids`; the screen seeds `confirmableFeatures`, and the
      car as `reportedCar`, from one `get_post_detail` call, best-effort via
      `lib/reportSeed.ts`. Both are read-only seeds and never sent).
-   - **A note for the owner**: multiline, with a 0/500 counter.
+   - **Anything else?** (the note for the owner; renamed and its helper line
+     dropped, owner, 2026-10-22): multiline, with a 0/500 counter.
 3. **Check and send** (`components/ConfirmStep.tsx`, redesigned 2026-10-02
    on the GOV.UK check-answers pattern): labelled sections.
    - **You're reporting**: the car from the listing (its first photo across

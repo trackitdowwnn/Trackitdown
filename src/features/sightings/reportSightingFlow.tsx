@@ -235,8 +235,8 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
           component: MarksStep,
           schema: z.object({ confirmedFeatureIds: z.array(z.string()).optional() }),
         }),
+        // No helper (owner, 2026-10-22): the question says it.
         contextStep('note', {
-          helper: 'What you noticed. A line is plenty.',
           component: NoteStep,
           schema: z.object({ note: z.string().max(MAX_NOTE_LENGTH).optional() }),
           // The context's ONE funnel event (no per-step onContinue — see
