@@ -138,6 +138,25 @@ function damageKindLabels(
   );
 }
 
+/** The damage kinds as rows for check-and-send's "Damage visible" card
+ *  (owner, 2026-10-22: a row each, not a comma line), with the parts as rows
+ *  under "Missing panels or parts". Values this app doesn't know are left
+ *  out, as damageKindLabels leaves them out of the words. */
+function damageItems(
+  kinds: readonly string[] | null | undefined,
+  parts?: readonly string[] | null,
+): ContextReviewItem[] {
+  const named = knownValues(MISSING_PART_LABELS, parts).map((part) => ({
+    value: part,
+    label: MISSING_PART_LABELS[part],
+  }));
+  return knownValues(DAMAGE_KIND_LABELS, kinds).map((kind) => ({
+    value: kind,
+    label: DAMAGE_KIND_LABELS[kind],
+    ...(kind === 'missing_parts' && named.length > 0 ? { items: named } : {}),
+  }));
+}
+
 const DIRECTION_LABELS: Record<DrivingDirection, string> = {
   N: 'north',
   NE: 'north-east',
@@ -177,7 +196,19 @@ export interface ContextReviewCard {
   /** The stored value — a context flag, or a people answer. */
   value: string;
   label: string;
+  /** What it led to, as one line — the words the owner's page reads. */
   detail?: string;
+  /** The same, as rows ("Damage visible": a row per kind, the parts under
+   *  "Missing panels or parts") — how check-and-send shows it. */
+  items?: ContextReviewItem[];
+}
+
+/** One row inside a check-and-send card: a value, its words, and the rows
+ *  under it (the parts under "Missing panels or parts"). */
+export interface ContextReviewItem {
+  value: string;
+  label: string;
+  items?: ContextReviewItem[];
 }
 
 /** One answered question under check-and-send's "What you saw": its label,
@@ -371,7 +402,12 @@ function answeredCards(
       question: 'condition',
       value: flag,
       label: FLAG_LABELS[flag],
-      ...(flag === 'damage_visible' && damage.length > 0 ? { detail: damage.join(', ') } : {}),
+      ...(flag === 'damage_visible' && damage.length > 0
+        ? {
+            detail: damage.join(', '),
+            items: damageItems(source.damageKinds, source.missingParts),
+          }
+        : {}),
     }));
 
   return { state, people, condition };

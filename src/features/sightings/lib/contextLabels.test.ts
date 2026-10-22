@@ -483,7 +483,13 @@ describe('contextReviewGroups — check-and-send shows the cards they tapped', (
         key: 'condition',
         label: 'Its condition',
         cards: [
-          { question: 'condition', value: 'damage_visible', label: 'Damage visible', detail: 'Fire damage' },
+          {
+            question: 'condition',
+            value: 'damage_visible',
+            label: 'Damage visible',
+            detail: 'Fire damage',
+            items: [{ value: 'fire_damage', label: 'Fire damage' }],
+          },
         ],
       },
       {
@@ -492,6 +498,46 @@ describe('contextReviewGroups — check-and-send shows the cards they tapped', (
         marks: [{ id: 'm1', description: 'Bee sticker', photoUrl: 'https://example.test/m1.jpg' }],
       },
     ]);
+  });
+});
+
+describe('contextReviewGroups — the damage as rows (owner, 2026-10-22)', () => {
+  it('gives each kind a row and the parts as rows under "Missing panels or parts"', () => {
+    const [condition] = contextReviewGroups({
+      contextFlags: ['damage_visible'],
+      damageKinds: ['smashed_window', 'missing_parts'],
+      missingParts: ['bumpers', 'doors'],
+    });
+    expect(condition.cards?.[0].items).toEqual([
+      { value: 'smashed_window', label: 'Smashed window' },
+      {
+        value: 'missing_parts',
+        label: 'Missing panels or parts',
+        items: [
+          { value: 'bumpers', label: 'Bumpers' },
+          { value: 'doors', label: 'Doors' },
+        ],
+      },
+    ]);
+  });
+
+  it('⚠️ leaves out a kind or part this app doesn’t know — never a crash, never a raw key', () => {
+    // Values a newer server might hold — not this app's types, hence the cast.
+    const [condition] = contextReviewGroups({
+      contextFlags: ['damage_visible'],
+      damageKinds: ['flood_damage', 'missing_parts'],
+      missingParts: ['spoiler', 'toString'],
+    } as unknown as Parameters<typeof contextReviewGroups>[0]);
+    // No known part: "Missing panels or parts" stands alone, no empty rows.
+    expect(condition.cards?.[0].items).toEqual([
+      { value: 'missing_parts', label: 'Missing panels or parts' },
+    ]);
+    // Nothing known at all: the plain card, no rows.
+    const [plain] = contextReviewGroups({
+      contextFlags: ['damage_visible'],
+      damageKinds: ['flood_damage'],
+    } as unknown as Parameters<typeof contextReviewGroups>[0]);
+    expect(plain.cards?.[0].items).toBeUndefined();
   });
 });
 

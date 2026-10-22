@@ -39,7 +39,7 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 
-import type { ContextReviewCard } from '../lib/contextLabels';
+import type { ContextReviewCard, ContextReviewItem } from '../lib/contextLabels';
 import type {
   ConditionFlag,
   DamageKind,
@@ -98,4 +98,12 @@ export function reviewCardIcon(card: ContextReviewCard): LucideIcon | undefined 
         ? PEOPLE_ICONS
         : CONDITION_ICONS;
   return Object.hasOwn(table, card.value) ? table[card.value] : undefined;
+}
+
+/** The icon of a row inside a review card: a damage kind, or (nested under
+ *  "Missing panels or parts") a part — the icon of the card tapped on the
+ *  damage or parts step. None for a value this app doesn't know. */
+export function reviewItemIcon(item: ContextReviewItem, nested: boolean): LucideIcon | undefined {
+  const table: Record<string, LucideIcon> = nested ? MISSING_PART_ICONS : DAMAGE_ICONS;
+  return Object.hasOwn(table, item.value) ? table[item.value] : undefined;
 }

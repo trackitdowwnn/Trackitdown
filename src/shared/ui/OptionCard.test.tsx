@@ -51,6 +51,34 @@ describe('OptionCard', () => {
     expect(ticked.getByTestId('card').props.accessibilityLabel).toBe('Damage visible');
   });
 
+  it('lists rows under the title — a row’s own rows nested — and still reads as one statement', async () => {
+    const { getByText, queryByText, getByTestId } = await render(
+      <OptionCard
+        label="Damage visible"
+        description="never shown with rows"
+        trailingCheck
+        items={[
+          { label: 'Smashed window' },
+          {
+            label: 'Missing panels or parts',
+            items: [{ label: 'Bumpers' }, { label: 'Doors' }],
+          },
+        ]}
+        testID="card"
+      />,
+    );
+    expect(getByTestId('card-item-0')).toBeTruthy();
+    expect(getByTestId('card-item-1-1')).toBeTruthy();
+    expect(getByText('Bumpers')).toBeTruthy();
+    // The rows replace the line; the tick box stays with the title.
+    expect(queryByText('never shown with rows')).toBeNull();
+    expect(getByTestId('card-check')).toBeTruthy();
+    expect(getByTestId('card').props.accessibilityLabel).toBe(
+      'Damage visible. Smashed window. Missing panels or parts: Bumpers, Doors',
+    );
+    expect(getByTestId('card').props.accessibilityRole).toBeUndefined();
+  });
+
   it('wears the chosen border by default — exactly CardSelect’s chosen card', async () => {
     const shown = await render(<OptionCard label="Parked" testID="card" />);
     const shownStyle = StyleSheet.flatten(shown.getByTestId('card').props.style);

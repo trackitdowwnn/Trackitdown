@@ -14,6 +14,10 @@
 
 import { radii, sizes, spacing, typography, type Palette } from '../theme';
 
+/** The gap between a card's icon and its title — and so how far the rows under
+ *  a title are indented, so the two can never drift apart. */
+const TITLE_GAP = spacing.lg;
+
 /** Pass to StyleSheet.create, spread with any extra keys the caller needs. */
 export const optionCardStyleSpec = (c: Palette) =>
   ({
@@ -23,7 +27,7 @@ export const optionCardStyleSpec = (c: Palette) =>
     card: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.lg,
+      gap: TITLE_GAP,
       minHeight: sizes.touchTarget + spacing.md,
       paddingVertical: spacing.lg,
       paddingHorizontal: spacing.lg,
@@ -69,5 +73,52 @@ export const optionCardStyleSpec = (c: Palette) =>
     boxSelected: {
       backgroundColor: c.primary,
       borderColor: c.primary,
+    },
+    // A card that lists rows under its title (OptionCard `items` — the
+    // review's "Damage visible" card): the title row as above, then the rows
+    // aligned with the title (the icon's width and the card's gap in).
+    cardColumn: {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      gap: spacing.md,
+    },
+    titleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: TITLE_GAP,
+    },
+    itemList: {
+      paddingLeft: sizes.icon + TITLE_GAP,
+      gap: spacing.sm,
+    },
+    // A title with no icon: the rows start where the title does.
+    itemListNoIcon: {
+      paddingLeft: 0,
+    },
+    // The row icon's slot: the icon's width even with no icon, so rows always
+    // line up; its height is one caption line, scaled with the text in
+    // OptionCard, so the icon stays centred on the first line at large text.
+    itemIconSlot: {
+      width: sizes.iconSm,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    itemRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+    },
+    // Wraps under itself at large text; never cut.
+    itemText: {
+      ...typography.caption,
+      color: c.textSecondary,
+      flexShrink: 1,
+    },
+    // A row's own rows (the parts under "Missing panels or parts"): one
+    // step further in — the row icon's width and its gap.
+    itemNested: {
+      paddingLeft: sizes.iconSm + spacing.sm,
+      paddingTop: spacing.sm,
+      gap: spacing.sm,
     },
   }) as const;

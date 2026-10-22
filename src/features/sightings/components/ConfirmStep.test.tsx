@@ -446,7 +446,16 @@ describe('ConfirmStep — what you saw', () => {
       damageNote: '  Glass on the pavement  ',
     });
     expect(view.getByText('Damage visible')).toBeTruthy();
-    expect(view.getByText('Smashed window, Dents or scrapes')).toBeTruthy();
+    // A row each (owner, 2026-10-22) — not one comma line.
+    const card = 'confirm-card-condition-damage_visible';
+    expect(view.getByTestId(`${card}-item-0`)).toBeTruthy();
+    expect(view.getByText('Smashed window')).toBeTruthy();
+    expect(view.getByText('Dents or scrapes')).toBeTruthy();
+    expect(view.queryByText('Smashed window, Dents or scrapes')).toBeNull();
+    // Still one statement for a screen reader, the rows in it.
+    expect(view.getByTestId(card).props.accessibilityLabel).toBe(
+      'Damage visible. Smashed window. Dents or scrapes',
+    );
     expect(view.getByText('About the damage')).toBeTruthy();
     expect(view.getByText('Glass on the pavement')).toBeTruthy();
   });
@@ -459,9 +468,42 @@ describe('ConfirmStep — what you saw', () => {
       missingParts: ['bumpers', 'doors'],
       missingPartsNote: ' Rear bumper on the pavement ',
     });
-    expect(view.getByText('Smashed window, Missing panels or parts (Bumpers, Doors)')).toBeTruthy();
+    const card = 'confirm-card-condition-damage_visible';
+    // The parts as rows under "Missing panels or parts".
+    expect(view.getByText('Missing panels or parts')).toBeTruthy();
+    expect(view.getByTestId(`${card}-item-1-0`)).toBeTruthy();
+    expect(view.getByText('Bumpers')).toBeTruthy();
+    expect(view.getByText('Doors')).toBeTruthy();
+    expect(view.getByTestId(card).props.accessibilityLabel).toBe(
+      'Damage visible. Smashed window. Missing panels or parts: Bumpers, Doors',
+    );
     expect(view.getByText('About what’s missing')).toBeTruthy();
     expect(view.getByText('Rear bumper on the pavement')).toBeTruthy();
+  });
+
+  it('shows everything ticked — six kinds and six parts — as rows, nothing cut', async () => {
+    const { view } = await renderConfirm({
+      photos: [live(0)],
+      contextFlags: ['damage_visible'],
+      damageKinds: [
+        'smashed_window',
+        'dents_scrapes',
+        'broken_lights',
+        'missing_wheels',
+        'missing_parts',
+        'fire_damage',
+      ],
+      missingParts: ['bumpers', 'bonnet', 'doors', 'lights', 'wing_mirrors', 'number_plates'],
+    });
+    const card = 'confirm-card-condition-damage_visible';
+    for (let index = 0; index < 6; index += 1) {
+      expect(view.getByTestId(`${card}-item-${index}`)).toBeTruthy();
+    }
+    for (let index = 0; index < 6; index += 1) {
+      expect(view.getByTestId(`${card}-item-4-${index}`)).toBeTruthy();
+    }
+    // The tick box stays with the title.
+    expect(view.getByTestId(`${card}-check`)).toBeTruthy();
   });
 
   it('says "Nothing added" with an Add link when the step was skipped', async () => {

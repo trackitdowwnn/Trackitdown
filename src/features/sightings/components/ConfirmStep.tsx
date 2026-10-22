@@ -71,7 +71,7 @@ import { firstLocatedPhoto, isApproximateFix } from '../lib/areaLabel';
 import { CONTEXT_STEP_IDS, stepAnswered, stepApplies } from '../lib/contextAnswers';
 import { CONTEXT_STEP_QUESTIONS, contextReviewGroups } from '../lib/contextLabels';
 import { MAX_SIGHTING_PHOTOS, type ReportedCar, type ReportSightingAnswers } from '../types';
-import { reviewCardIcon } from './contextOptionIcons';
+import { reviewCardIcon, reviewItemIcon } from './contextOptionIcons';
 import { MarkTile } from './MarkTile';
 
 type StepProps = WizardStepProps<ReportSightingAnswers>;
@@ -422,7 +422,17 @@ export function ConfirmStep({ answers, editStep, busy = false }: StepProps) {
                   <OptionCard
                     key={`${card.question}-${card.value}`}
                     label={card.label}
-                    description={card.detail}
+                    // The damage as a row each, the parts under theirs (owner,
+                    // 2026-10-22); any other card keeps its one line.
+                    description={card.items ? undefined : card.detail}
+                    items={card.items?.map((item) => ({
+                      label: item.label,
+                      icon: reviewItemIcon(item, false),
+                      items: item.items?.map((inner) => ({
+                        label: inner.label,
+                        icon: reviewItemIcon(inner, true),
+                      })),
+                    }))}
                     icon={reviewCardIcon(card)}
                     // "Its condition" was a tick-any question: its tick box too.
                     trailingCheck={card.question === 'condition'}
