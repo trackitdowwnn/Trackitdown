@@ -24,9 +24,9 @@
 
 import { Feather } from '@expo/vector-icons';
 import type { LucideIcon } from 'lucide-react-native';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
-import { sizes, usePalette, useThemedStyles, type Palette } from '../theme';
+import { sizes, typography, usePalette, useThemedStyles, type Palette } from '../theme';
 import { optionCardStyleSpec } from './optionCardStyles';
 
 /** A row under the card's title, and the rows under it (one level). */
@@ -120,7 +120,7 @@ export function OptionCard({
       {rows ? (
         <>
           <View style={styles.titleRow}>{head}</View>
-          <View style={styles.itemList}>
+          <View style={[styles.itemList, !Icon && styles.itemListNoIcon]}>
             {rows.map((row, index) => (
               <View key={`${index}-${row.label}`}>
                 <ItemRow item={row} testID={testID ? `${testID}-item-${index}` : undefined} />
@@ -150,17 +150,17 @@ export function OptionCard({
 function ItemRow({ item, testID }: { item: OptionCardItem; testID?: string }) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
+  const { fontScale } = useWindowDimensions();
   const Icon = item.icon;
   return (
     <View style={styles.itemRow} testID={testID}>
-      {Icon ? (
-        <Icon
-          size={sizes.iconSm}
-          color={palette.textSecondary}
-          importantForAccessibility="no"
-          accessibilityElementsHidden
-        />
-      ) : null}
+      <View
+        style={[styles.itemIconSlot, { height: typography.caption.lineHeight * (fontScale || 1) }]}
+        importantForAccessibility="no-hide-descendants"
+        accessibilityElementsHidden
+      >
+        {Icon ? <Icon size={sizes.iconSm} color={palette.textSecondary} /> : null}
+      </View>
       <Text style={styles.itemText}>{item.label}</Text>
     </View>
   );

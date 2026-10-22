@@ -610,9 +610,14 @@ badges"):
   unanswered. Each answer is shown as the card that was tapped, in its chosen
   look (owner, 2026-10-22): `OptionCard` — the same `optionCardStyles` as
   CardSelect, read-only, no radio/checkbox role, one screen-reader statement.
-  What an answer led to is a line on its card ("Parked" / "Looks parked up";
-  "Damage visible" / the damage and the parts), not a card of its own. Their
-  words stay text; the marks stay MarkTile rows.
+  What an answer led to is a line on its card ("Parked" / "Looks parked up"),
+  not a card of its own — except the damage seen, which lists as rows under
+  "Damage visible" (owner, 2026-10-22: not a comma line): OptionCard `items`,
+  each row a decorative `iconSm` icon in `textSecondary` (its slot one caption
+  line tall, scaled with the text) and caption words, aligned with the title;
+  the missing parts nested one step in under "Missing panels or parts". Still
+  one screen-reader statement. Their words stay text; the marks stay MarkTile
+  rows.
 - **Photo rows for "could you see…?"**: `surface`, `radii.md`, a 2pt
   `selectBorder` turning `primary` when ticked, a `markThumb` (48) photo
   (an empty thumb with an `image` glyph when there's none, so rows align)
