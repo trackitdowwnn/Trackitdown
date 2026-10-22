@@ -96,6 +96,11 @@ Deno.serve(async (request) => {
     locationsPurged: 0,
     onboardingEventsPurged: 0,
     telemetryEventsPurged: 0,
+    sightingDetailsCleared: 0,
+    pushTokensPurged: 0,
+    webhookEventsPurged: 0,
+    oldClosedPostsPurged: 0,
+    oldClosedPostsSkipped: 0,
     photosRemoved: 0,
     sightingPhotosRemoved: 0,
     deletionWarningsSent: 0,
@@ -155,26 +160,32 @@ Deno.serve(async (request) => {
     console.error('[sightings] location purge failed', (err as Error).message);
   }
 
-  // --- Phase 0b2: analytics retention ---------------------------------------
-  // The funnel (180 days) and telemetry (90 days) purges were written in
-  // 2026-08 and never scheduled — the privacy policy and the Art. 30 record
-  // (docs/RECORD_OF_PROCESSING.md) now state those periods, so they run here,
-  // on the one clock this project has, like the two purges above. Each is a
-  // single DELETE ... WHERE at < now() - interval; best-effort and separately
-  // counted, so one failing never stops the other or the money work below.
+  // --- Phase 0b2: retention ---------------------------------------------------
+  // The periods the privacy policy and the Art. 30 record
+  // (docs/RECORD_OF_PROCESSING.md) state, run here on the one clock this
+  // project has, like the two purges above: the funnel (180 days) and
+  // telemetry (90 days), both written in 2026-08 and never scheduled until
+  // 2026-10-21; and from 2026-10-22 (20261022100000) a closed listing's
+  // sighting words and street names (90 days, never while money moves), push
+  // tokens no phone has refreshed in 270 days, and Stripe dedup ids past 30
+  // days. Each returns a count; best-effort and separately counted, so one
+  // failing never stops the others or the money work below.
   for (const [rpc, key] of [
     ['purge_onboarding_events', 'onboardingEventsPurged'],
     ['purge_telemetry_events', 'telemetryEventsPurged'],
+    ['purge_closed_sighting_details', 'sightingDetailsCleared'],
+    ['purge_stale_push_tokens', 'pushTokensPurged'],
+    ['purge_old_webhook_events', 'webhookEventsPurged'],
   ] as const) {
     try {
       const { data: removed, error: analyticsError } = await admin.rpc(rpc);
       if (analyticsError) {
-        console.error('[analytics] purge failed', { rpc, message: analyticsError.message });
+        console.error('[retention] purge failed', { rpc, message: analyticsError.message });
       } else {
         summary[key] = typeof removed === 'number' ? removed : 0;
       }
     } catch (err) {
-      console.error('[analytics] purge failed', { rpc, message: (err as Error).message });
+      console.error('[retention] purge failed', { rpc, message: (err as Error).message });
     }
   }
 
@@ -348,6 +359,31 @@ Deno.serve(async (request) => {
     }
   } catch (err) {
     console.error('[posts] cancelled-post purge failed', (err as Error).message);
+  }
+
+  // --- Phase 0d2: recovered-listing retention (20261022100000) --------------
+  // A recovered (or expired) listing goes 12 months after it closed, through
+  // delete_old_closed_post — delete_cancelled_post's guards and ledger
+  // afterlife exactly. The RPC selects only listings with no money moving, so
+  // `skipped` is an alarm here as it is for Phase 0d. No owner warning: the
+  // listing left public view eleven months earlier, and the privacy policy
+  // states the period (owner, 2026-10-22).
+  try {
+    const { data: oldResult, error: oldPurgeError } = await admin.rpc('purge_old_closed_posts');
+    if (oldPurgeError) {
+      console.error('[posts] recovered-listing purge failed', oldPurgeError.message);
+    } else {
+      const doc = oldResult as { purged?: number; skipped?: number } | null;
+      summary.oldClosedPostsPurged = typeof doc?.purged === 'number' ? doc.purged : 0;
+      summary.oldClosedPostsSkipped = typeof doc?.skipped === 'number' ? doc.skipped : 0;
+      if (summary.oldClosedPostsSkipped > 0) {
+        console.warn('[posts] recovered-listing purge skipped blocked posts', {
+          skipped: summary.oldClosedPostsSkipped,
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[posts] recovered-listing purge failed', (err as Error).message);
   }
 
   // --- Phase 1-pre: the expiry — rewards past their 60 days (ADR-0020) -------
