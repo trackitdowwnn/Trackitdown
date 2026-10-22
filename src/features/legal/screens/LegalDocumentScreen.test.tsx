@@ -282,10 +282,13 @@ describe('factual claims the code must keep true', () => {
     expect(privacy).toContain('never coordinates');
   });
 
-  it('explains that sighting photos survive account deletion', () => {
-    // The retention decision made in the delete-account work. If that call is
-    // reversed, this sentence has to go with it.
-    expect(privacy).toContain('stay attached to that listing');
+  it('explains that a spotter’s sightings and photos go with their account', () => {
+    // Reversed 2026-10-22 (owner): the sightings cascade with the account and
+    // the hourly sweep erases their photos (20260921110000) — the policy used
+    // to say they "stay attached to that listing", which was no longer true.
+    // If evidence is ever kept by anonymising instead, this sentence changes.
+    expect(privacy).toContain('so its owner will no longer see them');
+    expect(privacy).not.toContain('stay attached to that listing');
   });
 
   it('names the ICO as the route to complain', () => {

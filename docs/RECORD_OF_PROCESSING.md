@@ -305,15 +305,12 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
 Each is a decision for the owner (and, for 1–3, the solicitor). Recorded here
 so it is not mistaken for a decision already made.
 
-1. **A spotter's photos do not survive their account deletion.** The policy
-   says photographs of somebody else's stolen car "stay attached to that
-   listing". In fact the spotter's sightings cascade away with the account
-   (so the owner loses them from the listing), and since 2026-09-21 each
-   deleted photo row also queues its image for removal by the hourly sweep.
-   Either the policy or the cascade has to change.
-2. **What a push carries.** The policy says "only a make, a colour and a
-   district-level area". Message pushes also carry the sender's first name;
-   reward-ended and payout-reminder pushes carry amounts and dates.
+1. ~~A spotter's photos do not survive their account deletion~~ — **closed
+   2026-10-22** by the policy: the owner kept the behaviour (sightings
+   cascade, photos erased by the sweep) and the policy now says so. Keeping
+   evidence on a live listing would mean anonymising instead — not built.
+2. ~~What a push carries~~ — **closed 2026-10-22** by the policy: it now
+   names the sender's first name and a bounty's amount and date.
 3. **"Detailed location history … deleted after 90 days."** Only photo GPS is
    nulled. The street-level `area_label`, the listing's last-seen point and
    all free text stay.

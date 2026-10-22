@@ -355,9 +355,17 @@ const PRIVACY: LegalDocument = {
   // Maps hand-off; "What we collect" names number plates and the usage counts;
   // "How long we keep it" gives the usage counts' periods, which the hourly
   // sweep now enforces.
+  // 22 Oct (owner): two lines that were not true. "Notifications" said a
+  // push carries only make, colour and district — message pushes name the
+  // sender and money pushes carry amounts and dates. "Deleting your
+  // account" said a spotter's photos of somebody else's car stay on that
+  // listing — the sightings cascade with the account and the photos are
+  // erased by the hourly sweep (20260921110000). The owner chose to keep
+  // that behaviour and say so. It also names the device-change ledger
+  // (device_links), which outlives deletion by design.
   slug: 'privacy',
   title: 'Privacy policy',
-  lastUpdated: '21 October 2026',
+  lastUpdated: '22 October 2026',
   intro: [
     `${OPERATOR} is the controller of the personal data described here.`,
     'This app handles location, vehicle details, photographs and payments, so this policy is specific rather than generic. If something below is not clear, ask us before you use the service.',
@@ -432,7 +440,7 @@ const PRIVACY: LegalDocument = {
       heading: 'Notifications and what travels in them',
       body: [
         'Push notifications leave our systems and pass through Expo and then Apple or Google, so their contents are readable by those companies.',
-        'Because of that, a notification carries only a make, a colour and a district-level area — never a number plate, never coordinates, and never the contents of a message. The app fetches the detail after you tap, over an authenticated connection.',
+        'Because of that, a notification carries as little as we can manage: the make, colour and district of a car, the first name of someone who has messaged you, or the amount and date of a bounty that is yours — never a number plate, never coordinates, and never what a message says. The app fetches the detail after you tap, over an authenticated connection.',
       ],
     },
     {
@@ -464,7 +472,7 @@ const PRIVACY: LegalDocument = {
       heading: 'Deleting your account',
       body: [
         'You can delete your account from your profile. It removes your profile, your listings, your sightings, your saved vehicles, your alerts and your photographs.',
-        'Two things do not go. Photographs you took of somebody else’s stolen vehicle stay attached to that listing, because they are evidence in someone else’s live case and removing them would take away their only record. Once your account is gone those photographs are no longer linked to you. And we keep a minimal record that a deletion happened, plus any payment references we are required to retain.',
+        'That includes sightings you reported of somebody else’s vehicle, with their photographs, so its owner will no longer see them. What stays: a minimal record that a deletion happened, any payment references we are required to retain, and a scrambled record of which accounts have used the same phone, which we keep to stop bounty fraud.',
         'If you have a listing with a bounty we are still holding, cancel or complete it first — we cannot delete an account while it holds money.',
       ],
     },

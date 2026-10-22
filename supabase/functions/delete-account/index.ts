@@ -73,7 +73,18 @@ const BUCKETS = [
 ] as const;
 
 /*
- * SIGHTING PHOTOS — deliberately NOT swept. This is a product/legal decision,
+ * SIGHTING PHOTOS — not swept HERE, but they do NOT survive the account.
+ * ⚠️ Updated 2026-10-22: the reasoning below was written 2026-08 and is now
+ * history. The spotter's sightings cascade with the account, and since
+ * 20260921110000 every deleted sighting_photos row queues its file for the
+ * hourly sweep, which removes it through the Storage API — so the photos
+ * are erased within the hour. The owner chose to keep that (the privacy
+ * policy now says so, and docs/RECORD_OF_PROCESSING.md §5 records it).
+ * Keeping evidence on a live listing would mean anonymising the sighting
+ * instead of cascading it — a schema change, not an edit to this list.
+ *
+ * The original reasoning, kept for context:
+ * This is a product/legal decision,
  * not an oversight, and it is the one call in this function worth arguing with.
  *
  * A sighting photo is uploaded by the SPOTTER but belongs to somebody else's
