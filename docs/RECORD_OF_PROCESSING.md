@@ -202,7 +202,9 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
 - **Retention:** in-app notifications 90 days; `push_sends` 30 days;
   `push_receipts` ≤24 h (opportunistic); push tokens 270 days after the app
   last registered them — every cold start — (`purge_stale_push_tokens`,
-  2026-10-22), or with the account.
+  2026-10-22), or with the account. Trade-off: a phone idle that long and
+  then signed into a DIFFERENT account records no handset-switch link
+  (`device_links`, 4.13), since the old token row is gone.
 - **Security:** payloads carry ids only; visible text bounded (§5, item 2 on
   what it actually carries).
 
@@ -259,7 +261,9 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
   person.
 - **Basis:** *proposed:* legitimate interests (fair outcomes; fraud).
 - **Recipients:** operator; each party sees their own.
-- **Retention:** ON DELETE RESTRICT on the people; archived into the payments
+- **Retention:** kept past the 90-day sighting-notes rule on purpose — it is
+  evidence in a money decision (the privacy policy says so). ON DELETE
+  RESTRICT on the people; archived into the payments
   snapshot (statement included) indefinitely.
 
 ### 4.15 Moderation reports
@@ -321,9 +325,11 @@ so it is not mistaken for a decision already made.
    with the photo GPS at 90 days, and the policy says exactly that. The
    listing's own last-seen point stays until the listing is deleted.
 4. **Free text:** sighting, damage, missing-parts and withdrawal notes —
-   **closed 2026-10-22** (cleared at 90 days). Still kept: refund-dispute
-   statements (money evidence, archived with the ledger) and messages
-   (with the listing).
+   **closed 2026-10-22** (cleared at 90 days; kept while a payment on the
+   listing is under 180 days old — chargebacks are not recorded, so the
+   age is the guard). Still kept, and the policy says so: refund-dispute
+   statements (money evidence, archived with the ledger). Messages go with
+   the listing.
 5. ~~Recipients and data missing from the policy~~ — **closed 2026-10-21**:
    Resend, Gmail, Apple/Google sign-in, Apple geocoding, Waze, telemetry and
    garage plates are named.

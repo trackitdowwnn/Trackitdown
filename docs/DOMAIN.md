@@ -201,6 +201,14 @@ down (ADR-0014). A `draft` (unpaid) is deleted/abandoned, not cancelled.
    own delete does (delete-post) and the SQL-only purge cannot — such posts
    are skipped and **counted** (`cancelledPostsSkipped` in the sweep summary),
    so a post the guards refuse every hour is visible, not silent.
+   **recovered** / **recovered_no_spotter** listings are deleted 12 months
+   after closing (`purge_old_closed_posts`, 20261022100000) through
+   `delete_old_closed_post` — the same guards and ledger afterlife — with
+   no warning; a stray intent is cancelled at Stripe by the sweep first
+   (Phase 0d2) and one it cannot prove is counted as skipped. 90 days after
+   ANY listing closes its sightings' street names and spotters' notes are
+   cleared (`purge_closed_sighting_details`), never while money moves or a
+   payment on it is under 180 days old.
    **expired** — *retired state, like `rejected` below.* Nothing enters it and
    nothing ever has: passive LISTING expiry was cut deliberately (a listing
    still never expires; since 2026-10-05 its REWARD has a 60-day term instead,

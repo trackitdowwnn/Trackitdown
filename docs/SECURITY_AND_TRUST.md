@@ -500,17 +500,21 @@ commenting standards.
     was written as a fact here, and in the `sightings` table's own header as
     "a separate retention job", and neither reading tells you it did not exist —
     which is why the check matters more than the function.
-  - It nulls the coordinates only. The photo row, the image, and the coarse
-    `sightings.area_label` all stay: the promise is about *detailed* location,
-    and `area_label` is what a spotter sees on their own "My sightings".
+  - It nulls the coordinates only. The photo row and the image stay (and,
+    until 2026-10-22, the coarse `sightings.area_label` did too — it is what
+    a spotter sees on their own "My sightings"; see the next bullet).
   - **Widened 2026-10-22 (`purge_closed_sighting_details`, 20261022100000):**
     at the same 90 days the street-level `area_label` and every free-text
     field (note, damage, missing-parts and withdrawal notes) are cleared
     too, unless money on the listing still moves (held/superseded payment,
-    unresolved review, open dispute, live hold). Every screen that shows
+    unresolved review, open dispute, live hold) or any payment on it is under
+    180 days old — a card chargeback can still reach it, and chargebacks are
+    not recorded here. Every screen that shows
     `area_label` already falls back when it is null. Recovered listings go
     12 months after closing (`purge_old_closed_posts` — delete_cancelled_
-    post's guards and ledger afterlife exactly); push tokens unused for
+    post's guards and ledger afterlife exactly; a stray never-captured
+    intent is cancelled at Stripe by the sweep first, as delete-post does,
+    and one it cannot prove is counted as skipped); push tokens unused for
     270 days and webhook ids past 30 days are deleted. All run in the hourly
     sweep; `retention_rules_verification.sql` asserts each.
   - **The spotter sees their OWN photos there (2026-10-09).** Each card leads

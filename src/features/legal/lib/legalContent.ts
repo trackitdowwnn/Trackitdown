@@ -466,8 +466,8 @@ const PRIVACY: LegalDocument = {
       heading: 'How long we keep it',
       body: [
         'A closed listing stays visible for 30 days after it closes, then leaves public view.',
-        'A cancelled listing is deleted 30 days after it closes. A recovered listing is deleted, with its sightings and photographs, 12 months after it closes.',
-        '90 days after a listing closes, we delete where its sightings were taken — the exact location and the street name — and everything spotters wrote about them, unless money on the listing is still being settled.',
+        'A cancelled listing is deleted 30 days after it closes. A recovered listing is deleted, with its sightings and photographs, 12 months after it closes, unless money on it is still being settled.',
+        '90 days after a listing closes, we delete where its sightings were taken — the exact location and the street name — and the notes spotters wrote with them, unless money on the listing is still being settled or was paid in the last six months. What a spotter writes when contesting a refund is kept with the payment records.',
         'Records of how the app is used are deleted after 90 days, and records of how far people got through the introduction after 180 days.',
         'If a phone has not opened the app for 9 months, we delete its notification token.',
         'Payment records are kept for as long as financial and tax law requires, which is longer than the rest.',

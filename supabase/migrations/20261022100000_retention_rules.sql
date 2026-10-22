@@ -9,8 +9,9 @@
 --             "where, in their words" goes with it.
 --          2. delete_old_closed_post() + purge_old_closed_posts() — a listing
 --             RECOVERED (or recovered with no spotter, or expired) is deleted
---             12 months after it closed. Cancelled listings already go at 30
---             days (purge_cancelled_posts).
+--             12 months after it closed; old_closed_posts_with_stray_intents
+--             lists the ones the sweep must first prove clean at Stripe.
+--             Cancelled listings already go at 30 days (purge_cancelled_posts).
 --          3. purge_stale_push_tokens() — a push token no app has refreshed in
 --             270 days (~9 months) is deleted. The app re-registers on every
 --             cold start (usePushRegistration), so this is a phone that has
@@ -32,13 +33,23 @@
 -- SAFETY — every purge leaves MONEY alone:
 --   * Sighting words on a listing with money still moving (a held or
 --     superseded payment, an unresolved payout review, an open dispute, a
---     refund hold still in its window) are kept: they may be the evidence.
+--     refund hold still in its window) — or with ANY payment made in the last
+--     180 days, which a card chargeback could still reach (the networks allow
+--     ~120 days, and chargebacks are not recorded here) — are kept: they may
+--     be the evidence.
 --   * delete_old_closed_post carries every guard delete_cancelled_post has —
 --     money in flight, an open hold window, an open or upheld dispute, an
---     unresolved review, an uncaptured intent SQL cannot prove dead — and the
---     same afterlife: ledger rows detached with a post_snapshot, never
---     deleted. The purge does not even SELECT a listing with money moving,
---     so a non-zero `skipped` is a real alarm, not a countdown.
+--     unresolved review, an uncaptured intent nobody has proven dead — and
+--     the same afterlife: ledger rows detached with a post_snapshot, never
+--     deleted.
+--   * Abandoned or declined payment attempts (requires_payment / failed) are
+--     routine — a changed amount, a declined card. SQL cannot prove them dead
+--     at Stripe, so purge_old_closed_posts takes only listings without them,
+--     and old_closed_posts_with_stray_intents hands the rest to the sweep,
+--     which cancels each intent at Stripe and passes only the ones Stripe
+--     confirms dead — exactly what delete-post does for an owner's delete.
+--     One it cannot prove is refused and COUNTED as skipped; nothing is kept
+--     silently.
 --   * No owner warning before the 12-month delete (unlike the 30-day
 --     cancelled purge): the listing has been off public view for 11 months,
 --     and the privacy policy states the period. Owner's call, 2026-10-22.
@@ -90,14 +101,20 @@ begin
      and not exists (
        select 1 from public.refund_holds h
         where h.post_id = s.post_id
-          and h.expires_at > now());
+          and h.expires_at > now())
+     -- A payment made in the last 180 days can still be charged back.
+     and not exists (
+       select 1 from public.payments pay
+        where pay.post_id = s.post_id
+          and greatest(pay.created_at, coalesce(pay.captured_at, pay.created_at))
+              > now() - interval '180 days');
 
   get diagnostics v_cleared = row_count;
   return v_cleared;
 end $$;
 
 comment on function public.purge_closed_sighting_details() is
-  'Retention (2026-10-22): 90 days after a listing closes, clears its sightings'' street-level area_label and every free-text field (note, damage_note, missing_parts_note, withdraw_note) — unless money is still moving on the listing (held/superseded payment, unresolved payout review, open dispute, live refund hold). The structured answers, the photos and the row stay; photo GPS is purge_sighting_location_history''s. Returns rows changed. SERVICE ROLE ONLY; called hourly by release-held-refunds.';
+  'Retention (2026-10-22): 90 days after a listing closes, clears its sightings'' street-level area_label and every free-text field (note, damage_note, missing_parts_note, withdraw_note) — unless money is still moving on the listing (held/superseded payment, unresolved payout review, open dispute, live refund hold) or any payment on it is under 180 days old (chargeback reach). The structured answers, the photos and the row stay; photo GPS is purge_sighting_location_history''s. Returns rows changed. SERVICE ROLE ONLY; called hourly by release-held-refunds.';
 
 revoke execute on function public.purge_closed_sighting_details() from public, anon, authenticated;
 grant execute on function public.purge_closed_sighting_details() to service_role;
@@ -108,10 +125,11 @@ grant execute on function public.purge_closed_sighting_details() to service_role
 -- =============================================================================
 -- ⚠️ BYTE FOR BYTE from 20261006130000's delete_cancelled_post (the latest
 -- definition) EXCEPT the block marked "NEW 20261022100000": the status guard.
--- Same signature, so the purge below calls it exactly as purge_cancelled_posts
--- calls delete_cancelled_post — with the post's owner and an EMPTY proof list,
--- so a listing carrying an uncaptured intent raises INTENT_NOT_CANCELLED and
--- is left for a person. Diff it against delete_cancelled_post.
+-- Same signature, so it is called exactly as delete_cancelled_post is: by the
+-- purge below with an EMPTY proof list (it only takes listings with no stray
+-- intent), and by the sweep's Phase 0d2 with the intent ids Stripe confirmed
+-- cancelled (old_closed_posts_with_stray_intents). An unproven intent raises
+-- INTENT_NOT_CANCELLED. Diff it against delete_cancelled_post.
 create or replace function public.delete_old_closed_post(
   p_post_id              uuid,
   p_owner_id             uuid,
@@ -291,10 +309,11 @@ declare
   v_purged  integer := 0;
   v_skipped integer := 0;
 begin
-  -- Only listings the guards will accept: none with money moving or a ledger
-  -- row SQL cannot settle. Selecting only those keeps `skipped` a true alarm
-  -- (a race or a guard we did not foresee) and stops a stuck listing at the
-  -- front of the queue from starving the rest of the LIMIT.
+  -- Only listings the guards will accept with an empty proof list: none with
+  -- money moving, and none with an abandoned or declined intent — those are
+  -- old_closed_posts_with_stray_intents', proven at Stripe by the sweep.
+  -- Selecting only these keeps `skipped` a true alarm (a race or a guard we
+  -- did not foresee) and stops a stuck listing from starving the LIMIT.
   for r in
     select p.id, p.owner_id
       from public.posts p
@@ -338,6 +357,71 @@ comment on function public.purge_old_closed_posts() is
 
 revoke execute on function public.purge_old_closed_posts() from public, anon, authenticated;
 grant execute on function public.purge_old_closed_posts() to service_role;
+
+
+-- =============================================================================
+-- 3b. old_closed_posts_with_stray_intents — the ones only Stripe can settle
+-- =============================================================================
+-- The due listings purge_old_closed_posts leaves out because an abandoned or
+-- declined attempt sits on the ledger, with every money guard but that one.
+-- Read-only: the sweep cancels each intent at Stripe, then calls
+-- delete_old_closed_post with the ids Stripe confirmed — the same proof an
+-- owner's own delete (delete-post) supplies.
+create or replace function public.old_closed_posts_with_stray_intents(p_limit integer default 50)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(
+           jsonb_agg(jsonb_build_object(
+             'post_id',    c.id,
+             'owner_id',   c.owner_id,
+             'intent_ids', to_jsonb(c.intent_ids))
+           order by c.closed_at),
+           '[]'::jsonb)
+    from (
+      select p.id, p.owner_id, p.closed_at,
+             array(select pay.stripe_payment_intent_id
+                     from public.payments pay
+                    where pay.post_id = p.id
+                      and pay.status in ('requires_payment', 'failed')
+                    order by pay.created_at) as intent_ids
+        from public.posts p
+       where p.status in ('recovered', 'recovered_no_spotter', 'expired')
+         and p.closed_at is not null
+         and p.closed_at < now() - interval '12 months'
+         and exists (
+           select 1 from public.payments pay
+            where pay.post_id = p.id
+              and pay.status in ('requires_payment', 'failed'))
+         and not exists (
+           select 1 from public.payments pay
+            where pay.post_id = p.id
+              and pay.status in ('held', 'superseded'))
+         and not exists (
+           select 1 from public.payout_reviews rv
+            where rv.post_id = p.id
+              and rv.resolved_at is null)
+         and not exists (
+           select 1 from public.refund_disputes d
+            where d.post_id = p.id
+              and d.status in ('open', 'upheld'))
+         and not exists (
+           select 1 from public.refund_holds h
+            where h.post_id = p.id
+              and h.expires_at > now())
+       order by p.closed_at
+       limit greatest(coalesce(p_limit, 50), 0)
+    ) c;
+$$;
+
+comment on function public.old_closed_posts_with_stray_intents(integer) is
+  'Retention (2026-10-22): due recovered / recovered_no_spotter / expired listings (closed 12+ months, no money moving) that carry an abandoned or declined intent (requires_payment / failed) — [{post_id, owner_id, intent_ids}], oldest first. Read-only. The sweep (release-held-refunds Phase 0d2) cancels each intent at Stripe and calls delete_old_closed_post with the ids Stripe confirms. SERVICE ROLE ONLY.';
+
+revoke execute on function public.old_closed_posts_with_stray_intents(integer) from public, anon, authenticated;
+grant execute on function public.old_closed_posts_with_stray_intents(integer) to service_role;
 
 
 -- =============================================================================

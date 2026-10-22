@@ -1,10 +1,13 @@
 /**
  * WHAT:  The hold sweep — the cron target that finishes what the 72-hour
  *        window started, and the one process in the system that runs on a
- *        clock, so every timed job hangs off it. Phase 0/0b/0c: retention
- *        (notification purge, 90-day location purge, orphaned photo bytes in
- *        both buckets). Phase 0d-warn/0d: the cancelled-post deletion warning
- *        and the 30-day purge it precedes. Phase 1-pre: the EXPIRY (ADR-0020,
+ *        clock, so every timed job hangs off it. Phase 0/0b/0b2/0c: retention
+ *        (notification purge, 90-day location purge, the 2026-10 retention
+ *        rules — analytics, a closed listing's sighting words, stale push
+ *        tokens, old webhook ids — and orphaned photo bytes in both
+ *        buckets). Phase 0d-warn/0d: the cancelled-post deletion warning and
+ *        the 30-day purge it precedes. Phase 0d2: recovered listings at 12
+ *        months, stray intents proven at Stripe first. Phase 1-pre: the EXPIRY (ADR-0020,
  *        behind REWARD_EXPIRY_ENABLED) — rewards past their 60 days get a
  *        system hold (72h if a spotter's recent sighting might have found the
  *        car, else due now). Phase 1: every refund refunds_due names —
@@ -47,6 +50,8 @@
  *          (refunds_due, claim_reward_expiries, mark_reward_ended_refunded);
  *        supabase/migrations/20261007100000_a_credited_reward_has_a_deadline.sql
  *          (claim_payout_reminders, payouts_past_deadline, claim_payout_lapse);
+ *        supabase/migrations/20261022100000_retention_rules.sql (Phase 0b2,
+ *          0d2);
  *        _shared/refundEscrow.ts, _shared/releasePayout.ts, _shared/push.ts,
  *        _shared/opsAlert.ts;
  *        docs/decisions/ADR-0011-refund-holds-and-disputes.md (cron setup).
@@ -364,10 +369,12 @@ Deno.serve(async (request) => {
   // --- Phase 0d2: recovered-listing retention (20261022100000) --------------
   // A recovered (or expired) listing goes 12 months after it closed, through
   // delete_old_closed_post — delete_cancelled_post's guards and ledger
-  // afterlife exactly. The RPC selects only listings with no money moving, so
-  // `skipped` is an alarm here as it is for Phase 0d. No owner warning: the
-  // listing left public view eleven months earlier, and the privacy policy
-  // states the period (owner, 2026-10-22).
+  // afterlife exactly. Two passes: the RPC purges the listings with nothing
+  // to prove, then the ones carrying an abandoned or declined intent are
+  // proven dead at Stripe below, as delete-post does for an owner. `skipped`
+  // is an alarm in both. No owner warning: the listing left public view
+  // eleven months earlier, and the privacy policy states the period (owner,
+  // 2026-10-22).
   try {
     const { data: oldResult, error: oldPurgeError } = await admin.rpc('purge_old_closed_posts');
     if (oldPurgeError) {
@@ -384,6 +391,66 @@ Deno.serve(async (request) => {
     }
   } catch (err) {
     console.error('[posts] recovered-listing purge failed', (err as Error).message);
+  }
+
+  // Second pass: the due listings with a stray intent. Cancel each at Stripe
+  // and pass ONLY what Stripe confirms `canceled` — the RPC treats the list
+  // as evidence (delete_draft_post's proof rule). An intent that can neither
+  // be cancelled nor read is left unnamed, so the delete refuses and the
+  // listing is counted as skipped, never kept silently. 25 a run: a backlog
+  // drains over hours, and Stripe calls stay bounded.
+  try {
+    const { data: strayRows, error: strayError } = await admin.rpc(
+      'old_closed_posts_with_stray_intents',
+      { p_limit: 25 },
+    );
+    if (strayError) {
+      console.error('[posts] stray-intent listing lookup failed', strayError.message);
+    } else {
+      const rows = (strayRows ?? []) as {
+        post_id: string;
+        owner_id: string;
+        intent_ids: string[];
+      }[];
+      for (const row of rows) {
+        const cancelled: string[] = [];
+        for (const intentId of row.intent_ids ?? []) {
+          try {
+            const intent = await stripe.paymentIntents.cancel(intentId);
+            if (intent.status === 'canceled') cancelled.push(intentId);
+          } catch (err) {
+            // Already terminal, or not cancellable: trust only what Stripe
+            // says now.
+            try {
+              const current = await stripe.paymentIntents.retrieve(intentId);
+              if (current.status === 'canceled') cancelled.push(intentId);
+            } catch (retrieveErr) {
+              console.warn('[posts] stray intent state unknown', {
+                postId: row.post_id,
+                message: (retrieveErr as Error).message,
+                original: (err as Error).message,
+              });
+            }
+          }
+        }
+        const { error: deleteError } = await admin.rpc('delete_old_closed_post', {
+          p_post_id: row.post_id,
+          p_owner_id: row.owner_id,
+          p_cancelled_intent_ids: cancelled,
+        });
+        if (deleteError) {
+          summary.oldClosedPostsSkipped += 1;
+          console.warn('[posts] recovered-listing delete refused', {
+            postId: row.post_id,
+            message: deleteError.message,
+          });
+        } else {
+          summary.oldClosedPostsPurged += 1;
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[posts] stray-intent listing purge failed', (err as Error).message);
   }
 
   // --- Phase 1-pre: the expiry — rewards past their 60 days (ADR-0020) -------
