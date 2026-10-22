@@ -6,6 +6,9 @@
  *        reads as a statement ("Parked. Looks parked up" — CardSelect's own
  *        wording). `trailingCheck` adds CardSelectMulti's tick box, so an
  *        answer from a multi-select question looks as it did when ticked.
+ *        `items` lists rows under the title, each with its small icon, one
+ *        level deep (owner, 2026-10-22: the damage seen, a row each, the
+ *        parts under "Missing panels or parts") — still one statement.
  * WHY:   To show an answer back as the card that was tapped — the report's
  *        check-and-send step, owner 2026-10-22: "answers to be in the form of
  *        the card, the same and the selection". Reusing CardSelect with only
@@ -26,6 +29,13 @@ import { StyleSheet, Text, View } from 'react-native';
 import { sizes, usePalette, useThemedStyles, type Palette } from '../theme';
 import { optionCardStyleSpec } from './optionCardStyles';
 
+/** A row under the card's title, and the rows under it (one level). */
+export interface OptionCardItem {
+  label: string;
+  icon?: LucideIcon;
+  items?: OptionCardItem[];
+}
+
 export interface OptionCardProps {
   label: string;
   /** The line under the title — on a review, what the answer led to. */
@@ -37,6 +47,9 @@ export interface OptionCardProps {
   /** CardSelectMulti's trailing tick box — for an answer from a "tick any"
    *  question, so it looks exactly as it did when ticked. */
   trailingCheck?: boolean;
+  /** Rows under the title, in place of `description` (decorative icons;
+   *  the words join the one statement). */
+  items?: OptionCardItem[];
   /** What a screen reader says instead of "label. description". */
   accessibilityLabel?: string;
   testID?: string;
@@ -48,24 +61,36 @@ export function OptionCard({
   icon: Icon,
   selected = true,
   trailingCheck = false,
+  items,
   accessibilityLabel,
   testID,
 }: OptionCardProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
-  return (
-    <View
-      style={[styles.card, selected && styles.cardSelected]}
-      accessible
-      accessibilityLabel={accessibilityLabel ?? (description ? `${label}. ${description}` : label)}
-      testID={testID}
-    >
+  const rows = items && items.length > 0 ? items : null;
+  // One statement: the title, then each row — a row's own rows after a colon
+  // ("Missing panels or parts: Bumpers, Doors").
+  const spoken = rows
+    ? [
+        label,
+        ...rows.map((row) =>
+          row.items && row.items.length > 0
+            ? `${row.label}: ${row.items.map((inner) => inner.label).join(', ')}`
+            : row.label,
+        ),
+      ].join('. ')
+    : description
+      ? `${label}. ${description}`
+      : label;
+
+  const head = (
+    <>
       {Icon ? (
         <Icon size={sizes.icon} color={selected ? palette.textPrimary : palette.textSecondary} />
       ) : null}
       <View style={styles.text}>
         <Text style={styles.label}>{label}</Text>
-        {description ? <Text style={styles.description}>{description}</Text> : null}
+        {description && !rows ? <Text style={styles.description}>{description}</Text> : null}
       </View>
       {trailingCheck ? (
         <View
@@ -82,6 +107,61 @@ export function OptionCard({
           ) : null}
         </View>
       ) : null}
+    </>
+  );
+
+  return (
+    <View
+      style={[styles.card, selected && styles.cardSelected, rows && styles.cardColumn]}
+      accessible
+      accessibilityLabel={accessibilityLabel ?? spoken}
+      testID={testID}
+    >
+      {rows ? (
+        <>
+          <View style={styles.titleRow}>{head}</View>
+          <View style={styles.itemList}>
+            {rows.map((row, index) => (
+              <View key={`${index}-${row.label}`}>
+                <ItemRow item={row} testID={testID ? `${testID}-item-${index}` : undefined} />
+                {row.items && row.items.length > 0 ? (
+                  <View style={styles.itemNested}>
+                    {row.items.map((inner, innerIndex) => (
+                      <ItemRow
+                        key={`${innerIndex}-${inner.label}`}
+                        item={inner}
+                        testID={testID ? `${testID}-item-${index}-${innerIndex}` : undefined}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        </>
+      ) : (
+        head
+      )}
+    </View>
+  );
+}
+
+/** One row under the title: a small decorative icon and the words. */
+function ItemRow({ item, testID }: { item: OptionCardItem; testID?: string }) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
+  const Icon = item.icon;
+  return (
+    <View style={styles.itemRow} testID={testID}>
+      {Icon ? (
+        <Icon
+          size={sizes.iconSm}
+          color={palette.textSecondary}
+          importantForAccessibility="no"
+          accessibilityElementsHidden
+        />
+      ) : null}
+      <Text style={styles.itemText}>{item.label}</Text>
     </View>
   );
 }

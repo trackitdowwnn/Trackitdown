@@ -70,4 +70,39 @@ export const optionCardStyleSpec = (c: Palette) =>
       backgroundColor: c.primary,
       borderColor: c.primary,
     },
+    // A card that lists rows under its title (OptionCard `items` — the
+    // review's "Damage visible" card): the title row as above, then the rows
+    // aligned with the title (the icon's width and the card's gap in).
+    cardColumn: {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      gap: spacing.md,
+    },
+    titleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.lg,
+    },
+    itemList: {
+      paddingLeft: sizes.icon + spacing.lg,
+      gap: spacing.sm,
+    },
+    itemRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+    },
+    // Wraps under itself at large text; never cut.
+    itemText: {
+      ...typography.caption,
+      color: c.textSecondary,
+      flexShrink: 1,
+    },
+    // A row's own rows (the parts under "Missing panels or parts"): one
+    // step further in — the row icon's width and its gap.
+    itemNested: {
+      paddingLeft: sizes.iconSm + spacing.sm,
+      paddingTop: spacing.sm,
+      gap: spacing.sm,
+    },
   }) as const;
