@@ -14,7 +14,11 @@ import { isBrowsingSource } from '@/shared/lib/browsingSource';
 import { PostDetailScreen } from '@/features/vehicles';
 
 export default function PostDetailRoute() {
-  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
+  const { id, from, paid } = useLocalSearchParams<{
+    id: string;
+    from?: string;
+    paid?: string;
+  }>();
   // Counted HERE rather than inside the screen so features/vehicles never
   // imports features/notifications — the same reason post-a-car.tsx, not the
   // wizard, raises the garage intent. Bumps on unmount; the third raises the
@@ -29,5 +33,6 @@ export default function PostDetailRoute() {
   // that, and neither is arriving from a chat, a watchlist collection or a
   // recovery flow.
   useCountPostViewForAlertNudge(isBrowsingSource(from));
-  return <PostDetailScreen postId={id} />;
+  // `?paid=1` only from PostACarScreen, straight after the card is taken.
+  return <PostDetailScreen postId={id} justPaid={paid === '1'} />;
 }

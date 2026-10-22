@@ -81,6 +81,7 @@ import {
   SkeletonVehicleCard,
   StatusBadge,
   VehicleCard,
+  type GoingLivePhase,
 } from '@/shared/ui';
 
 import { buildCarDetailRows } from '../lib/carDetails';
@@ -149,6 +150,9 @@ export interface PostDetailBodyProps {
    *  a reward still on offer (PR4, 2026-10-13; the "Your reward" card above
    *  says when and how much). */
   rewardOutcome?: 'Paid out' | 'Refunded' | null;
+  /** OWNER, straight after paying: the badge says "Going live" until the
+   *  server makes the listing live (useGoingLive). */
+  goingLive?: GoingLivePhase | null;
 }
 
 function Divider() {
@@ -176,6 +180,7 @@ export function PostDetailBody({
   onRecovered,
   rewardTermLine,
   rewardOutcome = null,
+  goingLive = null,
 }: PostDetailBodyProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
@@ -284,7 +289,11 @@ export function PostDetailBody({
         <View style={styles.badgeRow}>
           {/* Owner sees "Live" (green) on their own active post; a spotter
               viewing the same post sees no badge (public stays calm). */}
-          <StatusBadge status={post.status} showLiveWhenActive={post.isOwner} />
+          <StatusBadge
+            status={post.status}
+            showLiveWhenActive={post.isOwner}
+            goingLive={post.isOwner ? goingLive : null}
+          />
           {/* Photos are the hero above — the owner edits them from here. */}
           {onEditPhotos ? (
             <SectionEditButton onPress={onEditPhotos} label="Edit photos" testID="edit-photos" />

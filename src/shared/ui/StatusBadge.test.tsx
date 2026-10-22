@@ -27,6 +27,33 @@ describe('StatusBadge', () => {
     expect(getByText('Live')).toBeTruthy();
   });
 
+  it('says "Going live" with a spinner in the badge’s place while a just-paid listing goes live', async () => {
+    const { getByText, getByTestId, queryByText } = await render(
+      <StatusBadge status="draft" showLiveWhenActive goingLive="confirming" />,
+    );
+    expect(getByText('Going live')).toBeTruthy();
+    // Decorative — hidden from screen readers; the label says it.
+    expect(getByTestId('status-going-live-spinner', { includeHiddenElements: true })).toBeTruthy();
+    // Never "Draft" for a listing that has been paid for.
+    expect(queryByText('Draft')).toBeNull();
+  });
+
+  it('says "Going live soon" (no spinner) when it is taking longer', async () => {
+    const { getByText, queryByTestId } = await render(
+      <StatusBadge status="draft" showLiveWhenActive goingLive="slow" />,
+    );
+    expect(getByText('Going live soon')).toBeTruthy();
+    expect(queryByTestId('status-going-live-spinner', { includeHiddenElements: true })).toBeNull();
+  });
+
+  it('shows "Live" once the post is active, whatever the watch still says', async () => {
+    const { getByText, queryByText } = await render(
+      <StatusBadge status="active" showLiveWhenActive goingLive="confirming" />,
+    );
+    expect(getByText('Live')).toBeTruthy();
+    expect(queryByText('Going live')).toBeNull();
+  });
+
   it('statusBadgeLabel returns the label or null, honouring the Live opt-in', () => {
     expect(statusBadgeLabel('pending_verification')).toBe('Pending');
     expect(statusBadgeLabel('recovery_claimed')).toBe('Recovery claimed');

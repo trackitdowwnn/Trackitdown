@@ -66,6 +66,7 @@ import { PostDetailBody } from '../components/PostDetailBody';
 import { PostHero } from '../components/PostHero';
 import { PostOwnerActions, type PostOwnerActionsHandle } from '../components/PostOwnerActions';
 import { StillMissingBanner } from '../components/StillMissingBanner';
+import { useGoingLive } from '../hooks/useGoingLive';
 import { usePostDetail } from '../hooks/usePostDetail';
 import { useSimilarPosts } from '../hooks/useSimilarPosts';
 import { useStillMissingAsk } from '../hooks/useStillMissingAsk';
@@ -89,9 +90,13 @@ const FADE_TRAVEL = 48;
 
 export interface PostDetailScreenProps {
   postId: string;
+  /** Arrived straight from paying for this listing (`?paid=1`, set only by
+   *  PostACarScreen): the badge says "Going live" until it is (useGoingLive).
+   *  Never set otherwise, so an unpaid draft opened later never spins. */
+  justPaid?: boolean;
 }
 
-export function PostDetailScreen({ postId }: PostDetailScreenProps) {
+export function PostDetailScreen({ postId, justPaid = false }: PostDetailScreenProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const router = useRouter();
@@ -106,7 +111,16 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   // bottom bar's "Manage listing", the pencils, the body's deactivate button.
   const ownerRef = useRef<PostOwnerActionsHandle>(null);
 
-  const { status, result, retry, refreshing, refresh } = usePostDetail(postId);
+  const { status, result, retry, refreshing, refresh, reload } = usePostDetail(postId);
+  // Owner, 2026-10-22: no confirmation page after paying — the listing, with
+  // "Going live" where "Live" will be. Watches until the server says active,
+  // then reloads quietly so the badge reads "Live".
+  const loadedStatus =
+    status === 'ready' && result?.kind === 'visible' ? result.post.status : null;
+  const goingLive = useGoingLive(postId, {
+    watching: justPaid && loadedStatus !== 'active',
+    onLive: () => void reload(),
+  });
 
   // Guards a double-tap on "Yes, still missing" (ADR-0019).
   const [confirmingMissing, setConfirmingMissing] = useState(false);
@@ -428,6 +442,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
               ) : null}
               <PostDetailBody
                 post={result.post}
+                goingLive={goingLive}
                 rewardOutcome={rewardHistory?.outcome ?? null}
                 onOpenMap={() => onOpenMap(result.post)}
                 onReport={onReport}
@@ -519,6 +534,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
           onSeen={() => onSeen(visiblePost)}
           onMessageOwner={() => onMessageOwner(visiblePost)}
           onManage={onManage}
+          goingLive={goingLive}
         />
       ) : null}
 

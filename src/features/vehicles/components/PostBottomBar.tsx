@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { formatPounds } from '@/shared/lib';
 import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
-import { bountyLabel, Button, StatusBadge } from '@/shared/ui';
+import { bountyLabel, Button, StatusBadge, type GoingLivePhase } from '@/shared/ui';
 
 import type { PostDetail } from '../types';
 
@@ -33,9 +33,17 @@ export interface PostBottomBarProps {
   onMessageOwner: () => void;
   /** Owner action — manage the post. */
   onManage: () => void;
+  /** Owner, straight after paying: "Going live" in the badge (useGoingLive). */
+  goingLive?: GoingLivePhase | null;
 }
 
-export function PostBottomBar({ post, onSeen, onMessageOwner, onManage }: PostBottomBarProps) {
+export function PostBottomBar({
+  post,
+  onSeen,
+  onMessageOwner,
+  onManage,
+  goingLive = null,
+}: PostBottomBarProps) {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
 
@@ -48,7 +56,7 @@ export function PostBottomBar({ post, onSeen, onMessageOwner, onManage }: PostBo
               Your listing
             </Text>
             {/* Owner's own bar → a live post reads "Live" (green), not blank. */}
-            <StatusBadge status={post.status} showLiveWhenActive />
+            <StatusBadge status={post.status} showLiveWhenActive goingLive={goingLive} />
           </>
         ) : (
           // Inline, not stacked (product call 2026-08-09): "£450 reward" is one
