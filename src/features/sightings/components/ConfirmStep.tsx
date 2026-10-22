@@ -13,8 +13,8 @@
  *        jumps to that step and comes back (the wizard's `editStep` spur:
  *        "Done" returns, Back cancels); one line, the first question with
  *        nothing stored and an "Add" beside it, opens that question (one
- *        question per step, 2026-10-20). The privacy line sits above the button as the step's
- *        footerNote (REPORT_PRIVACY_LINE).
+ *        question per step, 2026-10-20). No line above the buttons (owner,
+ *        2026-10-22).
  * WHY:   Redesigned 2026-10-02 after research (GOV.UK check answers, NN/g
  *        error prevention and recognition over recall, Apple HIG, survey
  *        confidentiality studies):
@@ -76,16 +76,6 @@ import { reviewCardIcon, reviewItemIcon } from './contextOptionIcons';
 import { MarkTile } from './MarkTile';
 
 type StepProps = WizardStepProps<ReportSightingAnswers>;
-
-/**
- * The line above "Send report" (the step's footerNote). Strictly true: the
- * owner sees the photos, the exact point and the spotter's FIRST NAME with
- * their reputation (SECURITY_AND_TRUST §1); the public sees only that a
- * sighting happened, when, and the district, so "only the owner sees this
- * report" would overclaim. Pinned word for word in reportSightingFlow.test.
- */
-export const REPORT_PRIVACY_LINE =
-  'Only the owner sees your photos and the exact spot. They’ll see your first name, not your contact details.';
 
 
 /** "Photo taken 5m ago", spoken in full. Nothing when there's no photo. */

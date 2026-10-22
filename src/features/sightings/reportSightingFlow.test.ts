@@ -4,8 +4,8 @@
  *        confirm carries "Send report"), the photo gating (1–3 evidence
  *        photos), the never-blocking context steps (when each shows, Skip /
  *        Continue, the edits' follow-ups, the funnel event never carrying the
- *        damage or missing-parts words), and the confirm step's privacy line
- *        (footerNote, pinned word for word). The safety gate is no longer a step
+ *        damage or missing-parts words), and the confirm step's empty footer
+ *        (no line above "Send report", owner 2026-10-22). The safety gate is no longer a step
  *        (ReportSafetySheet.test.tsx).
  * WHY:   The wizard framework warns that a typo'd schema key compiles but can
  *        never validate — each flow needs this smoke coverage. The gating IS
@@ -268,12 +268,8 @@ describe('reportSightingFlow shape', () => {
     expect(step('note').helper).toBeUndefined();
   });
 
-  it('says who sees what above "Send report", word for word', () => {
-    // Strictly true (SECURITY_AND_TRUST §1): the public sees that a sighting
-    // happened, never the photos, the exact spot or who sent it.
-    expect(steps.find((step) => step.id === 'confirm')?.footerNote).toBe(
-      'Only the owner sees your photos and the exact spot. They’ll see your first name, not your contact details.',
-    );
+  it('has no line above "Send report" (owner, 2026-10-22)', () => {
+    expect(steps.find((step) => step.id === 'confirm')?.footerNote).toBeUndefined();
   });
 
   it('confirm re-asserts the photo rule so an invalidated edit cannot send', () => {
