@@ -43,33 +43,7 @@
  */
 
 import { Feather } from '@expo/vector-icons';
-import {
-  Car,
-  CarFront,
-  CircleDashed,
-  CircleParking,
-  CircleQuestionMark,
-  DoorOpen,
-  Flame,
-  FlipHorizontal2,
-  Hammer,
-  Lightbulb,
-  LightbulbOff,
-  PanelBottom,
-  PanelTop,
-  RectangleHorizontal,
-  ShieldCheck,
-  SquareDashed,
-  SquareParking,
-  SquareSlash,
-  TriangleAlert,
-  Truck,
-  User,
-  UserX,
-  Users,
-  Wrench,
-  type LucideIcon,
-} from 'lucide-react-native';
+import { CircleQuestionMark } from 'lucide-react-native';
 import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, LayoutAnimationConfig, ReduceMotion } from 'react-native-reanimated';
 
@@ -93,6 +67,14 @@ import {
 } from '@/shared/ui';
 import type { WizardStepProps } from '@/shared/wizard';
 
+import {
+  CONDITION_ICONS,
+  DAMAGE_ICONS,
+  MISSING_PART_ICONS,
+  PEOPLE_ICONS,
+  STATE_ICONS,
+  STAYING_ICONS,
+} from './contextOptionIcons';
 import {
   UNSURE,
   changeConditions,
@@ -135,9 +117,6 @@ import {
   MAX_MISSING_PARTS_NOTE_LENGTH,
   MAX_NOTE_LENGTH,
   MISSING_PARTS,
-  type ConditionFlag,
-  type DamageKind,
-  type MissingPart,
   type ParkedLikelihood,
   type PeoplePresence,
   type ReportSightingAnswers,
@@ -154,45 +133,6 @@ const NOT_SURE: CardSelectOption<typeof UNSURE> = {
   value: UNSURE,
   label: 'Not sure',
   icon: CircleQuestionMark,
-};
-
-const STATE_ICONS: Record<VehicleStateFlag, LucideIcon> = {
-  parked: SquareParking,
-  driving: Car,
-  being_loaded: Truck,
-};
-const STAYING_ICONS: Partial<Record<ParkedLikelihood, LucideIcon>> = {
-  settled: CircleParking,
-  moving: CarFront,
-};
-const PEOPLE_ICONS: Record<PeoplePresence, LucideIcon> = {
-  nobody: UserX,
-  nearby: Users,
-  in_vehicle: User,
-};
-const CONDITION_ICONS: Record<ConditionFlag, LucideIcon> = {
-  plate_changed: RectangleHorizontal,
-  damage_visible: TriangleAlert,
-  being_stripped: Wrench,
-  looks_intact: ShieldCheck,
-};
-const DAMAGE_ICONS: Record<DamageKind, LucideIcon> = {
-  smashed_window: SquareSlash,
-  dents_scrapes: Hammer,
-  broken_lights: LightbulbOff,
-  // Dashed outline = missing.
-  missing_wheels: CircleDashed,
-  missing_parts: SquareDashed,
-  fire_damage: Flame,
-};
-const MISSING_PART_ICONS: Record<MissingPart, LucideIcon> = {
-  bumpers: PanelBottom,
-  bonnet: PanelTop,
-  doors: DoorOpen,
-  lights: Lightbulb,
-  wing_mirrors: FlipHorizontal2,
-  // The condition step's plate, so the flow draws a plate one way.
-  number_plates: RectangleHorizontal,
 };
 
 /** SAFETY: say "Don't approach" out loud as it appears. iOS has no live

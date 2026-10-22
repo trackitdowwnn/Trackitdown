@@ -16,7 +16,7 @@
  * LINKS: src/features/sightings/components/ConfirmStep.tsx; docs/TESTING.md.
  */
 
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 
 import type { EvidencePhoto } from '@/shared/ui';
 
@@ -206,16 +206,33 @@ describe('ConfirmStep — sections and Edit links', () => {
     expect(editStep).toHaveBeenLastCalledWith('parts');
   });
 
-  it('⚠️ what’s missing edits on its own step, from its own row', async () => {
+  it('⚠️ their words about what’s missing edit on the parts step', async () => {
+    const { view, editStep } = await renderConfirm({
+      photos: [live(0)],
+      contextFlags: ['damage_visible'],
+      damageKinds: ['missing_parts'],
+      missingParts: ['doors'],
+      missingPartsNote: 'Both front doors',
+    });
+    await press(view.getByRole('button', { name: 'Edit: About what’s missing' }));
+    expect(editStep).toHaveBeenLastCalledWith('parts');
+    expect(view.queryByRole('button', { name: 'Add details: What’s missing?' })).toBeNull();
+  });
+
+  it('the parts themselves edit through the condition — they ride on its card', async () => {
+    // No words: no block of their own. The condition's Edit carries on to
+    // the damage step and on to the parts (follow-ups chain forward) — that
+    // chain is pinned in reportSightingFlow.test.ts (editContinuesTo) and
+    // useWizardController.test.tsx (forward only).
     const { view, editStep } = await renderConfirm({
       photos: [live(0)],
       contextFlags: ['damage_visible'],
       damageKinds: ['missing_parts'],
       missingParts: ['doors'],
     });
-    await press(view.getByRole('button', { name: 'Edit: What’s missing' }));
-    expect(editStep).toHaveBeenLastCalledWith('parts');
-    expect(view.queryByRole('button', { name: 'Add details: What’s missing?' })).toBeNull();
+    expect(view.queryByRole('button', { name: 'Edit: About what’s missing' })).toBeNull();
+    await press(view.getByRole('button', { name: 'Edit: Its condition' }));
+    expect(editStep).toHaveBeenLastCalledWith('condition');
   });
 
   it('"Add details" offers a "Not sure" question again — it has no row, and they may now know', async () => {
@@ -361,7 +378,7 @@ describe('ConfirmStep — the car', () => {
 });
 
 describe('ConfirmStep — what you saw', () => {
-  it('lists every answer as a labelled row, the note trimmed', async () => {
+  it('shows each answer as the card they tapped, under its question — the note trimmed', async () => {
     const { view } = await renderConfirm({
       photos: [live(0)],
       contextFlags: ['parked', 'damage_visible'],
@@ -371,31 +388,70 @@ describe('ConfirmStep — what you saw', () => {
       confirmedFeatureIds: ['m1'],
       note: '  By the bins  ',
     });
-    for (const [label, value] of [
-      ['What it was doing', 'Parked · Looks parked up'],
-      ['Anyone in or near it', 'No one seen'],
-      ['Its condition', 'Damage visible'],
-      ['Marks you could see', 'Bee sticker'],
-      ['Your note', 'By the bins'],
-    ]) {
+    for (const label of ['What it was doing', 'Anyone in or near it', 'Its condition']) {
       expect(view.getByText(label)).toBeTruthy();
-      expect(view.getByText(value)).toBeTruthy();
     }
+    // The card, with what it led to as a line on it — one stop, a statement.
+    expect(view.getByTestId('confirm-card-state-parked').props.accessibilityLabel).toBe(
+      'Parked. Looks parked up',
+    );
+    // A tick-any answer keeps its tick box; a single answer has none.
+    expect(view.getByTestId('confirm-card-condition-damage_visible-check')).toBeTruthy();
+    expect(view.queryByTestId('confirm-card-state-parked-check')).toBeNull();
+    expect(view.getByTestId('confirm-card-people-nobody').props.accessibilityLabel).toBe(
+      'No one seen',
+    );
+    expect(view.getByTestId('confirm-card-condition-damage_visible')).toBeTruthy();
+    // The marks as the owner's photo rows; the note as their words.
+    expect(view.getByText('Marks you could see')).toBeTruthy();
+    expect(view.getByTestId('review-mark-m1')).toBeTruthy();
+    expect(view.getByText('By the bins')).toBeTruthy();
   });
 
-  it('names the damage seen on the condition row, and their words on a row of their own', async () => {
+  it('⚠️ nothing here announces as a radio or checkbox — it shows, the Edit changes', async () => {
+    const { view } = await renderConfirm({
+      photos: [live(0)],
+      contextFlags: ['parked', 'damage_visible', 'plate_changed'],
+      peoplePresence: 'nearby',
+      damageKinds: ['smashed_window'],
+      // The marks too: read-only photo rows, never checkboxes here.
+      confirmableFeatures: [{ id: 'm1', description: 'Bee sticker' }],
+      confirmedFeatureIds: ['m1'],
+    });
+    expect(view.getByTestId('review-mark-m1')).toBeTruthy();
+    const answers = view.getByTestId('confirm-answer-condition');
+    expect(within(answers).queryAllByRole('radio')).toHaveLength(0);
+    expect(within(answers).queryAllByRole('checkbox')).toHaveLength(0);
+    expect(view.queryAllByRole('radio')).toHaveLength(0);
+    expect(view.queryAllByRole('checkbox')).toHaveLength(0);
+  });
+
+  it('shows two old state answers as two cards, and the old people flag as its card', async () => {
+    const { view } = await renderConfirm({
+      photos: [live(0)],
+      contextFlags: ['parked', 'driving', 'people_nearby'],
+    });
+    expect(view.getByTestId('confirm-card-state-parked')).toBeTruthy();
+    expect(view.getByTestId('confirm-card-state-driving')).toBeTruthy();
+    expect(view.getByTestId('confirm-card-people-nearby').props.accessibilityLabel).toBe(
+      'People nearby',
+    );
+  });
+
+  it('puts the damage seen on the "Damage visible" card, and their words below', async () => {
     const { view } = await renderConfirm({
       photos: [live(0)],
       contextFlags: ['damage_visible'],
       damageKinds: ['smashed_window', 'dents_scrapes'],
       damageNote: '  Glass on the pavement  ',
     });
-    expect(view.getByText('Damage visible · Smashed window, Dents or scrapes')).toBeTruthy();
+    expect(view.getByText('Damage visible')).toBeTruthy();
+    expect(view.getByText('Smashed window, Dents or scrapes')).toBeTruthy();
     expect(view.getByText('About the damage')).toBeTruthy();
     expect(view.getByText('Glass on the pavement')).toBeTruthy();
   });
 
-  it('lists what’s missing on a row of its own — the parts, then their words', async () => {
+  it('names the missing parts in brackets on the card, and their words below', async () => {
     const { view } = await renderConfirm({
       photos: [live(0)],
       contextFlags: ['damage_visible'],
@@ -403,9 +459,9 @@ describe('ConfirmStep — what you saw', () => {
       missingParts: ['bumpers', 'doors'],
       missingPartsNote: ' Rear bumper on the pavement ',
     });
-    expect(view.getByText('Damage visible · Smashed window, Missing panels or parts')).toBeTruthy();
-    expect(view.getByText('What’s missing')).toBeTruthy();
-    expect(view.getByText('Bumpers, Doors · Rear bumper on the pavement')).toBeTruthy();
+    expect(view.getByText('Smashed window, Missing panels or parts (Bumpers, Doors)')).toBeTruthy();
+    expect(view.getByText('About what’s missing')).toBeTruthy();
+    expect(view.getByText('Rear bumper on the pavement')).toBeTruthy();
   });
 
   it('says "Nothing added" with an Add link when the step was skipped', async () => {

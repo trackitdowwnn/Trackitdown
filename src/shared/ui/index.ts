@@ -34,6 +34,7 @@ export {
   type MediaIdentityCardProps,
 } from './MediaIdentityCard';
 export { NudgeRow, type NudgeRowProps } from './NudgeRow';
+export { OptionCard, type OptionCardProps } from './OptionCard';
 export {
   ProgressSteps,
   type ProgressStep,

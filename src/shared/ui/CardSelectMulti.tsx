@@ -16,6 +16,7 @@
  *        user tapping a card that will not respond without saying why.
  * LINKS: docs/DESIGN_SYSTEM.md (Cards, Accessibility);
  *        src/shared/ui/CardSelect.tsx (the single-select sibling);
+ *        src/shared/ui/optionCardStyles.ts (the card's look, shared);
  *        src/shared/ui/ChoiceChipsMulti.tsx (the compact sibling).
  *
  * Usage:
@@ -33,15 +34,8 @@ import { Feather } from '@expo/vector-icons';
 import type { LucideIcon } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import {
-  radii,
-  sizes,
-  spacing,
-  typography,
-  usePalette,
-  useThemedStyles,
-  type Palette,
-} from '../theme';
+import { sizes, usePalette, useThemedStyles, type Palette } from '../theme';
+import { optionCardStyleSpec } from './optionCardStyles';
 
 export interface CardSelectMultiOption<V extends string = string> {
   value: V;
@@ -153,53 +147,6 @@ export function CardSelectMulti<V extends string = string>({
   );
 }
 
-const makeStyles = (c: Palette) =>
-  StyleSheet.create({
-    group: {
-      gap: spacing.md,
-    },
-    card: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.lg,
-      minHeight: sizes.touchTarget + spacing.md,
-      paddingVertical: spacing.lg,
-      paddingHorizontal: spacing.lg,
-      borderRadius: radii.lg,
-      // Constant-width border (colour-only change on select) so nothing reflows.
-      borderWidth: sizes.selectBorder,
-      borderColor: c.border,
-      backgroundColor: c.surface,
-    },
-    cardSelected: {
-      borderColor: c.primary,
-    },
-    cardPressed: {
-      backgroundColor: c.surfaceSubtle,
-    },
-    text: {
-      flex: 1,
-      gap: spacing.xs,
-    },
-    label: {
-      ...typography.cardTitle,
-      color: c.textPrimary,
-    },
-    description: {
-      ...typography.caption,
-      color: c.textSecondary,
-    },
-    box: {
-      width: sizes.icon,
-      height: sizes.icon,
-      borderRadius: radii.sm,
-      borderWidth: sizes.selectBorder,
-      borderColor: c.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    boxSelected: {
-      backgroundColor: c.primary,
-      borderColor: c.primary,
-    },
-  });
+// The card and its tick box are shared with CardSelect and OptionCard
+// (optionCardStyles).
+const makeStyles = (c: Palette) => StyleSheet.create(optionCardStyleSpec(c));

@@ -2,11 +2,10 @@
  * WHAT:  Tests for contextLabels: the words for every context answer, the
  *        option lists the context step renders and its questions,
  *        sightingAnswerGroups() (the owner's "What they saw" answers, per
- *        question), contextReviewRows() (the
- *        check-and-send rows), and contextDetailCount(); the damage seen
+ *        question), contextReviewGroups() (the check-and-send step's
+ *        cards, 2026-10-22), and contextDetailCount(); the damage seen
  *        (2026-10-21) on the "Damage visible" line, and its own words; which
- *        parts are missing (2026-10-21) in brackets for the owner, a row of
- *        their own for the spotter.
+ *        parts are missing (2026-10-21) in brackets on that line, for both.
  * WHY:   The spotter's chips and the owner's summaries share these words; a
  *        drift between them is the bug the 2026-10-01 redesign removed. The
  *        detail count drives the step's Skip / Continue label, so a "Not sure"
@@ -29,10 +28,27 @@ import {
   STATE_OPTIONS,
   STAYING_OPTIONS,
   contextDetailCount,
-  contextReviewRows,
+  contextReviewGroups,
   sightingAnswerGroups,
 } from './contextLabels';
 import { DAMAGE_KINDS, MISSING_PARTS } from '../types';
+
+/** A check-and-send group as the one line it reads as — each card's title
+ *  with its line, or the words, or the marks — so the assertions below read
+ *  like the screen. contextReviewGroups' own shape is pinned separately. */
+function asRows(answers: Parameters<typeof contextReviewGroups>[0]) {
+  return contextReviewGroups(answers).map((group) => ({
+    key: group.key,
+    label: group.label,
+    value: group.cards
+      ? group.cards
+          .map((card) => (card.detail ? `${card.label} · ${card.detail}` : card.label))
+          .join(' · ')
+      : group.marks
+        ? group.marks.map((mark) => mark.description).join(' · ')
+        : group.text,
+  }));
+}
 
 describe('contextLabels — the shared words', () => {
   it('offers the step\'s options in order, with no retired value', () => {
@@ -109,8 +125,8 @@ describe('contextLabels — the shared words', () => {
     expect(CONTEXT_SHORT_LABELS).toEqual({ state: 'Doing', people: 'People', condition: 'Condition' });
   });
 
-  it('keeps the check-and-send rows as they were (same answers, statement labels)', () => {
-    expect(contextReviewRows({ contextFlags: ['parked'], parkedLikelihood: 'settled' })).toEqual([
+  it('labels check-and-send’s questions as statements, the follow-up on the card', () => {
+    expect(asRows({ contextFlags: ['parked'], parkedLikelihood: 'settled' })).toEqual([
       {
         key: 'state',
         label: 'What it was doing',
@@ -193,7 +209,7 @@ describe('what damage (owner, 2026-10-21)', () => {
       },
     ]);
     expect(
-      contextReviewRows({
+      asRows({
         contextFlags: [...source.contextFlags],
         damageKinds: ['smashed_window', 'dents_scrapes'],
       }),
@@ -226,7 +242,7 @@ describe('what damage (owner, 2026-10-21)', () => {
 
   it('gives their words about the damage a row of their own, after the condition', () => {
     expect(
-      contextReviewRows({
+      asRows({
         contextFlags: ['damage_visible'],
         damageNote: '  Driver’s mirror hanging off  ',
         note: 'By the bins',
@@ -236,7 +252,7 @@ describe('what damage (owner, 2026-10-21)', () => {
       { key: 'damage', label: 'About the damage', value: 'Driver’s mirror hanging off' },
       { key: 'note', label: 'Your note', value: 'By the bins' },
     ]);
-    expect(contextReviewRows({ contextFlags: ['damage_visible'], damageNote: '   ' })).toEqual([
+    expect(asRows({ contextFlags: ['damage_visible'], damageNote: '   ' })).toEqual([
       { key: 'condition', label: 'Its condition', value: 'Damage visible' },
     ]);
   });
@@ -297,9 +313,9 @@ describe('what’s missing (owner, 2026-10-21)', () => {
     ).toEqual(['Damage visible · Smashed window, Missing panels or parts (Bonnet)']);
   });
 
-  it('gives the spotter one "What’s missing" row — the parts and their words — after the damage', () => {
+  it('puts the parts on the "Damage visible" card and their words in a block of their own', () => {
     expect(
-      contextReviewRows({
+      asRows({
         ...source,
         contextFlags: ['damage_visible'],
         damageKinds: ['smashed_window', 'missing_parts'],
@@ -311,24 +327,20 @@ describe('what’s missing (owner, 2026-10-21)', () => {
       {
         key: 'condition',
         label: 'Its condition',
-        // No brackets here: the parts have their own row, with its own Edit.
-        value: 'Damage visible · Smashed window, Missing panels or parts',
+        // The card shows what was tapped, parts and all (owner, 2026-10-22).
+        value: 'Damage visible · Smashed window, Missing panels or parts (Bumpers, Doors)',
       },
       { key: 'damage', label: 'About the damage', value: 'Glass everywhere' },
-      {
-        key: 'parts',
-        label: 'What’s missing',
-        value: 'Bumpers, Doors · Rear bumper on the pavement',
-      },
+      { key: 'parts', label: 'About what’s missing', value: 'Rear bumper on the pavement' },
     ]);
-    // Words alone, parts alone, and neither.
-    const row = (answers: object) =>
-      contextReviewRows({ contextFlags: ['damage_visible'], ...answers }).find(
+    // The words alone make the block; parts alone ride on the card only.
+    const block = (answers: object) =>
+      asRows({ contextFlags: ['damage_visible'], ...answers }).find(
         (candidate) => candidate.key === 'parts',
       )?.value;
-    expect(row({ missingPartsNote: 'Both mirrors' })).toBe('Both mirrors');
-    expect(row({ missingParts: ['lights'] })).toBe('Lights');
-    expect(row({ missingParts: [], missingPartsNote: '   ' })).toBeUndefined();
+    expect(block({ missingPartsNote: 'Both mirrors' })).toBe('Both mirrors');
+    expect(block({ missingParts: ['lights'] })).toBeUndefined();
+    expect(block({ missingParts: [], missingPartsNote: '   ' })).toBeUndefined();
   });
 });
 
@@ -398,7 +410,7 @@ describe('sightingAnswerGroups — the owner’s "What they saw"', () => {
       peoplePresence: 'nearby' as const,
     };
     const owner = sightingAnswerGroups({ ...answers, contextFlags: [...answers.contextFlags] });
-    const spotter = contextReviewRows({ ...answers, contextFlags: [...answers.contextFlags] });
+    const spotter = asRows({ ...answers, contextFlags: [...answers.contextFlags] });
     const shared = ['state', 'people', 'condition'];
     expect(owner.map((group) => group.answers.join(' · '))).toEqual(
       spotter.filter((row) => shared.includes(row.key)).map((row) => row.value),
@@ -414,7 +426,76 @@ describe('sightingAnswerGroups — the owner’s "What they saw"', () => {
   });
 });
 
-describe('contextReviewRows — the check-and-send rows', () => {
+describe('sightingAnswerGroups — pinned literally (both sides now build on the same cards)', () => {
+  it('reads exactly as it did before the cards, legacy rows included', () => {
+    expect(
+      sightingAnswerGroups({
+        contextFlags: ['parked', 'driving', 'people_nearby', 'damage_visible', 'being_stripped'],
+        parkedLikelihood: 'settled',
+        direction: 'SW',
+        damageKinds: ['missing_parts', 'flood_damage', 'broken_lights'],
+        missingParts: ['bonnet', 'spoiler'],
+      }),
+    ).toEqual([
+      {
+        key: 'state',
+        label: 'Doing',
+        answers: ['Parked', 'Looks parked up', 'Moving', 'Heading south-west'],
+      },
+      { key: 'people', label: 'People', answers: ['People nearby'] },
+      {
+        key: 'condition',
+        label: 'Condition',
+        answers: [
+          'Damage visible · Missing panels or parts (Bonnet), Broken lights',
+          'Being stripped',
+        ],
+      },
+    ]);
+  });
+});
+
+describe('contextReviewGroups — check-and-send shows the cards they tapped', () => {
+  it('gives each answer as its card: the question it came from, the value, the title, its line', () => {
+    expect(
+      contextReviewGroups({
+        contextFlags: ['parked', 'damage_visible'],
+        parkedLikelihood: 'settled',
+        peoplePresence: 'nearby',
+        damageKinds: ['fire_damage'],
+        confirmableFeatures: [
+          { id: 'm1', description: 'Bee sticker', photoUrl: 'https://example.test/m1.jpg' },
+        ],
+        confirmedFeatureIds: ['m1'],
+      }),
+    ).toEqual([
+      {
+        key: 'state',
+        label: 'What it was doing',
+        cards: [{ question: 'state', value: 'parked', label: 'Parked', detail: 'Looks parked up' }],
+      },
+      {
+        key: 'people',
+        label: 'Anyone in or near it',
+        cards: [{ question: 'people', value: 'nearby', label: 'People near it' }],
+      },
+      {
+        key: 'condition',
+        label: 'Its condition',
+        cards: [
+          { question: 'condition', value: 'damage_visible', label: 'Damage visible', detail: 'Fire damage' },
+        ],
+      },
+      {
+        key: 'marks',
+        label: 'Marks you could see',
+        marks: [{ id: 'm1', description: 'Bee sticker', photoUrl: 'https://example.test/m1.jpg' }],
+      },
+    ]);
+  });
+});
+
+describe('contextReviewGroups — as the lines they read as', () => {
   const MARKS = [
     { id: 'm1', description: 'Bee sticker' },
     { id: 'm2', description: 'Roof rack' },
@@ -422,7 +503,7 @@ describe('contextReviewRows — the check-and-send rows', () => {
 
   it('labels every answered question, in the chip words, marks in the owner’s order', () => {
     expect(
-      contextReviewRows({
+      asRows({
         contextFlags: ['driving', 'damage_visible', 'plate_changed'],
         direction: 'NE',
         peoplePresence: 'in_vehicle',
@@ -444,9 +525,9 @@ describe('contextReviewRows — the check-and-send rows', () => {
   });
 
   it('is empty for a skipped step, "Not sure" marks and a blank note', () => {
-    expect(contextReviewRows({})).toEqual([]);
+    expect(asRows({})).toEqual([]);
     expect(
-      contextReviewRows({
+      asRows({
         contextFlags: [],
         note: '   ',
         confirmedFeatureIds: [],
@@ -456,11 +537,11 @@ describe('contextReviewRows — the check-and-send rows', () => {
   });
 
   it('reads a legacy people flag only when there is no 3-way answer', () => {
-    expect(contextReviewRows({ contextFlags: ['people_nearby'] })).toEqual([
+    expect(asRows({ contextFlags: ['people_nearby'] })).toEqual([
       { key: 'people', label: 'Anyone in or near it', value: 'People nearby' },
     ]);
     expect(
-      contextReviewRows({ contextFlags: ['people_nearby'], peoplePresence: 'nobody' }),
+      asRows({ contextFlags: ['people_nearby'], peoplePresence: 'nobody' }),
     ).toEqual([{ key: 'people', label: 'Anyone in or near it', value: 'No one seen' }]);
   });
 
@@ -470,7 +551,7 @@ describe('contextReviewRows — the check-and-send rows', () => {
       parkedLikelihood: 'settled' as const,
       peoplePresence: 'nearby' as const,
     };
-    const checked = contextReviewRows({ ...answers, contextFlags: [...answers.contextFlags] });
+    const checked = asRows({ ...answers, contextFlags: [...answers.contextFlags] });
     const owner = sightingAnswerGroups({ ...answers, contextFlags: [...answers.contextFlags] });
     // The spotter's rows add marks and the note, which the owner's page shows
     // in blocks of its own; the answers themselves are identical.

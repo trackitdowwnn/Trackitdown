@@ -30,7 +30,7 @@ import {
   withdrawSighting,
 } from './sightingApi';
 import * as contextRules from '../lib/contextAnswers';
-import { contextDetailCount, contextReviewRows } from '../lib/contextLabels';
+import { contextDetailCount, contextReviewGroups } from '../lib/contextLabels';
 import type { ReportSightingAnswers } from '../types';
 
 // The golden payloads (see "GOLDEN" below). Literal on purpose: computed values
@@ -390,7 +390,7 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
       const filler = String.fromCharCode(0x3164);
       const answers = { ...base, damageNote: ` ${filler}${filler} ` };
       // Check-and-send: no "About the damage" row.
-      expect(contextReviewRows(answers).map((row) => row.key)).toEqual(['condition']);
+      expect(contextReviewGroups(answers).map((group) => group.key)).toEqual(['condition']);
       // Unanswered: Skip, not Continue; and no detail counted.
       expect(contextRules.stepTouched(answers, 'damage')).toBe(false);
       expect(contextRules.stepAnswered(answers, 'damage')).toBe(false);

@@ -91,10 +91,11 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
      = `missing_parts`; only what can be seen from where they stand, wheels
      being their own damage kind), then **Anything else?** ≤ 300
      (`missing_parts_note`). Unticking Missing panels or parts (or losing
-     Damage visible) clears both; never sent without that kind. Its Edit on
-     check-and-send is its own "What's missing" row; the condition's Edit
-     also carries on through the damage step to it (an edit's follow-ups
-     chain forward, the wizard's `editContinuesTo`).
+     Damage visible) clears both; never sent without that kind. On
+     check-and-send the parts ride in brackets on the "Damage visible" card
+     and the condition's Edit carries on through the damage step to them
+     (an edit's follow-ups chain forward, the wizard's `editContinuesTo`);
+     "About what's missing" has its own Edit only when there are words.
    - **Could you see any of these?** (only when the post has marks): the
      post's distinctive marks as checkbox rows with the owner's photo
      (`confirmed_feature_ids`; the screen seeds `confirmableFeatures`, and the
@@ -115,11 +116,14 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
      photo, and why it can't be changed. **No Edit, no manual location
      editing** (`// SAFETY`: the capture point is the evidence). No fix: "No
      location on this report — your photos still help."
-   - **What you saw**: one row per answer in the contextLabels words
-     (`contextReviewRows`; the damage seen rides on the condition row, "About
-     the damage" is a row of its own), the marks and the note — each with its
-     own Edit to that step ("what it was doing" continues to its follow-up,
-     "its condition" to what damage while Damage visible is ticked), and one
+   - **What you saw**: each answered question as the card(s) the spotter
+     tapped, in the chosen look (`contextReviewGroups` + `OptionCard`, owner,
+     2026-10-22), what it led to as a line on the card (the damage seen and
+     the parts in brackets on "Damage visible"); "About the damage" and
+     "About what's missing" as their words, the marks as photo rows, and the
+     note — each with its own Edit to that step ("what it was doing" continues to its follow-up,
+     "its condition" to what damage while Damage visible is ticked, and on to
+     which parts while Missing panels or parts is), and one
      **Add details** to the first question still unanswered ("Nothing added"
      with an Add link when everything was skipped).
    - Above the CTA, the step's `footerNote`: "Only the owner sees your photos

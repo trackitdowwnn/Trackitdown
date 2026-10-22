@@ -6,9 +6,10 @@
  *        context steps render as cards, each card's one short line
  *        (CONTEXT_OPTION_DESCRIPTIONS), and every step's question
  *        (CONTEXT_STEP_QUESTIONS; CONTEXT_QUESTIONS for the shared three);
- *        contextReviewRows(), the answers as labelled rows for the
- *        check-and-send step, and sightingAnswerGroups(), the same answers per
- *        question under short labels (CONTEXT_SHORT_LABELS) for the owner's
+ *        contextReviewGroups(), the answers as the cards the spotter tapped
+ *        (grouped by question) for the check-and-send step, and
+ *        sightingAnswerGroups(), the same answers per question under short
+ *        labels (CONTEXT_SHORT_LABELS) for the owner's
  *        sighting page ("What they saw", a label | answers table); and
  *        contextDetailCount(), how many details a report carries.
  * WHY:   The context steps, the confirm step and the owner's sighting page all
@@ -23,7 +24,7 @@
  *        change: only the words do.
  * LINKS: src/features/sightings/types.ts (the vocabularies);
  *        src/features/sightings/components/contextSteps.tsx (the steps),
- *        components/ConfirmStep.tsx (contextReviewRows),
+ *        components/ConfirmStep.tsx (contextReviewGroups),
  *        components/SightingSeenSection.tsx (sightingAnswerGroups).
  */
 
@@ -31,6 +32,7 @@ import {
   CONDITION_FLAGS,
   VEHICLE_STATE_FLAGS,
   type ConditionFlag,
+  type ConfirmableFeature,
   type DamageKind,
   type DrivingDirection,
   type MissingPart,
@@ -116,8 +118,8 @@ function knownValues<K extends string>(
   return (values ?? []).filter((value): value is K => Object.hasOwn(table, value));
 }
 
-/** The missing parts' words, as listed on the check-and-send step's row. */
-export function missingPartLabels(parts: readonly string[] | null | undefined): string[] {
+/** The missing parts' words, for the brackets on "Missing panels or parts". */
+function missingPartLabels(parts: readonly string[] | null | undefined): string[] {
   return knownValues(MISSING_PART_LABELS, parts).map((part) => MISSING_PART_LABELS[part]);
 }
 
@@ -164,18 +166,34 @@ export interface ContextSummarySource {
   missingParts?: readonly string[] | null;
 }
 
-/** One labelled row of the check-and-send step's "What you saw". */
-export interface ContextReviewRow {
-  key: 'state' | 'people' | 'condition' | 'damage' | 'parts' | 'marks' | 'note';
-  label: string;
-  value: string;
-}
-
 type ContextQuestionKey = 'state' | 'people' | 'condition';
 
+/** One answer as the card the spotter tapped (check-and-send shows them as
+ *  those cards, owner, 2026-10-22): the question whose card set it comes
+ *  from, the stored value, the card's title, and what it led to as a line
+ *  under it ("Looks parked up"; the damage seen). */
+export interface ContextReviewCard {
+  question: ContextQuestionKey;
+  /** The stored value — a context flag, or a people answer. */
+  value: string;
+  label: string;
+  detail?: string;
+}
+
+/** One answered question under check-and-send's "What you saw": its label,
+ *  then the chosen cards — or the spotter's words, or the marks they saw.
+ *  `key` is the step its Edit opens. */
+export interface ContextReviewGroup {
+  key: 'state' | 'people' | 'condition' | 'damage' | 'parts' | 'marks' | 'note';
+  label: string;
+  cards?: ContextReviewCard[];
+  text?: string;
+  marks?: ConfirmableFeature[];
+}
+
 /**
- * The questions' row labels for the check-and-send step's "What you saw"
- * (contextReviewRows) — a summary, so statements, not questions.
+ * The questions' labels for the check-and-send step's "What you saw"
+ * (contextReviewGroups) — a summary, so statements, not questions.
  */
 const CONTEXT_ROW_LABELS: Record<ContextQuestionKey, string> = {
   state: 'What it was doing',
@@ -281,57 +299,83 @@ export interface ContextAnswerGroup {
  * the 3-way answer only when that is absent.
  *
  * The damage seen rides on "Damage visible", as a follow-up rides on its
- * state: "Damage visible · Smashed window, Dents or scrapes" (2026-10-21) —
- * and, with `withParts`, which parts ride on "Missing panels or parts" in
- * brackets (the owner's page; check-and-send gives the parts a row of their
- * own, with its own Edit).
+ * state, and which parts ride in brackets on "Missing panels or parts":
+ * "Damage visible · Smashed window, Missing panels or parts (Bumpers,
+ * Doors)" (2026-10-21).
+ *
+ * Built from the same cards check-and-send shows (answeredCards), so the two
+ * sides of a sighting cannot say different things.
  */
-function answeredContext(
+function answeredContext(source: ContextSummarySource): Record<ContextQuestionKey, string[]> {
+  const cards = answeredCards(source);
+  return {
+    // The follow-up is its own entry: the owner's table puts it on the
+    // state's line ("Parked · Looks settled").
+    state: cards.state.flatMap((card) => (card.detail ? [card.label, card.detail] : [card.label])),
+    people: cards.people.map((card) => card.label),
+    condition: cards.condition.map((card) =>
+      card.detail ? `${card.label} · ${card.detail}` : card.label,
+    ),
+  };
+}
+
+/**
+ * Each answered question's chosen cards, in the words of the cards tapped —
+ * what it was doing (its follow-up the line under it), who was with it, and
+ * its condition ("Damage visible" carrying the damage seen, which parts in
+ * brackets). "Not sure" stores nothing, so it is never a card. Legacy rows
+ * are shown as stored: two states (the old multi-select) are two cards; the
+ * old `people_nearby` flag stands in for the 3-way answer only when that is
+ * absent, as the "People near it" card.
+ */
+function answeredCards(
   source: ContextSummarySource,
-  withParts: boolean,
-): Record<ContextQuestionKey, string[]> {
+): Record<ContextQuestionKey, ContextReviewCard[]> {
   const flags = source.contextFlags ?? [];
 
-  const state: string[] = [];
+  const state: ContextReviewCard[] = [];
   for (const flag of flags) {
     if (!(VEHICLE_STATE_FLAGS as readonly string[]).includes(flag)) continue;
-    state.push(FLAG_LABELS[flag]);
-    if (flag === 'parked' && source.parkedLikelihood) {
-      state.push(PARKED_LIKELIHOOD_LABELS[source.parkedLikelihood]);
-    }
-    if (flag === 'driving' && source.direction) state.push(directionLabel(source.direction));
+    const detail =
+      flag === 'parked' && source.parkedLikelihood
+        ? PARKED_LIKELIHOOD_LABELS[source.parkedLikelihood]
+        : flag === 'driving' && source.direction
+          ? directionLabel(source.direction)
+          : undefined;
+    state.push({
+      question: 'state',
+      value: flag,
+      label: FLAG_LABELS[flag],
+      ...(detail ? { detail } : {}),
+    });
   }
 
-  // The 3-way answer; the legacy people_nearby flag only when it's absent.
-  const people = source.peoplePresence
-    ? PEOPLE_PRESENCE_LABELS[source.peoplePresence]
+  const people: ContextReviewCard[] = source.peoplePresence
+    ? [
+        {
+          question: 'people',
+          value: source.peoplePresence,
+          label: PEOPLE_PRESENCE_LABELS[source.peoplePresence],
+        },
+      ]
     : flags.includes('people_nearby')
-      ? FLAG_LABELS.people_nearby
-      : null;
+      ? [{ question: 'people', value: 'nearby', label: FLAG_LABELS.people_nearby }]
+      : [];
 
-  const damage = damageKindLabels(source.damageKinds, withParts ? source.missingParts : null);
-  const condition = flags
+  const damage = damageKindLabels(source.damageKinds, source.missingParts);
+  const condition: ContextReviewCard[] = flags
     .filter((flag) => (CONDITION_FLAGS as readonly string[]).includes(flag))
-    .map((flag) =>
-      flag === 'damage_visible' && damage.length > 0
-        ? `${FLAG_LABELS[flag]} · ${damage.join(', ')}`
-        : FLAG_LABELS[flag],
-    );
+    .map((flag) => ({
+      question: 'condition',
+      value: flag,
+      label: FLAG_LABELS[flag],
+      ...(flag === 'damage_visible' && damage.length > 0 ? { detail: damage.join(', ') } : {}),
+    }));
 
-  return { state, people: people ? [people] : [], condition };
+  return { state, people, condition };
 }
 
 const QUESTION_ORDER: readonly ContextQuestionKey[] = ['state', 'people', 'condition'];
-
-/** The check-and-send step's rows: each answered question, one line. */
-function answeredContextRows(source: ContextSummarySource): ContextReviewRow[] {
-  const answered = answeredContext(source, false);
-  return QUESTION_ORDER.filter((key) => answered[key].length > 0).map((key) => ({
-    key,
-    label: CONTEXT_ROW_LABELS[key],
-    value: answered[key].join(' · '),
-  }));
-}
 
 /**
  * The owner's "What they saw" on the sighting page: each question the spotter
@@ -344,7 +388,7 @@ function answeredContextRows(source: ContextSummarySource): ContextReviewRow[] {
  * their own.
  */
 export function sightingAnswerGroups(source: ContextSummarySource): ContextAnswerGroup[] {
-  const answered = answeredContext(source, true);
+  const answered = answeredContext(source);
   return QUESTION_ORDER.filter((key) => answered[key].length > 0).map((key) => ({
     key,
     label: CONTEXT_SHORT_LABELS[key],
@@ -353,47 +397,39 @@ export function sightingAnswerGroups(source: ContextSummarySource): ContextAnswe
 }
 
 /**
- * Everything the spotter said, as labelled rows for the check-and-send step:
- * the state with its follow-up, the people, the condition (with the damage
- * seen), their words about the damage, what's missing (the parts and their
- * words, one row), the marks they saw, and the note. The
- * SAME answers the owner reads (sightingAnswerGroups);
- * only answered questions appear, and "Not sure" appears nowhere (it stores
- * nothing). The marks keep the owner's order.
+ * Everything the spotter said, for the check-and-send step's "What you saw":
+ * each answered question with the CARDS they tapped (owner, 2026-10-22 — "in
+ * the form of the card"), what an answer led to as a line on its card; then
+ * their words about the damage and about what's missing, the marks they saw
+ * (in the owner's order), and the note. The SAME answers the owner reads
+ * (sightingAnswerGroups); only answered questions appear, and "Not sure"
+ * appears nowhere (it stores nothing). Words are cleaned as they are sent, so
+ * a note that only looks written shows nothing.
  */
-export function contextReviewRows(answers: Partial<ReportSightingAnswers>): ContextReviewRow[] {
-  const rows = answeredContextRows(answers);
+export function contextReviewGroups(answers: Partial<ReportSightingAnswers>): ContextReviewGroup[] {
+  const cards = answeredCards(answers);
+  const groups: ContextReviewGroup[] = QUESTION_ORDER.filter((key) => cards[key].length > 0).map(
+    (key) => ({ key, label: CONTEXT_ROW_LABELS[key], cards: cards[key] }),
+  );
 
-  // The kinds ride on the condition row; their words about it, their own —
-  // cleaned as they are sent, so a note that looks blank shows no row.
+  // The kinds and parts ride on the "Damage visible" card; their words about
+  // them, a block each whose Edit opens that step.
   const damageNote = cleanSpotterWords(answers.damageNote);
-  if (damageNote !== null) {
-    rows.push({ key: 'damage', label: 'About the damage', value: damageNote });
-  }
-
-  // Which parts, and their words about it, on ONE row whose Edit opens the
-  // parts step itself — the condition's Edit reaches it only by way of the
-  // damage step, and only when "Missing panels or parts" is ticked.
-  const whatsMissing = [
-    missingPartLabels(answers.missingParts).join(', '),
-    cleanSpotterWords(answers.missingPartsNote) ?? '',
-  ].filter((part) => part !== '');
-  if (whatsMissing.length > 0) {
-    rows.push({ key: 'parts', label: 'What’s missing', value: whatsMissing.join(' · ') });
+  if (damageNote !== null)
+    groups.push({ key: 'damage', label: 'About the damage', text: damageNote });
+  const partsNote = cleanSpotterWords(answers.missingPartsNote);
+  if (partsNote !== null) {
+    groups.push({ key: 'parts', label: 'About what’s missing', text: partsNote });
   }
 
   const confirmed = answers.confirmedFeatureIds ?? [];
-  const marks = (answers.confirmableFeatures ?? [])
-    .filter((mark) => confirmed.includes(mark.id))
-    .map((mark) => mark.description);
-  if (marks.length > 0) {
-    rows.push({ key: 'marks', label: 'Marks you could see', value: marks.join(' · ') });
-  }
+  const marks = (answers.confirmableFeatures ?? []).filter((mark) => confirmed.includes(mark.id));
+  if (marks.length > 0) groups.push({ key: 'marks', label: 'Marks you could see', marks });
 
   const note = answers.note?.trim();
-  if (note) rows.push({ key: 'note', label: 'Your note', value: note });
+  if (note) groups.push({ key: 'note', label: 'Your note', text: note });
 
-  return rows;
+  return groups;
 }
 
 /**

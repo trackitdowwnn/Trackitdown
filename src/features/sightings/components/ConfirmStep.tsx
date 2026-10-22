@@ -5,7 +5,10 @@
  *          - "You're reporting": the car, from the listing (not editable);
  *          - "Photos": the real shots, tap one to see it full screen;
  *          - "Where and when": the captured point (read-only, on purpose);
- *          - "What you saw": every answer as a labelled row, and the note.
+ *          - "What you saw": every answer as the CARD the spotter tapped,
+ *            in its chosen look (owner, 2026-10-22), under the question's
+ *            label; what an answer led to is a line on its card; their
+ *            words, the marks and the note below.
  *        Photos, and each answer under What you saw, carry an Edit link that
  *        jumps to that step and comes back (the wizard's `editStep` spur:
  *        "Done" returns, Back cancels); one "Add details" opens the first
@@ -28,7 +31,8 @@
  *          - No SafetyNotice banner: the flow carries it once, on the sheet
  *            before it opens (DOMAIN.md).
  * LINKS: src/shared/wizard/ReviewStep.tsx (the visual language mirrored);
- *        src/features/sightings/lib/contextLabels.ts (contextReviewRows);
+ *        src/features/sightings/lib/contextLabels.ts (contextReviewGroups);
+ *        ./contextOptionIcons.ts; src/shared/ui/OptionCard.tsx;
  *        src/features/sightings/lib/areaLabel.ts (isApproximateFix);
  *        src/features/sightings/lib/reportSeed.ts (reportedCar);
  *        docs/SECURITY_AND_TRUST.md §1 (what the owner sees);
@@ -53,14 +57,22 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import { AppImage, type EvidencePhoto, PhotoPreviewModal, PlateChip } from '@/shared/ui';
+import {
+  AppImage,
+  type EvidencePhoto,
+  OptionCard,
+  PhotoPreviewModal,
+  PlateChip,
+} from '@/shared/ui';
 import { AppMap, AppMapMarker } from '@/shared/ui/AppMap';
 import type { WizardStepProps } from '@/shared/wizard';
 
 import { firstLocatedPhoto, isApproximateFix } from '../lib/areaLabel';
 import { CONTEXT_STEP_IDS, stepAnswered, stepApplies } from '../lib/contextAnswers';
-import { CONTEXT_STEP_QUESTIONS, contextReviewRows } from '../lib/contextLabels';
+import { CONTEXT_STEP_QUESTIONS, contextReviewGroups } from '../lib/contextLabels';
 import { MAX_SIGHTING_PHOTOS, type ReportedCar, type ReportSightingAnswers } from '../types';
+import { reviewCardIcon } from './contextOptionIcons';
+import { MarkTile } from './MarkTile';
 
 type StepProps = WizardStepProps<ReportSightingAnswers>;
 
@@ -86,20 +98,36 @@ function TakenLine({ ago }: { ago: string | null }) {
   );
 }
 
+/** An inline Edit's hit slop: its line plus this reaches the 44pt target. */
+const INLINE_EDIT_SLOP = {
+  top: (sizes.touchTarget - typography.label.lineHeight) / 2,
+  bottom: (sizes.touchTarget - typography.label.lineHeight) / 2,
+  left: spacing.sm,
+  right: spacing.sm,
+};
+
 /** ~0.6-mile span: enough to place the pin without implying precision. */
 const CONFIRM_DELTA = 0.008;
 
-/** An underlined text action, as ReviewStep's: a 44pt box, not just the word. */
+/** An underlined text action, as ReviewStep's: a 44pt box, not just the word.
+ *  `inline` keeps the 44pt target as hit slop instead of height, for an Edit
+ *  beside a small label (the answers' headers): the label's line stays its
+ *  own height, so the cards sit close under it. `alignStart` lines the word
+ *  up with a label above it (large text, stacked). */
 function EditLink({
   text = 'Edit',
   accessibilityLabel,
   onPress,
   disabled,
+  inline = false,
+  alignStart = false,
 }: {
   text?: string;
   accessibilityLabel: string;
   onPress: () => void;
   disabled: boolean;
+  inline?: boolean;
+  alignStart?: boolean;
 }) {
   const styles = useThemedStyles(makeStyles);
   return (
@@ -108,9 +136,13 @@ function EditLink({
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
       disabled={disabled}
-      hitSlop={spacing.sm}
+      hitSlop={inline ? INLINE_EDIT_SLOP : spacing.sm}
       onPress={onPress}
-      style={({ pressed }) => [styles.edit, pressed ? styles.editPressed : null]}
+      style={({ pressed }) => [
+        inline ? styles.editInline : styles.edit,
+        alignStart ? styles.editStart : null,
+        pressed ? styles.editPressed : null,
+      ]}
     >
       <Text style={[styles.editLink, disabled ? styles.editLinkDisabled : null]}>{text}</Text>
     </Pressable>
@@ -314,16 +346,15 @@ export function ConfirmStep({ answers, editStep, busy = false }: StepProps) {
   // schema requires one) the line is simply left out, never invented.
   const ago = useTimeAgo(timePhoto?.capturedAt ?? 0);
   const takenAgo = timePhoto ? ago : null;
-  const rows = contextReviewRows(answers);
+  const groups = contextReviewGroups(answers);
   // The first question that applies and has nothing stored: where "Add
   // details" goes. A "Not sure" stores nothing and has no row, so it is
   // offered again — the spotter may have remembered. None left, no link.
   const nextToAdd = CONTEXT_STEP_IDS.find(
     (id) => stepApplies(answers, id) && !stepAnswered(answers, id),
   );
-  const linksShown = Boolean(editStep && nextToAdd);
-  // Past the list-row threshold the Edit goes under its answer, so a long
-  // value keeps the row's width (ThreadRow's rule).
+  // Past the list-row threshold an answer's Edit goes under its question's
+  // label, so a long label keeps the line's width (ThreadRow's rule).
   const { fontScale } = useWindowDimensions();
   const stackEdit = (fontScale ?? 1) > listRowStackFontScale;
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
@@ -357,37 +388,59 @@ export function ConfirmStep({ answers, editStep, busy = false }: StepProps) {
         <WhereAndWhen areaLabel={answers.areaLabel} located={located} takenAgo={takenAgo} />
       </ReviewSection>
 
-      {/* Each answer edits on its own step (one question per step since
+      {/* The answers as the cards they tapped, in the chosen look (owner,
+          2026-10-22: "in the form of the card, the same and the selection"),
+          read-only — OptionCard, not CardSelect, so nothing here announces
+          as a radio or checkbox that a tap would change. What an answer led
+          to is a line on its card (owner's pick over a card of its own).
+          Each answer edits on its own step (one question per step since
           2026-10-20): its Edit opens that question and Done comes straight
           back — "what it was doing" also asks its follow-up on the way, and
           "its condition" what damage, with "Damage visible" — and on to which
           parts, with "Missing panels or parts" (2026-10-21); "About the
-          damage" and "What's missing" open those steps themselves. Only
+          damage" and "About what's missing" open those steps themselves. Only
           what was answered is listed (owner's pick); one "Add details" opens
           the first question still unanswered, and again after that. */}
       <ReviewSection title="What you saw">
-        {rows.length > 0 ? (
-          <View>
-            {rows.map((row, index) => (
-              <View
-                key={row.key}
-                style={[
-                  styles.row,
-                  stackEdit ? null : styles.rowWithEdit,
-                  index < rows.length - 1 || linksShown ? styles.rowRuled : null,
-                ]}
-              >
-                <View style={styles.rowText}>
-                  <Text style={styles.rowLabel}>{row.label}</Text>
-                  <Text style={styles.rowValue}>{row.value}</Text>
+        {groups.length > 0 ? (
+          <View style={styles.answers}>
+            {groups.map((group) => (
+              <View key={group.key} style={styles.answer} testID={`confirm-answer-${group.key}`}>
+                <View style={[styles.answerHeader, stackEdit && styles.answerHeaderStacked]}>
+                  <Text style={styles.answerLabel}>{group.label}</Text>
+                  {editStep ? (
+                    <EditLink
+                      accessibilityLabel={`Edit: ${group.label}`}
+                      onPress={() => editStep(group.key)}
+                      disabled={busy}
+                      inline
+                      alignStart={stackEdit}
+                    />
+                  ) : null}
                 </View>
-                {editStep ? (
-                  <EditLink
-                    accessibilityLabel={`Edit: ${row.label}`}
-                    onPress={() => editStep(row.key)}
-                    disabled={busy}
+                {group.cards?.map((card) => (
+                  <OptionCard
+                    key={`${card.question}-${card.value}`}
+                    label={card.label}
+                    description={card.detail}
+                    icon={reviewCardIcon(card)}
+                    // "Its condition" was a tick-any question: its tick box too.
+                    trailingCheck={card.question === 'condition'}
+                    testID={`confirm-card-${card.question}-${card.value}`}
                   />
-                ) : null}
+                ))}
+                {group.text ? <Text style={styles.rowValue}>{group.text}</Text> : null}
+                {group.marks?.map((mark) => (
+                  // The owner's own photo rows, read-only — as the marks step
+                  // showed them and the owner's page will.
+                  <MarkTile
+                    key={mark.id}
+                    description={mark.description}
+                    photoUrl={mark.photoUrl}
+                    selected
+                    testID={`review-mark-${mark.id}`}
+                  />
+                ))}
               </View>
             ))}
             {editStep && nextToAdd ? (
@@ -464,6 +517,14 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     minWidth: sizes.touchTarget,
     alignItems: 'flex-end',
     justifyContent: 'center',
+  },
+  // The inline Edit: no 44pt height (its hit slop carries the target).
+  editInline: {
+    minWidth: sizes.touchTarget,
+    alignItems: 'flex-end',
+  },
+  editStart: {
+    alignItems: 'flex-start',
   },
   editPressed: {
     opacity: opacity.pressed,
@@ -579,34 +640,35 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     ...typography.caption,
     color: c.textSecondary,
   },
-  // ReviewStep's row: a caption label over a body value, hairline between.
-  row: {
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
+  // The answers: a group per question, the cards close under its label.
+  answers: {
+    gap: spacing.xl,
   },
-  rowRuled: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
+  answer: {
+    gap: spacing.md,
   },
-  // An answer and its own Edit, side by side; the words wrap before they push
-  // the link off the row.
-  // The Edit lines up with the label, not the middle of a long answer.
-  rowWithEdit: {
+  // The question's label and its Edit on one line; past the list-row
+  // threshold the Edit goes under the label (stackEdit).
+  answerHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: spacing.lg,
   },
-  rowText: {
-    flex: 1,
+  answerHeaderStacked: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
     gap: spacing.xs,
+  },
+  // Shrinks (and wraps) before it pushes the Edit off the line.
+  answerLabel: {
+    ...typography.caption,
+    color: c.textSecondary,
+    flexShrink: 1,
   },
   addRow: {
     alignItems: 'flex-start',
     paddingTop: spacing.sm,
-  },
-  rowLabel: {
-    ...typography.caption,
-    color: c.textSecondary,
   },
   rowValue: {
     ...typography.body,
