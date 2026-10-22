@@ -98,20 +98,36 @@ function TakenLine({ ago }: { ago: string | null }) {
   );
 }
 
+/** An inline Edit's hit slop: its line plus this reaches the 44pt target. */
+const INLINE_EDIT_SLOP = {
+  top: (sizes.touchTarget - typography.label.lineHeight) / 2,
+  bottom: (sizes.touchTarget - typography.label.lineHeight) / 2,
+  left: spacing.sm,
+  right: spacing.sm,
+};
+
 /** ~0.6-mile span: enough to place the pin without implying precision. */
 const CONFIRM_DELTA = 0.008;
 
-/** An underlined text action, as ReviewStep's: a 44pt box, not just the word. */
+/** An underlined text action, as ReviewStep's: a 44pt box, not just the word.
+ *  `inline` keeps the 44pt target as hit slop instead of height, for an Edit
+ *  beside a small label (the answers' headers): the label's line stays its
+ *  own height, so the cards sit close under it. `alignStart` lines the word
+ *  up with a label above it (large text, stacked). */
 function EditLink({
   text = 'Edit',
   accessibilityLabel,
   onPress,
   disabled,
+  inline = false,
+  alignStart = false,
 }: {
   text?: string;
   accessibilityLabel: string;
   onPress: () => void;
   disabled: boolean;
+  inline?: boolean;
+  alignStart?: boolean;
 }) {
   const styles = useThemedStyles(makeStyles);
   return (
@@ -120,9 +136,13 @@ function EditLink({
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
       disabled={disabled}
-      hitSlop={spacing.sm}
+      hitSlop={inline ? INLINE_EDIT_SLOP : spacing.sm}
       onPress={onPress}
-      style={({ pressed }) => [styles.edit, pressed ? styles.editPressed : null]}
+      style={({ pressed }) => [
+        inline ? styles.editInline : styles.edit,
+        alignStart ? styles.editStart : null,
+        pressed ? styles.editPressed : null,
+      ]}
     >
       <Text style={[styles.editLink, disabled ? styles.editLinkDisabled : null]}>{text}</Text>
     </Pressable>
@@ -333,8 +353,8 @@ export function ConfirmStep({ answers, editStep, busy = false }: StepProps) {
   const nextToAdd = CONTEXT_STEP_IDS.find(
     (id) => stepApplies(answers, id) && !stepAnswered(answers, id),
   );
-  // Past the list-row threshold the Edit goes under its answer, so a long
-  // value keeps the row's width (ThreadRow's rule).
+  // Past the list-row threshold an answer's Edit goes under its question's
+  // label, so a long label keeps the line's width (ThreadRow's rule).
   const { fontScale } = useWindowDimensions();
   const stackEdit = (fontScale ?? 1) > listRowStackFontScale;
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
@@ -378,7 +398,7 @@ export function ConfirmStep({ answers, editStep, busy = false }: StepProps) {
           back — "what it was doing" also asks its follow-up on the way, and
           "its condition" what damage, with "Damage visible" — and on to which
           parts, with "Missing panels or parts" (2026-10-21); "About the
-          damage" and "What's missing" open those steps themselves. Only
+          damage" and "About what's missing" open those steps themselves. Only
           what was answered is listed (owner's pick); one "Add details" opens
           the first question still unanswered, and again after that. */}
       <ReviewSection title="What you saw">
@@ -393,6 +413,8 @@ export function ConfirmStep({ answers, editStep, busy = false }: StepProps) {
                       accessibilityLabel={`Edit: ${group.label}`}
                       onPress={() => editStep(group.key)}
                       disabled={busy}
+                      inline
+                      alignStart={stackEdit}
                     />
                   ) : null}
                 </View>
@@ -402,6 +424,8 @@ export function ConfirmStep({ answers, editStep, busy = false }: StepProps) {
                     label={card.label}
                     description={card.detail}
                     icon={reviewCardIcon(card)}
+                    // "Its condition" was a tick-any question: its tick box too.
+                    trailingCheck={card.question === 'condition'}
                     testID={`confirm-card-${card.question}-${card.value}`}
                   />
                 ))}
@@ -493,6 +517,14 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     minWidth: sizes.touchTarget,
     alignItems: 'flex-end',
     justifyContent: 'center',
+  },
+  // The inline Edit: no 44pt height (its hit slop carries the target).
+  editInline: {
+    minWidth: sizes.touchTarget,
+    alignItems: 'flex-end',
+  },
+  editStart: {
+    alignItems: 'flex-start',
   },
   editPressed: {
     opacity: opacity.pressed,
@@ -637,10 +669,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   addRow: {
     alignItems: 'flex-start',
     paddingTop: spacing.sm,
-  },
-  rowLabel: {
-    ...typography.caption,
-    color: c.textSecondary,
   },
   rowValue: {
     ...typography.body,

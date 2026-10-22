@@ -3,7 +3,9 @@
  *        a quiet line under it, in exactly the look CardSelect and
  *        CardSelectMulti give a card (optionCardStyles), selected by default.
  *        Not pressable, no radio/checkbox role: one screen-reader stop that
- *        reads as a statement ("Parked, Looks parked up").
+ *        reads as a statement ("Parked. Looks parked up" — CardSelect's own
+ *        wording). `trailingCheck` adds CardSelectMulti's tick box, so an
+ *        answer from a multi-select question looks as it did when ticked.
  * WHY:   To show an answer back as the card that was tapped — the report's
  *        check-and-send step, owner 2026-10-22: "answers to be in the form of
  *        the card, the same and the selection". Reusing CardSelect with only
@@ -17,6 +19,7 @@
  *   <OptionCard icon={SquareParking} label="Parked" description="Looks parked up" />
  */
 
+import { Feather } from '@expo/vector-icons';
 import type { LucideIcon } from 'lucide-react-native';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -31,7 +34,10 @@ export interface OptionCardProps {
   /** The chosen look (primary border, dark icon). Default true: a card shown
    *  back is a card that was chosen. */
   selected?: boolean;
-  /** What a screen reader says instead of "label, description". */
+  /** CardSelectMulti's trailing tick box — for an answer from a "tick any"
+   *  question, so it looks exactly as it did when ticked. */
+  trailingCheck?: boolean;
+  /** What a screen reader says instead of "label. description". */
   accessibilityLabel?: string;
   testID?: string;
 }
@@ -41,6 +47,7 @@ export function OptionCard({
   description,
   icon: Icon,
   selected = true,
+  trailingCheck = false,
   accessibilityLabel,
   testID,
 }: OptionCardProps) {
@@ -50,7 +57,7 @@ export function OptionCard({
     <View
       style={[styles.card, selected && styles.cardSelected]}
       accessible
-      accessibilityLabel={accessibilityLabel ?? (description ? `${label}, ${description}` : label)}
+      accessibilityLabel={accessibilityLabel ?? (description ? `${label}. ${description}` : label)}
       testID={testID}
     >
       {Icon ? (
@@ -60,6 +67,21 @@ export function OptionCard({
         <Text style={styles.label}>{label}</Text>
         {description ? <Text style={styles.description}>{description}</Text> : null}
       </View>
+      {trailingCheck ? (
+        <View
+          style={[styles.box, selected && styles.boxSelected]}
+          testID={testID ? `${testID}-check` : undefined}
+        >
+          {selected ? (
+            <Feather
+              name="check"
+              size={sizes.iconSm}
+              color={palette.textOnPrimary}
+              importantForAccessibility="no"
+            />
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }

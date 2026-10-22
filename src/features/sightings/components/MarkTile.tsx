@@ -11,7 +11,8 @@
  *        Moved here from sightingSteps.tsx, where it was private.
  * LINKS: src/features/sightings/components/contextSteps.tsx (MarksStep —
  *          the spotter ticks); src/features/sightings/components/
- *          SightingSeenSection.tsx (the owner reads).
+ *          SightingSeenSection.tsx (the owner reads); ./ConfirmStep.tsx
+ *          (the spotter checks before sending, read-only).
  */
 
 import { Feather } from '@expo/vector-icons';

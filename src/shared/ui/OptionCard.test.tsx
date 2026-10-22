@@ -30,7 +30,7 @@ describe('OptionCard', () => {
     expect(getByText('Looks parked up')).toBeTruthy();
     const card = getByTestId('card');
     expect(card.props.accessible).toBe(true);
-    expect(card.props.accessibilityLabel).toBe('Parked, Looks parked up');
+    expect(card.props.accessibilityLabel).toBe('Parked. Looks parked up');
   });
 
   it('⚠️ has no radio or checkbox role — nothing to toggle here', async () => {
@@ -40,6 +40,15 @@ describe('OptionCard', () => {
     expect(queryAllByRole('radio')).toHaveLength(0);
     expect(queryAllByRole('checkbox')).toHaveLength(0);
     expect(getByTestId('card').props.accessibilityRole).toBeUndefined();
+  });
+
+  it('carries CardSelectMulti’s tick box when asked — a ticked answer looks ticked', async () => {
+    const plain = await render(<OptionCard label="Damage visible" testID="card" />);
+    expect(plain.queryByTestId('card-check')).toBeNull();
+    const ticked = await render(<OptionCard label="Damage visible" trailingCheck testID="card" />);
+    expect(ticked.getByTestId('card-check')).toBeTruthy();
+    // Decorative: the statement is still just the label.
+    expect(ticked.getByTestId('card').props.accessibilityLabel).toBe('Damage visible');
   });
 
   it('wears the chosen border by default — exactly CardSelect’s chosen card', async () => {

@@ -54,4 +54,20 @@ export const optionCardStyleSpec = (c: Palette) =>
       ...typography.caption,
       color: c.textSecondary,
     },
+    // The multi-select card's trailing tick box: a selection cue that does
+    // not rely on the border colour alone. Fixed size, so ticking never
+    // reflows the card.
+    box: {
+      width: sizes.icon,
+      height: sizes.icon,
+      borderRadius: radii.sm,
+      borderWidth: sizes.selectBorder,
+      borderColor: c.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    boxSelected: {
+      backgroundColor: c.primary,
+      borderColor: c.primary,
+    },
   }) as const;

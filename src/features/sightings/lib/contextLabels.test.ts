@@ -125,7 +125,7 @@ describe('contextLabels — the shared words', () => {
     expect(CONTEXT_SHORT_LABELS).toEqual({ state: 'Doing', people: 'People', condition: 'Condition' });
   });
 
-  it('keeps the check-and-send rows as they were (same answers, statement labels)', () => {
+  it('labels check-and-send’s questions as statements, the follow-up on the card', () => {
     expect(asRows({ contextFlags: ['parked'], parkedLikelihood: 'settled' })).toEqual([
       {
         key: 'state',
@@ -422,6 +422,35 @@ describe('sightingAnswerGroups — the owner’s "What they saw"', () => {
     expect(sightingAnswerGroups({ contextFlags: [] })).toEqual([]);
     expect(sightingAnswerGroups({ contextFlags: [], peoplePresence: 'nobody' })).toEqual([
       { key: 'people', label: 'People', answers: ['No one seen'] },
+    ]);
+  });
+});
+
+describe('sightingAnswerGroups — pinned literally (both sides now build on the same cards)', () => {
+  it('reads exactly as it did before the cards, legacy rows included', () => {
+    expect(
+      sightingAnswerGroups({
+        contextFlags: ['parked', 'driving', 'people_nearby', 'damage_visible', 'being_stripped'],
+        parkedLikelihood: 'settled',
+        direction: 'SW',
+        damageKinds: ['missing_parts', 'flood_damage', 'broken_lights'],
+        missingParts: ['bonnet', 'spoiler'],
+      }),
+    ).toEqual([
+      {
+        key: 'state',
+        label: 'Doing',
+        answers: ['Parked', 'Looks parked up', 'Moving', 'Heading south-west'],
+      },
+      { key: 'people', label: 'People', answers: ['People nearby'] },
+      {
+        key: 'condition',
+        label: 'Condition',
+        answers: [
+          'Damage visible · Missing panels or parts (Bonnet), Broken lights',
+          'Being stripped',
+        ],
+      },
     ]);
   });
 });

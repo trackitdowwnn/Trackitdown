@@ -221,7 +221,9 @@ describe('ConfirmStep — sections and Edit links', () => {
 
   it('the parts themselves edit through the condition — they ride on its card', async () => {
     // No words: no block of their own. The condition's Edit carries on to
-    // the damage step and on to the parts (follow-ups chain forward).
+    // the damage step and on to the parts (follow-ups chain forward) — that
+    // chain is pinned in reportSightingFlow.test.ts (editContinuesTo) and
+    // useWizardController.test.tsx (forward only).
     const { view, editStep } = await renderConfirm({
       photos: [live(0)],
       contextFlags: ['damage_visible'],
@@ -391,8 +393,11 @@ describe('ConfirmStep — what you saw', () => {
     }
     // The card, with what it led to as a line on it — one stop, a statement.
     expect(view.getByTestId('confirm-card-state-parked').props.accessibilityLabel).toBe(
-      'Parked, Looks parked up',
+      'Parked. Looks parked up',
     );
+    // A tick-any answer keeps its tick box; a single answer has none.
+    expect(view.getByTestId('confirm-card-condition-damage_visible-check')).toBeTruthy();
+    expect(view.queryByTestId('confirm-card-state-parked-check')).toBeNull();
     expect(view.getByTestId('confirm-card-people-nobody').props.accessibilityLabel).toBe(
       'No one seen',
     );
@@ -409,7 +414,11 @@ describe('ConfirmStep — what you saw', () => {
       contextFlags: ['parked', 'damage_visible', 'plate_changed'],
       peoplePresence: 'nearby',
       damageKinds: ['smashed_window'],
+      // The marks too: read-only photo rows, never checkboxes here.
+      confirmableFeatures: [{ id: 'm1', description: 'Bee sticker' }],
+      confirmedFeatureIds: ['m1'],
     });
+    expect(view.getByTestId('review-mark-m1')).toBeTruthy();
     const answers = view.getByTestId('confirm-answer-condition');
     expect(within(answers).queryAllByRole('radio')).toHaveLength(0);
     expect(within(answers).queryAllByRole('checkbox')).toHaveLength(0);

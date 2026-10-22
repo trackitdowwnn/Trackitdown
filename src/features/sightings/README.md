@@ -91,10 +91,11 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
      = `missing_parts`; only what can be seen from where they stand, wheels
      being their own damage kind), then **Anything else?** ≤ 300
      (`missing_parts_note`). Unticking Missing panels or parts (or losing
-     Damage visible) clears both; never sent without that kind. Its Edit on
-     check-and-send is its own "What's missing" row; the condition's Edit
-     also carries on through the damage step to it (an edit's follow-ups
-     chain forward, the wizard's `editContinuesTo`).
+     Damage visible) clears both; never sent without that kind. On
+     check-and-send the parts ride in brackets on the "Damage visible" card
+     and the condition's Edit carries on through the damage step to them
+     (an edit's follow-ups chain forward, the wizard's `editContinuesTo`);
+     "About what's missing" has its own Edit only when there are words.
    - **Could you see any of these?** (only when the post has marks): the
      post's distinctive marks as checkbox rows with the owner's photo
      (`confirmed_feature_ids`; the screen seeds `confirmableFeatures`, and the
@@ -121,7 +122,8 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
      the parts in brackets on "Damage visible"); "About the damage" and
      "About what's missing" as their words, the marks as photo rows, and the
      note — each with its own Edit to that step ("what it was doing" continues to its follow-up,
-     "its condition" to what damage while Damage visible is ticked), and one
+     "its condition" to what damage while Damage visible is ticked, and on to
+     which parts while Missing panels or parts is), and one
      **Add details** to the first question still unanswered ("Nothing added"
      with an Add link when everything was skipped).
    - Above the CTA, the step's `footerNote`: "Only the owner sees your photos

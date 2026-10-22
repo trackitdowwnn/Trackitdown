@@ -7,8 +7,9 @@
  *        (CONTEXT_OPTION_DESCRIPTIONS), and every step's question
  *        (CONTEXT_STEP_QUESTIONS; CONTEXT_QUESTIONS for the shared three);
  *        contextReviewGroups(), the answers as the cards the spotter tapped
- *        (grouped by question) for the check-and-send step, and sightingAnswerGroups(), the same answers per
- *        question under short labels (CONTEXT_SHORT_LABELS) for the owner's
+ *        (grouped by question) for the check-and-send step, and
+ *        sightingAnswerGroups(), the same answers per question under short
+ *        labels (CONTEXT_SHORT_LABELS) for the owner's
  *        sighting page ("What they saw", a label | answers table); and
  *        contextDetailCount(), how many details a report carries.
  * WHY:   The context steps, the confirm step and the owner's sighting page all
@@ -117,8 +118,8 @@ function knownValues<K extends string>(
   return (values ?? []).filter((value): value is K => Object.hasOwn(table, value));
 }
 
-/** The missing parts' words, as listed on the check-and-send step's row. */
-export function missingPartLabels(parts: readonly string[] | null | undefined): string[] {
+/** The missing parts' words, for the brackets on "Missing panels or parts". */
+function missingPartLabels(parts: readonly string[] | null | undefined): string[] {
   return knownValues(MISSING_PART_LABELS, parts).map((part) => MISSING_PART_LABELS[part]);
 }
 

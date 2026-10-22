@@ -10,6 +10,7 @@
  *        states consistent. Icons are lucide components passed per option.
  * LINKS: docs/DESIGN_SYSTEM.md (Cards, Accessibility);
  *        src/shared/ui/ChoiceChips.tsx (the compact sibling);
+ *        src/shared/ui/optionCardStyles.ts (the card's look, shared);
  *        src/features/vehicles/post/components/postSteps.tsx (BodyTypeStep).
  *
  * Usage:
