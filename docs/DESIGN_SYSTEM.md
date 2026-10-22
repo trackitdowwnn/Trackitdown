@@ -883,7 +883,7 @@ to use.
   2026-10-07). Better still, wait for the answer BEFORE navigating, bounded
   by the same grace (`useStartReport`), so the screen arrives already built.
   **Sanctioned exception (2026-10-07): work the user just started** may
-  show ONE small `ActivityIndicator` in `textSecondary`, in two places only:
+  show ONE small `ActivityIndicator` in `textSecondary`, in three places only:
   (a) centred on a pending item's `surfaceSubtle` skeleton while it is
   processed (≈4.7:1 light, ≈5.7:1 dark) — `PhotoGridPicker`'s tiles while a
   picked photo is resized; (b) on the control just tapped, above its label,
@@ -891,7 +891,13 @@ to use.
   ≈7.3:1 dark) — its add tile's "Adding photo…" / "Adding photos…". Why:
   the pulse alone read as an empty grey tile, and it stops entirely under
   reduced motion; and in the picker's hand-back nothing else on screen
-  answers the tap.
+  answers the tap; (c) in the owner's status badge straight after paying
+  for a listing (`StatusBadge goingLive`, owner 2026-10-22: no confirmation
+  page): an `iconSm` spinner in the dot's place and "Going live" while the
+  app asks (~12s), then a still dot and "Going live soon", then the green
+  "Live" — green only once it IS live. Only over Draft. Reduce Motion: the
+  still dot. The spinner is hidden from screen readers; the label and one
+  announcement carry it.
   **The opening screen** (`BrandSplash`, 2026-10-20) is its own face, because
   its job is to be the native splash's continuation, not a loader: the mark
   ALONE, at the native splash's size (`NATIVE_SPLASH_MARK_DP`, ≈59dp, pinned

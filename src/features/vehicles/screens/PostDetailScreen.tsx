@@ -118,9 +118,17 @@ export function PostDetailScreen({ postId, justPaid = false }: PostDetailScreenP
   const loadedStatus =
     status === 'ready' && result?.kind === 'visible' ? result.post.status : null;
   const goingLive = useGoingLive(postId, {
-    watching: justPaid && loadedStatus !== 'active',
+    justPaid,
+    status: loadedStatus,
     onLive: () => void reload(),
   });
+  // ⚠️ MONEY: a paid listing is still a `draft` until the server confirms the
+  // payment, and a draft offers the draft-only editors — the REWARD among
+  // them. Changing it now would make the payment the wrong amount, so the
+  // server would refund it and the listing would never go live (code review,
+  // 2026-10-22). Locked while it goes live.
+  const paymentPending = goingLive !== null;
+  const draftEditable = (post: PostDetail) => canEditDraftSection(post) && !paymentPending;
 
   // Guards a double-tap on "Yes, still missing" (ADR-0019).
   const [confirmingMissing, setConfirmingMissing] = useState(false);
@@ -461,11 +469,9 @@ export function PostDetailScreen({ postId, justPaid = false }: PostDetailScreenP
                 onEditCarDetails={
                   canEditSafeSection(result.post) ? () => edit('car_details') : undefined
                 }
-                onEditPhotos={canEditDraftSection(result.post) ? () => edit('photos') : undefined}
-                onEditLastSeen={
-                  canEditDraftSection(result.post) ? () => edit('last_seen') : undefined
-                }
-                onEditBounty={canEditDraftSection(result.post) ? () => edit('bounty') : undefined}
+                onEditPhotos={draftEditable(result.post) ? () => edit('photos') : undefined}
+                onEditLastSeen={draftEditable(result.post) ? () => edit('last_seen') : undefined}
+                onEditBounty={draftEditable(result.post) ? () => edit('bounty') : undefined}
                 onEditDescription={
                   canEditSafeSection(result.post) ? () => edit('description') : undefined
                 }
@@ -560,6 +566,7 @@ export function PostDetailScreen({ postId, justPaid = false }: PostDetailScreenP
         post={visiblePost}
         refresh={retry}
         onDeleted={() => router.replace('/my-posts')}
+        paymentPending={paymentPending}
       />
     </View>
   );

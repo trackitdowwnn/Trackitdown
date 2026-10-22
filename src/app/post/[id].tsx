@@ -4,7 +4,10 @@
  * WHY:   Thin wrapper per ARCHITECTURE.md — the screen lives in the feature.
  * LINKS: src/features/vehicles/screens/PostDetailScreen.tsx;
  *        src/features/search-map/screens/HomeFeedScreen.tsx (the only caller
- *          that passes ?from=feed).
+ *          that passes ?from=feed);
+ *        src/features/vehicles/post/screens/PostACarScreen.tsx (the only
+ *          caller that passes ?paid=1 — straight after paying, the badge
+ *          says "Going live" until the listing is).
  */
 
 import { useLocalSearchParams } from 'expo-router';

@@ -96,6 +96,13 @@ export interface PostOwnerActionsProps {
    * performs the toggle; absent = no row. `archived` picks which of the two.
    */
   archive?: { archived: boolean; toggle: () => void };
+  /**
+   * ⚠️ MONEY: the listing has just been paid for and the server hasn't
+   * confirmed it yet, so it is still a `draft` (PostDetailScreen, useGoingLive).
+   * No draft-only editor (the reward above all) and no "Delete draft" until it
+   * is live: a changed reward would make the payment the wrong amount.
+   */
+  paymentPending?: boolean;
 }
 
 export function PostOwnerActions({
@@ -105,6 +112,7 @@ export function PostOwnerActions({
   refresh,
   onDeleted,
   archive,
+  paymentPending = false,
 }: PostOwnerActionsProps) {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
@@ -403,9 +411,9 @@ export function PostOwnerActions({
         onViewStats={() => router.push({ pathname: '/post-stats', params: { postId } })}
         onShare={() => onShare(owned)}
         onEditCarDetails={editor(canEditSafeSection(owned), 'car_details')}
-        onEditPhotos={editor(canEditDraftSection(owned), 'photos')}
-        onEditLastSeen={editor(canEditDraftSection(owned), 'last_seen')}
-        onEditBounty={editor(canEditDraftSection(owned), 'bounty')}
+        onEditPhotos={editor(canEditDraftSection(owned) && !paymentPending, 'photos')}
+        onEditLastSeen={editor(canEditDraftSection(owned) && !paymentPending, 'last_seen')}
+        onEditBounty={editor(canEditDraftSection(owned) && !paymentPending, 'bounty')}
         onEditDescription={editor(canEditSafeSection(owned), 'description')}
         onEditTheftContext={editor(canEditSafeSection(owned), 'theft_context')}
         onEditDistinctiveFeatures={editor(canEditSafeSection(owned), 'distinctive_features')}
@@ -425,7 +433,11 @@ export function PostOwnerActions({
         // The row is the only way to deactivate now (2026-10-16), so it says
         // what happens to the money, as the page's block used to.
         deactivateKind={owned.bountyPence !== null ? 'refund' : noRewardKind(owned)}
-        onDeleteDraft={canDeleteDraft(owned) ? () => deleteDraftRef.current?.open() : undefined}
+        onDeleteDraft={
+          canDeleteDraft(owned) && !paymentPending
+            ? () => deleteDraftRef.current?.open()
+            : undefined
+        }
         onDeletePost={canDeletePost(owned) ? () => deletePostRef.current?.open() : undefined}
         onReleasePayout={canReleasePayout(owned) ? () => void onReleasePayout() : undefined}
         onArchive={archive && !archive.archived ? archive.toggle : undefined}

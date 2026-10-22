@@ -3,9 +3,9 @@
  *        WizardScreen, seeds the starting bounty, and owns the final submit:
  *        create the draft (submitPost), take the bounty into escrow via Stripe
  *        PaymentSheet, then straight to the new listing (`?paid=1`: its badge
- *        says "Going live" until the server makes it live — useGoingLive). On
- *        failure it re-throws so the
- *        framework keeps the wizard fully intact with an inline error for retry —
+ *        says "Going live" until the server makes it live — useGoingLive).
+ *        On failure it re-throws so the framework keeps the wizard fully
+ *        intact with an inline error for retry —
  *        and it remembers the created draft so a retry never makes a second draft
  *        or a second charge.
  * WHY:   The route file stays thin (ARCHITECTURE.md rule 3); this is where the

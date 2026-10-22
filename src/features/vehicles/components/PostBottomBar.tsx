@@ -55,7 +55,8 @@ export function PostBottomBar({
             <Text numberOfLines={1} style={styles.caption}>
               Your listing
             </Text>
-            {/* Owner's own bar → a live post reads "Live" (green), not blank. */}
+            {/* Owner's own bar → a live post reads "Live" (green), not blank —
+                or "Going live" straight after paying (useGoingLive). */}
             <StatusBadge status={post.status} showLiveWhenActive goingLive={goingLive} />
           </>
         ) : (

@@ -4,7 +4,10 @@
  *        NOTHING for a plain `active` post by default, so callers drop it in
  *        unconditionally and a live listing stays calm in PUBLIC surfaces.
  *        Owner-context callers opt in (showLiveWhenActive) to a green "Live"
- *        badge so an owner can see which of their own posts are live.
+ *        badge so an owner can see which of their own posts are live, and —
+ *        straight after paying — `goingLive` puts "Going live" (a small
+ *        spinner in the dot's place; still under Reduce Motion) or "Going
+ *        live soon" over Draft until it is (owner, 2026-10-22).
  * WHY:   The status→{label,tone} map and its pill lived inline in
  *        VehicleCard; the post-detail title block needs the same badge, so
  *        it's the one source of truth here. The map stores a semantic TONE
@@ -17,7 +20,7 @@
  *        src/features/vehicles (detail title block); docs/DOMAIN.md (lifecycle).
  */
 
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '../theme';
@@ -103,9 +106,12 @@ export function StatusBadge({
   showLiveWhenActive = false,
   goingLive = null,
 }: StatusBadgeProps) {
-  if (goingLive && status !== 'active') {
+  // Only over Draft — the one status a paid listing has before it is live. A
+  // real status (rejected, cancelled, …) is never hidden behind it. Neutral,
+  // not green: green is earned when it IS live (UI review, 2026-10-22).
+  if (goingLive && status === 'draft') {
     return goingLive === 'confirming' ? (
-      <StatusPill label="Going live" tone="success" busy testID="status-going-live" />
+      <StatusPill label="Going live" tone="neutral" busy testID="status-going-live" />
     ) : (
       <StatusPill label="Going live soon" tone="neutral" testID="status-going-live-soon" />
     );
@@ -148,9 +154,10 @@ export function StatusPill({ label, tone, busy = false, testID }: StatusPillProp
   return (
     <View style={styles.badge} testID={testID}>
       {busy && !reduceMotion ? (
-        // The label's line tall, so the pill is the same height either way.
+        // The label's line tall (iconSm = 18), so the pill keeps its height. A
+        // number is Android-only; iOS takes 'small' inside the same box.
         <ActivityIndicator
-          size={sizes.iconSm}
+          size={Platform.OS === 'android' ? sizes.iconSm : 'small'}
           color={toneColor(palette, tone)}
           style={styles.spinner}
           importantForAccessibility="no"
@@ -182,7 +189,6 @@ const makeStyles = (c: Palette) =>
       height: sizes.progressDot,
       borderRadius: radii.sm,
     },
-    // iconSm = the label's line height (18), so the pill keeps its height.
     spinner: {
       width: sizes.iconSm,
       height: sizes.iconSm,

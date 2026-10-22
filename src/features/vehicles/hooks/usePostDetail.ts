@@ -156,5 +156,12 @@ export function usePostDetail(postId: string): UsePostDetailResult {
     }
   }, [postId, session.status]);
 
-  return { status, result, retry, refreshing, refresh, reload: silentRefresh };
+  // The silent fetch on demand, with the pull's session wait (above): fired
+  // while the session restores, it would come back anonymous.
+  const reload = useCallback(async () => {
+    if (session.status === 'loading') return;
+    await silentRefresh();
+  }, [session.status, silentRefresh]);
+
+  return { status, result, retry, refreshing, refresh, reload };
 }
