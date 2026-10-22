@@ -263,6 +263,11 @@ describe('reportSightingFlow shape', () => {
     });
   });
 
+  it('asks "Anything else?" for the note, with no line under it (owner, 2026-10-22)', () => {
+    expect(step('note').question).toBe('Anything else?');
+    expect(step('note').helper).toBeUndefined();
+  });
+
   it('says who sees what above "Send report", word for word', () => {
     // Strictly true (SECURITY_AND_TRUST §1): the public sees that a sighting
     // happened, never the photos, the exact spot or who sent it.

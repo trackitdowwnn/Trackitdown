@@ -8,7 +8,7 @@
  *          condition  Its condition                      (any that apply)
  *          damage     What damage can you see?           (only after Damage visible)
  *          marks      Could you see any of these?        (only if the car has marks)
- *          note       A note for the owner
+ *          note       Anything else?
  *        Every single-answer question ends with an equal "Not sure" card.
  *        The multi-choice cards (condition, damage) are title-only.
  * WHY:   The owner asked (2026-10-20) for "Anything else that helps?" — one
@@ -501,7 +501,7 @@ export function MarksStep({ answers, setAnswers }: StepProps) {
   );
 }
 
-/** A note for the owner — free text, up to the limit. */
+/** Anything else? — the note for the owner, free text up to the limit. */
 export function NoteStep({ answers, setAnswers }: StepProps) {
   const noteLength = answers.note?.length ?? 0;
   return (

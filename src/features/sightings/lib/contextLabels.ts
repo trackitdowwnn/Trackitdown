@@ -226,7 +226,9 @@ export const PARTS_QUESTION = 'What’s missing?';
 
 /** The last two context steps' questions. */
 export const MARKS_QUESTION = 'Could you see any of these?';
-export const NOTE_QUESTION = 'A note for the owner';
+// The note: 'Anything else?' (owner, 2026-10-22), as the damage and
+// missing-parts steps' own boxes ask — every free-text question reads alike.
+export const NOTE_QUESTION = 'Anything else?';
 
 /** Every context step's question, by step id — the flow asks them, and the
  *  check-and-send step's "Add details" names the one it opens. */
