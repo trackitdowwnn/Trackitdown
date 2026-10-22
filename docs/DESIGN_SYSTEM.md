@@ -634,8 +634,8 @@ send"; ReviewStep is the framework's version for flows with a review screen):
 - **One Edit per editable section**, ReviewStep's underlined 44pt link, with a
   label naming what it edits ("Edit photos"). It jumps by the step's
   `editStep`: Done returns, Back cancels. Inert while sending, absent on a spur.
-- **A read-only section has no action and says why** in one caption line
-  ("This comes from where you took the photo, so the owner can trust it.").
+- **A read-only section has no action** (Where and when: the map, the area
+  and the photo's time; owner, 2026-10-22: no explainer line under the map).
 - **Empty means one quiet row**, "Nothing added" with an Add link, never a
   stack of "Not provided".
 - **Show the real thing.** The identity card is `cardSurface` with a

@@ -49,6 +49,7 @@ describe('reportSeedFromDetail', () => {
       colour: 'Blue',
       plate: 'AB12 CDE',
       photoUrl: 'https://example.test/hero.jpg',
+      rewardPence: 50000,
     });
     // The id-less mark is dropped (a sighting references marks by id); an
     // empty photo becomes "no photo".
@@ -56,6 +57,38 @@ describe('reportSeedFromDetail', () => {
       { id: 'm1', description: 'Bee sticker', photoUrl: 'https://example.test/m1.jpg' },
       { id: 'm2', description: 'Roof rack', photoUrl: undefined },
     ]);
+  });
+
+  it('seeds what else the listing says — year, body type, finish, the live reward', () => {
+    const seed = reportSeedFromDetail({
+      kind: 'visible',
+      post: post({
+        year: 2018,
+        bodyType: 'Hatchback',
+        colourFinish: 'metallic',
+        bountyPence: 20000,
+      }),
+    });
+    expect(seed.reportedCar).toMatchObject({
+      year: 2018,
+      bodyType: 'Hatchback',
+      finish: 'Metallic',
+      rewardPence: 20000,
+    });
+  });
+
+  it('leaves out "Not sure", an ended reward and what the owner never said', () => {
+    const seed = reportSeedFromDetail(
+      {
+        kind: 'visible',
+        post: post({ bodyType: 'Not sure', bountyPence: null, rewardEnded: true }),
+      },
+      'Not sure', // BODY_TYPE_UNKNOWN, passed in by the screen's deferred import
+    );
+    expect(seed.reportedCar?.bodyType).toBeUndefined();
+    expect(seed.reportedCar?.rewardPence).toBeUndefined();
+    expect(seed.reportedCar?.year).toBeUndefined();
+    expect(seed.reportedCar?.finish).toBeUndefined();
   });
 
   it('copes with a plate-less, photo-less listing', () => {
@@ -69,6 +102,7 @@ describe('reportSeedFromDetail', () => {
       colour: 'Blue',
       plate: null,
       photoUrl: undefined,
+      rewardPence: 50000,
     });
     expect(seed.confirmableFeatures).toEqual([]);
   });

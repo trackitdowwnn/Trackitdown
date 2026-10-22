@@ -67,8 +67,8 @@ import type { ReportSightingAnswers } from '../types';
  *  vehicles feature. */
 async function fetchReportSeed(postId: string): Promise<ReportSeed> {
   try {
-    const { fetchPostDetail } = await import('@/features/vehicles');
-    return reportSeedFromDetail(await fetchPostDetail(postId));
+    const { BODY_TYPE_UNKNOWN, fetchPostDetail } = await import('@/features/vehicles');
+    return reportSeedFromDetail(await fetchPostDetail(postId), BODY_TYPE_UNKNOWN);
   } catch {
     return EMPTY_REPORT_SEED;
   }

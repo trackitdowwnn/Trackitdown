@@ -118,6 +118,15 @@ export interface ReportedCar {
   plate: string | null;
   /** The listing's first photo. Absent when it has none: the card is text-only. */
   photoUrl?: string;
+  /** The rest of what the listing says about the car (owner, 2026-10-22: more
+   *  than the car and colour), each absent when the owner didn't say: */
+  year?: number;
+  /** Never "Not sure" — the body-type step's escape is not a fact. */
+  bodyType?: string;
+  /** The paint finish's label ("Metallic"). */
+  finish?: string;
+  /** The LIVE reward in pence — absent with no reward or one that has ended. */
+  rewardPence?: number;
 }
 
 /** The context step's single-answer questions that offer "Not sure". */
