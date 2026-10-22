@@ -168,16 +168,36 @@ export async function collusionGate(
       return 'error';
     }
     if (held) {
-      const { data: spotterPayments, error: spotterPaymentsError } = await admin
-        .from('payments')
-        .select('stripe_payment_intent_id, posts!inner(owner_id)')
-        .eq('posts.owner_id', input.spotterId)
-        // Every CAPTURED charge — superseded included (a renewed reward's old
-        // payment was a real charge on a real card), and a collected listing
-        // fee too: the spotter paid it with a card just the same.
-        .in('status', ['held', 'released', 'refunded', 'superseded', 'collected'])
-        .order('created_at', { ascending: false })
-        .limit(3);
+      // Every CAPTURED charge — superseded included (a renewed reward's old
+      // payment was a real charge on a real card), and a collected listing
+      // fee too: the spotter paid it with a card just the same.
+      const captured = ['held', 'released', 'refunded', 'superseded', 'collected'];
+      // ⚠️ TWO places a spotter's charges live. A listing the retention purges
+      // deleted (cancelled at 30 days; recovered at 12 months, 20261022100000)
+      // keeps its ledger rows DETACHED — post_id null, the owner in
+      // post_snapshot — so the join alone would let an old listing's card drop
+      // out of this check. Read both, newest three overall.
+      const [attached, detached] = await Promise.all([
+        admin
+          .from('payments')
+          .select('stripe_payment_intent_id, created_at, posts!inner(owner_id)')
+          .eq('posts.owner_id', input.spotterId)
+          .in('status', captured)
+          .order('created_at', { ascending: false })
+          .limit(3),
+        admin
+          .from('payments')
+          .select('stripe_payment_intent_id, created_at')
+          .is('post_id', null)
+          .eq('post_snapshot->>owner_id', input.spotterId)
+          .in('status', captured)
+          .order('created_at', { ascending: false })
+          .limit(3),
+      ]);
+      const spotterPaymentsError = attached.error ?? detached.error;
+      const spotterPayments = [...(attached.data ?? []), ...(detached.data ?? [])]
+        .sort((x, y) => String(y.created_at).localeCompare(String(x.created_at)))
+        .slice(0, 3);
       if (spotterPaymentsError) {
         console.error(
           '[payments] collusion spotter payments lookup failed',

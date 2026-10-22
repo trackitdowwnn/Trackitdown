@@ -363,6 +363,10 @@ const PRIVACY: LegalDocument = {
   // erased by the hourly sweep (20260921110000). The owner chose to keep
   // that behaviour and say so. It also names the device-change ledger
   // (device_links), which outlives deletion by design.
+  // Same day: "How long we keep it" states the retention rules
+  // 20261022100000 enforces — a closed listing's sighting locations and
+  // words at 90 days, recovered listings at 12 months, cancelled at 30 days
+  // (already true), and notification tokens unused for 9 months.
   slug: 'privacy',
   title: 'Privacy policy',
   lastUpdated: '22 October 2026',
@@ -462,8 +466,10 @@ const PRIVACY: LegalDocument = {
       heading: 'How long we keep it',
       body: [
         'A closed listing stays visible for 30 days after it closes, then leaves public view.',
-        'The detailed location history attached to a closed listing’s sightings is deleted after 90 days.',
+        'A cancelled listing is deleted 30 days after it closes. A recovered listing is deleted, with its sightings and photographs, 12 months after it closes, unless money on it is still being settled.',
+        '90 days after a listing closes, we delete where its sightings were taken — the exact location and the street name — and the notes spotters wrote with them, unless money on the listing is still being settled or was paid in the last six months. What a spotter writes when contesting a refund is kept with the payment records.',
         'Records of how the app is used are deleted after 90 days, and records of how far people got through the introduction after 180 days.',
+        'If a phone has not opened the app for 9 months, we delete its notification token.',
         'Payment records are kept for as long as financial and tax law requires, which is longer than the rest.',
         'Everything else is kept while your account exists.',
       ],

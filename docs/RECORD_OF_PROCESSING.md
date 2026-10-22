@@ -100,8 +100,9 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
 - **Recipients:** the public while active (recovered: 30 days more); watchers
   keep a minimal tombstone for 30 days; Supabase.
 - **Retention:** cancelled listings hard-deleted 30 days after closing (owner
-  warned at 27 days); **recovered listings are never deleted** — hidden after
-  30 days, kept while the account exists. The payments ledger keeps a
+  warned at 27 days); recovered (and expired) listings deleted 12 months
+  after closing, no warning (`purge_old_closed_posts`, 2026-10-22; never
+  while money moves). The payments ledger keeps a
   `post_snapshot` (incl. plate) indefinitely (4.11). On the device, an
   unfinished draft for up to 14 days.
 - **Security:** public read of `active` rows only; a theft from home is
@@ -136,11 +137,12 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
   columns are granted to no client role). The public sees, for the latest
   five, only time, district and a ~1 km point. No free text in any push or log
   (counts only).
-- **Retention:** photo GPS nulled 90 days after the post closes
-  (`purge_sighting_location_history`, run by the hourly sweep). **Everything
-  else — the photo, `area_label`, and all free text — is kept as long as the
-  sighting row** (OPEN, SECURITY_AND_TRUST §3). Rows go with the post or the
-  spotter's account (see §5, item 1).
+- **Retention:** 90 days after the post closes, photo GPS is nulled
+  (`purge_sighting_location_history`) and the street-level `area_label` and
+  all free text are cleared (`purge_closed_sighting_details`, 2026-10-22) —
+  never while money on the listing still moves. The photo and the
+  structured answers stay until the listing goes (12 months after a
+  recovery, 4.2) or the spotter's account does (§5, item 1).
 - **Security:** captured only at the moment of reporting, never in the
   background; ≥1 live capture required server-side; 3 per post per day;
   explicit column grants; hidden characters refused; free text unmoderated.
@@ -152,7 +154,7 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
 - **Purpose:** tell the owner a sighting was taken back.
 - **Basis:** *proposed:* contract.
 - **Recipients:** the owner, in the app; the push is a fixed sentence.
-- **Retention:** as long as the sighting row (OPEN — no purge).
+- **Retention:** cleared 90 days after the listing closes (with 4.4).
 
 ### 4.6 Verification, reputation and review flags
 - **Subjects:** spotters.
@@ -198,8 +200,11 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
 - **Basis:** consent.
 - **Recipients:** Expo, Apple, Google.
 - **Retention:** in-app notifications 90 days; `push_sends` 30 days;
-  `push_receipts` ≤24 h (opportunistic); push tokens until the device is gone
-  or the account is deleted (no janitor).
+  `push_receipts` ≤24 h (opportunistic); push tokens 270 days after the app
+  last registered them — every cold start — (`purge_stale_push_tokens`,
+  2026-10-22), or with the account. Trade-off: a phone idle that long and
+  then signed into a DIFFERENT account records no handset-switch link
+  (`device_links`, 4.13), since the old token row is gone.
 - **Security:** payloads carry ids only; visible text bounded (§5, item 2 on
   what it actually carries).
 
@@ -211,9 +216,11 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
 - **Basis:** contract; legal obligation (financial records); Art. 17(3)(b)/(e)
   for the snapshot kept after a post is deleted.
 - **Recipients:** Stripe (with the payer's email, for receipts).
-- **Retention:** "as long as financial and tax law requires" — **no period is
-  set**; ledger rows and snapshots are kept indefinitely; webhook ids have no
-  purge.
+- **Retention:** "as long as financial and tax law requires" — *proposed:*
+  6 years from the end of the financial year (the usual UK tax-records rule;
+  to confirm with the solicitor/accountant). Not enforced yet: no ledger row
+  is that old. Webhook dedup ids: 30 days (`purge_old_webhook_events`,
+  2026-10-22).
 - **Security:** amounts server-authoritative; signed webhooks; service-role or
   SECURITY DEFINER access only.
 
@@ -254,7 +261,9 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
   person.
 - **Basis:** *proposed:* legitimate interests (fair outcomes; fraud).
 - **Recipients:** operator; each party sees their own.
-- **Retention:** ON DELETE RESTRICT on the people; archived into the payments
+- **Retention:** kept past the 90-day sighting-notes rule on purpose — it is
+  evidence in a money decision (the privacy policy says so). ON DELETE
+  RESTRICT on the people; archived into the payments
   snapshot (statement included) indefinitely.
 
 ### 4.15 Moderation reports
@@ -311,21 +320,28 @@ so it is not mistaken for a decision already made.
    evidence on a live listing would mean anonymising instead — not built.
 2. ~~What a push carries~~ — **closed 2026-10-22** by the policy: it now
    names the sender's first name and a bounty's amount and date.
-3. **"Detailed location history … deleted after 90 days."** Only photo GPS is
-   nulled. The street-level `area_label`, the listing's last-seen point and
-   all free text stay.
-4. **Free text has no purge:** sighting notes, damage and missing-parts notes,
-   withdrawal notes, dispute statements.
+3. ~~"Detailed location history … deleted after 90 days"~~ — **closed
+   2026-10-22**: the street-level `area_label` and all sighting words now go
+   with the photo GPS at 90 days, and the policy says exactly that. The
+   listing's own last-seen point stays until the listing is deleted.
+4. **Free text:** sighting, damage, missing-parts and withdrawal notes —
+   **closed 2026-10-22** (cleared at 90 days; kept while a payment on the
+   listing is under 180 days old — chargebacks are not recorded, so the
+   age is the guard). Still kept, and the policy says so: refund-dispute
+   statements (money evidence, archived with the ledger). Messages go with
+   the listing.
 5. ~~Recipients and data missing from the policy~~ — **closed 2026-10-21**:
    Resend, Gmail, Apple/Google sign-in, Apple geocoding, Waze, telemetry and
    garage plates are named.
-6. **Purges depend on one clock.** The onboarding and telemetry purges now
-   run in the hourly sweep (2026-10-21), with the notification and 90-day GPS
-   purges — so if the sweep stops, all four stop silently.
+6. **Purges depend on one clock.** Every retention rule runs in the hourly
+   sweep (`release-held-refunds`) — so if the sweep stops, all of them stop
+   silently. `sweep_runs` records each run's counts; nothing alerts yet.
 7. ~~Bug-report screenshots outlive account deletion~~ — **closed
    2026-10-21**: delete-account sweeps `bug-screenshots`.
-8. **No retention period** for payment records, webhook ids, push tokens,
-   recovered listings, or the operator's emails.
+8. **Retention periods** — **closed 2026-10-22** for recovered listings (12
+   months), push tokens (270 days) and webhook ids (30 days). Still open:
+   payment records (*proposed* 6 years, 4.11) and the operator's inbox
+   (*proposed* 90 days for bug-report emails — a mailbox rule, not code).
 9. **Transfers:** no mechanism documented for any non-UK/EU recipient.
 10. **Criminal-offence data** (§3) — no Schedule 1 condition or policy
     document.
