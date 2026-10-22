@@ -115,10 +115,12 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
      photo, and why it can't be changed. **No Edit, no manual location
      editing** (`// SAFETY`: the capture point is the evidence). No fix: "No
      location on this report — your photos still help."
-   - **What you saw**: one row per answer in the contextLabels words
-     (`contextReviewRows`; the damage seen rides on the condition row, "About
-     the damage" is a row of its own), the marks and the note — each with its
-     own Edit to that step ("what it was doing" continues to its follow-up,
+   - **What you saw**: each answered question as the card(s) the spotter
+     tapped, in the chosen look (`contextReviewGroups` + `OptionCard`, owner,
+     2026-10-22), what it led to as a line on the card (the damage seen and
+     the parts in brackets on "Damage visible"); "About the damage" and
+     "About what's missing" as their words, the marks as photo rows, and the
+     note — each with its own Edit to that step ("what it was doing" continues to its follow-up,
      "its condition" to what damage while Damage visible is ticked), and one
      **Add details** to the first question still unanswered ("Nothing added"
      with an Add link when everything was skipped).

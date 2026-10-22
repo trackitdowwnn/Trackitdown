@@ -1,0 +1,57 @@
+/**
+ * WHAT:  The option card's look — the full-width card with an icon, a title
+ *        and a quiet line under it, a hairline border that turns `primary`
+ *        when chosen — as one style spec.
+ * WHY:   Three things draw this card: CardSelect (radio), CardSelectMulti
+ *        (checkbox) and OptionCard (read-only, for showing an answer back —
+ *        the report's check-and-send step, owner 2026-10-22: "the same and
+ *        the selection"). Each used to carry its own copy of these numbers;
+ *        one spec means the answer a spotter sees on review is pixel for
+ *        pixel the card they tapped, and a change to one is a change to all.
+ * LINKS: ./CardSelect.tsx, ./CardSelectMulti.tsx, ./OptionCard.tsx;
+ *        docs/DESIGN_SYSTEM.md (Cards).
+ */
+
+import { radii, sizes, spacing, typography, type Palette } from '../theme';
+
+/** Pass to StyleSheet.create, spread with any extra keys the caller needs. */
+export const optionCardStyleSpec = (c: Palette) =>
+  ({
+    group: {
+      gap: spacing.md,
+    },
+    card: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.lg,
+      minHeight: sizes.touchTarget + spacing.md,
+      paddingVertical: spacing.lg,
+      paddingHorizontal: spacing.lg,
+      borderRadius: radii.lg,
+      // Constant-width border (colour-only change on select) so nothing reflows.
+      borderWidth: sizes.selectBorder,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+    },
+    cardSelected: {
+      borderColor: c.primary,
+    },
+    cardPressed: {
+      backgroundColor: c.surfaceSubtle,
+    },
+    text: {
+      flex: 1,
+      gap: spacing.xs,
+    },
+    // Title in the cardTitle face (Bold) so it reads as the headline over the
+    // Regular subtext — selection is carried by the border + icon + checked
+    // state, so the title weight is constant (the theme has no 600).
+    label: {
+      ...typography.cardTitle,
+      color: c.textPrimary,
+    },
+    description: {
+      ...typography.caption,
+      color: c.textSecondary,
+    },
+  }) as const;

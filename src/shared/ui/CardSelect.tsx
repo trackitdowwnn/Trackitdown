@@ -23,15 +23,8 @@
 import type { LucideIcon } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import {
-  radii,
-  sizes,
-  spacing,
-  typography,
-  usePalette,
-  useThemedStyles,
-  type Palette,
-} from '../theme';
+import { sizes, usePalette, useThemedStyles, type Palette } from '../theme';
+import { optionCardStyleSpec } from './optionCardStyles';
 
 export interface CardSelectOption<V extends string = string> {
   value: V;
@@ -130,43 +123,5 @@ export function CardSelect<V extends string = string>({
   );
 }
 
-const makeStyles = (c: Palette) =>
-  StyleSheet.create({
-    group: {
-      gap: spacing.md,
-    },
-    card: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.lg,
-      minHeight: sizes.touchTarget + spacing.md,
-      paddingVertical: spacing.lg,
-      paddingHorizontal: spacing.lg,
-      borderRadius: radii.lg,
-      // Constant-width border (colour-only change on select) so nothing reflows.
-      borderWidth: sizes.selectBorder,
-      borderColor: c.border,
-      backgroundColor: c.surface,
-    },
-    cardSelected: {
-      borderColor: c.primary,
-    },
-    cardPressed: {
-      backgroundColor: c.surfaceSubtle,
-    },
-    text: {
-      flex: 1,
-      gap: spacing.xs,
-    },
-    // Title in the cardTitle face (Bold) so it reads as the headline over the
-    // Regular subtext — selection is carried by the border + icon + checked state,
-    // so the title weight is constant (no fontWeight nudge; the theme has no 600).
-    label: {
-      ...typography.cardTitle,
-      color: c.textPrimary,
-    },
-    description: {
-      ...typography.caption,
-      color: c.textSecondary,
-    },
-  });
+// The look is shared with CardSelectMulti and OptionCard (optionCardStyles).
+const makeStyles = (c: Palette) => StyleSheet.create(optionCardStyleSpec(c));
