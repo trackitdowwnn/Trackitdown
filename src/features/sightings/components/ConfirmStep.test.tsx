@@ -164,8 +164,24 @@ describe('ConfirmStep — sections and Edit links', () => {
       contextFlags: ['parked'],
       parkedLikelihood: 'settled',
     });
+    // One more line of the list: the question, then "Add" where an Edit goes.
+    const add = view.getByTestId('confirm-add');
+    expect(within(add).getByText('Anyone in or near it?')).toBeTruthy();
+    expect(within(add).getByText('Add')).toBeTruthy();
+    expect(view.queryByText('Add details')).toBeNull();
     await press(view.getByRole('button', { name: 'Add details: Anyone in or near it?' }));
     expect(editStep).toHaveBeenLastCalledWith('people');
+  });
+
+  it('offers "Anything else?" as the last line when there is no note yet', async () => {
+    const { view, editStep } = await renderConfirm({
+      photos: [live(0)],
+      contextFlags: ['being_loaded', 'looks_intact'],
+      peoplePresence: 'nobody',
+    });
+    expect(within(view.getByTestId('confirm-add')).getByText('Anything else?')).toBeTruthy();
+    await press(view.getByRole('button', { name: 'Add details: Anything else?' }));
+    expect(editStep).toHaveBeenLastCalledWith('note');
   });
 
   it('"Add details" reaches what damage once "Damage visible" is ticked', async () => {

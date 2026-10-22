@@ -125,8 +125,9 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
      note — each with its own Edit to that step ("what it was doing" continues to its follow-up,
      "its condition" to what damage while Damage visible is ticked, and on to
      which parts while Missing panels or parts is), and one
-     **Add details** to the first question still unanswered ("Nothing added"
-     with an Add link when everything was skipped).
+     more line for the first question still unanswered — the question, with
+     **Add** where an Edit goes ("Nothing added" with an Add link when
+     everything was skipped).
    - Above the CTA, the step's `footerNote`: "Only the owner sees your photos
      and the exact spot. They'll see your first name, not your contact
      details." (Strictly true: the public sees that a sighting happened.)

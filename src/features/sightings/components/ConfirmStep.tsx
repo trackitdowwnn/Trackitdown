@@ -11,8 +11,9 @@
  *            words, the marks and the note below.
  *        Photos, and each answer under What you saw, carry an Edit link that
  *        jumps to that step and comes back (the wizard's `editStep` spur:
- *        "Done" returns, Back cancels); one "Add details" opens the first
- *        question with nothing stored (one question per step, 2026-10-20). The privacy line sits above the button as the step's
+ *        "Done" returns, Back cancels); one line, the first question with
+ *        nothing stored and an "Add" beside it, opens that question (one
+ *        question per step, 2026-10-20). The privacy line sits above the button as the step's
  *        footerNote (REPORT_PRIVACY_LINE).
  * WHY:   Redesigned 2026-10-02 after research (GOV.UK check answers, NN/g
  *        error prevention and recognition over recall, Apple HIG, survey
@@ -399,8 +400,8 @@ export function ConfirmStep({ answers, editStep, busy = false }: StepProps) {
           "its condition" what damage, with "Damage visible" — and on to which
           parts, with "Missing panels or parts" (2026-10-21); "About the
           damage" and "About what's missing" open those steps themselves. Only
-          what was answered is listed (owner's pick); one "Add details" opens
-          the first question still unanswered, and again after that. */}
+          what was answered is listed (owner's pick); one "Add" line, the
+          first question still unanswered, opens it, and again after that. */}
       <ReviewSection title="What you saw">
         {groups.length > 0 ? (
           <View style={styles.answers}>
@@ -454,12 +455,22 @@ export function ConfirmStep({ answers, editStep, busy = false }: StepProps) {
               </View>
             ))}
             {editStep && nextToAdd ? (
-              <View style={styles.addRow}>
+              // The next open question as one more line of the list: its
+              // words where an answer's label goes, "Add" where its Edit goes
+              // (owner, 2026-10-22: a lone "Add details" link looked out of
+              // place under the cards).
+              <View
+                style={[styles.answerHeader, stackEdit && styles.answerHeaderStacked]}
+                testID="confirm-add"
+              >
+                <Text style={styles.answerLabel}>{CONTEXT_STEP_QUESTIONS[nextToAdd]}</Text>
                 <EditLink
-                  text="Add details"
+                  text="Add"
                   accessibilityLabel={`Add details: ${CONTEXT_STEP_QUESTIONS[nextToAdd]}`}
                   onPress={() => editStep(nextToAdd)}
                   disabled={busy}
+                  inline
+                  alignStart={stackEdit}
                 />
               </View>
             ) : null}
@@ -675,10 +686,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     ...typography.caption,
     color: c.textSecondary,
     flexShrink: 1,
-  },
-  addRow: {
-    alignItems: 'flex-start',
-    paddingTop: spacing.sm,
   },
   rowValue: {
     ...typography.body,
