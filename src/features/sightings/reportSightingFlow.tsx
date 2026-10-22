@@ -26,7 +26,7 @@ import { z } from 'zod';
 import { createLogger } from '@/shared/lib/logger';
 import type { WizardStep, WizardFlow } from '@/shared/wizard';
 
-import { ConfirmStep, REPORT_PRIVACY_LINE } from './components/ConfirmStep';
+import { ConfirmStep } from './components/ConfirmStep';
 import {
   ConditionStep,
   DamageStep,
@@ -264,9 +264,8 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
           id: 'confirm',
           question: 'Check and send',
           component: ConfirmStep,
-          // Who sees what, beside the commitment (one short true sentence;
-          // a long assurance reads as a warning).
-          footerNote: REPORT_PRIVACY_LINE,
+          // No line above the buttons (owner, 2026-10-22: removed the "Only the
+          // owner sees your photos…" subtext); who sees what is in the policy.
           // The final gate re-asserts the photo rule (incl. ≥1 live); send
           // itself is the screen's onComplete (submitSighting).
           schema: z.object({
