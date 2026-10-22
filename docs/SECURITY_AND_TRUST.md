@@ -337,6 +337,13 @@ commenting standards.
     backing store, findable by nothing. Order is load-bearing: storage FIRST, so
     a failed sweep aborts while everything is still retryable, rather than
     stranding personal data with no owner left to erase it.
+    - ⚠️ **Updated 2026-10-22 — a spotter's sightings and photos do NOT survive
+      their account.** The sightings cascade, and since 20260921110000 each
+      deleted `sighting_photos` row queues its file for the hourly sweep, so
+      the images are erased too. The owner chose to keep that and the privacy
+      policy now says so. The bullet below is the original (2026-08) reasoning
+      for not sweeping the bucket in delete-account; it no longer describes
+      the outcome.
     - **`sighting-photos` is deliberately EXCLUDED.** Those are uploaded by the
       spotter into `<postId>/<uid>/…` but are evidence on somebody ELSE's
       listing, possibly a live one. Sweeping them would let anyone delete their
