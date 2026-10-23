@@ -303,6 +303,33 @@ const DELETION_FALLBACK = "We couldn't delete your account. Please try again.";
  * button and still be refused. Telling them what to do is actionable; "try
  * again" would be a lie that never comes true.
  */
+/**
+ * "Download your data" (UK GDPR Art. 15/20, 2026-10-23): asks export-my-data
+ * for a copy of everything about the caller. It returns a 15-minute link to a
+ * JSON file — the same file again if one was made today — which the caller
+ * opens in the browser. Throws calm copy; never logs the link.
+ */
+export async function requestDataExport(): Promise<{ url: string; expiresAt: string }> {
+  const { data, error } = await supabase.functions.invoke('export-my-data');
+  if (error) {
+    log.warn('data export failed', { code: error.name });
+    throw new Error('We couldn’t put your data together. Please try again.');
+  }
+  const parsed = dataExportSchema.safeParse(data);
+  if (!parsed.success) {
+    log.warn('data export reply malformed');
+    throw new Error('We couldn’t put your data together. Please try again.');
+  }
+  log.info('data export ready', { reused: parsed.data.reused ?? false });
+  return { url: parsed.data.url, expiresAt: parsed.data.expiresAt };
+}
+
+const dataExportSchema = z.object({
+  url: z.url(),
+  expiresAt: z.string(),
+  reused: z.boolean().optional(),
+});
+
 export async function requestAccountDeletion(): Promise<void> {
   log.info('Account deletion requested');
   const { error } = await supabase.functions.invoke('delete-account');

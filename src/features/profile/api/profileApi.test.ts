@@ -22,6 +22,7 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 import {
   AccountDeletionError,
   fetchDeletionBlockers,
+  requestDataExport,
   requestAccountDeletion,
   signOut,
 } from './profileApi';
@@ -32,7 +33,7 @@ const mockAuthSignOut = jest.fn(async (_options?: unknown) => {
   calls.push('auth.signOut');
   return { error: null };
 });
-const mockInvoke = jest.fn(async () => ({ error: null }));
+const mockInvoke = jest.fn(async (): Promise<{ data?: unknown; error: unknown }> => ({ error: null }));
 const mockRpc = jest.fn(async (name: string): Promise<{ data: unknown; error: unknown }> => {
   calls.push(`rpc:${name}`);
   return { data: null, error: null };
@@ -139,6 +140,29 @@ describe('signOut', () => {
     await expect(signOut({ everywhere: true })).rejects.toThrow('PUSH_TOKENS_NOT_FORGOTTEN');
     expect(mockAuthSignOut).not.toHaveBeenCalled();
     expect(mockClearDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe('requestDataExport', () => {
+  it('returns the link the server made', async () => {
+    mockInvoke.mockResolvedValueOnce({
+      data: { url: 'https://files.example/x.json', expiresAt: '2026-10-23T12:15:00Z', reused: false },
+      error: null,
+    });
+    await expect(requestDataExport()).resolves.toEqual({
+      url: 'https://files.example/x.json',
+      expiresAt: '2026-10-23T12:15:00Z',
+    });
+  });
+
+  it('a server failure is a calm "try again"', async () => {
+    mockInvoke.mockResolvedValueOnce({ error: new Error('500') });
+    await expect(requestDataExport()).rejects.toThrow('We couldn’t put your data together');
+  });
+
+  it('a reply without a link is a failure, not an empty download', async () => {
+    mockInvoke.mockResolvedValueOnce({ data: { url: 'not a url' }, error: null });
+    await expect(requestDataExport()).rejects.toThrow('We couldn’t put your data together');
   });
 });
 
