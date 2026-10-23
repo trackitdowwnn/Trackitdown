@@ -419,6 +419,17 @@ commenting standards.
     anything still moves. Afterwards the Edge Function closes their payout
     account at Stripe (v2 close, else v1 delete) and emails the operator if
     that fails. Tested by `supabase/tests/account_deletion_verification.sql`.
+    - **Proof it's them, enforced at the server (2026-10-23).** A valid token
+      only proves the phone is signed in, so `delete-account` refuses
+      (`REAUTH_REQUIRED`) unless THIS session authenticated within 5 minutes —
+      read from the token's signed `amr` timestamps (`_shared/recentSignIn`,
+      fails closed; a refreshed token keeps its session's original time). The
+      app gets there with a 6-digit code to the user's own address
+      (`shouldCreateUser: false`) or, for an Apple account (relay addresses
+      don't receive our codes), an Apple re-sign-in. Checked before the
+      blockers, Stripe or anything irreversible. Caveat: the email-send budget
+      is 2 codes/hour, so someone who has just signed in by code may be told
+      "try again later".
     - **Recorded decision (2026-10-23, 20261023140000):** an owner's deletion
       now also takes down a LIVE listing that holds no reward money (free, an
       abandoned "add a reward", a lapsed reward), after the delete screen

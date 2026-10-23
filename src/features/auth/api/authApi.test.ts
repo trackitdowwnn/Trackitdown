@@ -19,6 +19,7 @@ import {
   hasProfile,
   isAppleWebSignInConfigured,
   requestEmailOtp,
+  sendIdentityCode,
   signInWithApple,
   signInWithAppleWeb,
   isGoogleSignInConfigured,
@@ -113,6 +114,26 @@ describe('requestEmailOtp', () => {
   it('maps other send errors to a generic retry', async () => {
     mockSignInWithOtp.mockResolvedValue({ error: { status: 500, code: 'unexpected' } });
     await expect(requestEmailOtp('jane@example.com')).rejects.toMatchObject({ code: 'OTP_SEND_FAILED' });
+  });
+});
+
+describe('sendIdentityCode', () => {
+  // ⚠️ Confirming identity must NEVER create an account — a typo'd or foreign
+  // address would otherwise get one.
+  it('sends to the signed-in address WITHOUT creating a user', async () => {
+    mockSignInWithOtp.mockResolvedValue({ error: null });
+    await sendIdentityCode(' jane@example.com ');
+    expect(mockSignInWithOtp).toHaveBeenCalledWith({
+      email: 'jane@example.com',
+      options: { shouldCreateUser: false },
+    });
+  });
+
+  it('maps a 429 to the rate-limit copy', async () => {
+    mockSignInWithOtp.mockResolvedValue({ error: { status: 429 } });
+    await expect(sendIdentityCode('jane@example.com')).rejects.toMatchObject({
+      code: 'OTP_RATE_LIMIT',
+    });
   });
 });
 
