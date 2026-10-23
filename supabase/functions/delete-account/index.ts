@@ -25,17 +25,20 @@
  *        only input is the caller's own JWT, so this function cannot be aimed
  *        at another user's account no matter what is sent.
  *
- * ORDER IS LOAD-BEARING — storage BEFORE auth.users:
- *        Storage objects do NOT cascade from auth.users (they are rows in the
- *        storage schema keyed by path, not by a FK). If the account were
- *        deleted first and the sweep then failed, the objects would be orphaned
- *        with no owner left to retry for — permanently undeletable personal
- *        data, i.e. exactly the GDPR breach this exists to prevent. Sweeping
- *        first inverts the failure: a sweep that fails aborts before anything
- *        irreversible, and a sweep that succeeds but is followed by a failed
- *        account delete leaves a live account the user can simply delete again
- *        (removing already-removed objects is a no-op). Every step is therefore
- *        safe to retry.
+ * ORDER IS LOAD-BEARING — checks, then data, then storage, then auth.users:
+ *        Everything that can REFUSE (blockers, the payout balance, the intent
+ *        proof) runs before anything is removed. delete_account_data is one
+ *        transaction: it either removes their listings and detaches them from
+ *        the money, or changes nothing. After it, the account still exists
+ *        but owns no listings — a failure from here on leaves an account they
+ *        can delete again, and a retry finds no blockers left.
+ *        Storage BEFORE auth.users: objects do NOT cascade from auth.users
+ *        (they are rows in the storage schema keyed by path, not by a FK). If
+ *        the account were deleted first and the sweep then failed, the objects
+ *        would be orphaned with no owner left to retry for — permanently
+ *        undeletable personal data. Sweeping first inverts that: a failed sweep
+ *        aborts before the account goes, and removing already-removed objects
+ *        on a retry is a no-op. Every step is therefore safe to retry.
  *
  * SAFETY: the sweep deletes through the STORAGE API, never by deleting rows
  *        from storage.objects. A direct row delete removes the DB record but
@@ -52,8 +55,10 @@
  *        docs/SECURITY_AND_TRUST.md §3; docs/DOMAIN.md (lifecycle).
  */
 
+import type Stripe from 'npm:stripe@22.4.0';
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { sendOpsAlert } from '../_shared/opsAlert.ts';
 
 // What blocks erasure lives in ONE place now: account_deletion_blockers_for
 // (20261023120000) — the app's delete screen reads the same definition through
@@ -149,7 +154,11 @@ Deno.serve(async (request) => {
   );
   if (blockersError) {
     console.error('[profile] blocker check failed', blockersError.message);
-    return errorResponse('LOOKUP_FAILED', 'We couldn’t delete your account. Please try again.', 500);
+    return errorResponse(
+      'LOOKUP_FAILED',
+      'We couldn’t delete your account. Please try again.',
+      500,
+    );
   }
   const firstBlocker = (blockers as { code: string }[] | null)?.[0]?.code;
   if (firstBlocker) {
@@ -169,7 +178,11 @@ Deno.serve(async (request) => {
     .maybeSingle();
   if (connectError) {
     console.error('[profile] connect lookup failed', connectError.message);
-    return errorResponse('LOOKUP_FAILED', 'We couldn’t delete your account. Please try again.', 500);
+    return errorResponse(
+      'LOOKUP_FAILED',
+      'We couldn’t delete your account. Please try again.',
+      500,
+    );
   }
   if (connect) {
     stripeAccountId = connect.stripe_account_id as string;
@@ -192,7 +205,11 @@ Deno.serve(async (request) => {
       const code = (err as { code?: string }).code;
       if (code !== 'account_invalid' && code !== 'resource_missing') {
         console.error('[profile] payout balance check failed', (err as Error).message);
-        return errorResponse('LOOKUP_FAILED', 'We couldn’t delete your account. Please try again.', 500);
+        return errorResponse(
+          'LOOKUP_FAILED',
+          'We couldn’t delete your account. Please try again.',
+          500,
+        );
       }
     }
   }
@@ -208,9 +225,16 @@ Deno.serve(async (request) => {
     .in('status', ['requires_payment', 'failed']);
   if (straysError) {
     console.error('[profile] stray-intent read failed', straysError.message);
-    return errorResponse('LOOKUP_FAILED', 'We couldn’t delete your account. Please try again.', 500);
+    return errorResponse(
+      'LOOKUP_FAILED',
+      'We couldn’t delete your account. Please try again.',
+      500,
+    );
   }
   const cancelled: string[] = [];
+  // Intents Stripe says MOVED money while our ledger still says it didn't —
+  // a missed webhook. The deletion refuses below; the operator must look.
+  const moved: string[] = [];
   for (const row of strays ?? []) {
     const intentId = row.stripe_payment_intent_id as string;
     try {
@@ -220,6 +244,9 @@ Deno.serve(async (request) => {
       try {
         const current = await stripe.paymentIntents.retrieve(intentId);
         if (current.status === 'canceled') cancelled.push(intentId);
+        else if (current.status === 'succeeded' || current.status === 'processing') {
+          moved.push(intentId);
+        }
       } catch (retrieveErr) {
         console.warn('[profile] intent state unknown', {
           message: (retrieveErr as Error).message,
@@ -249,6 +276,13 @@ Deno.serve(async (request) => {
       console.warn('[profile] deletion refused — an intent could not be proven cancelled', {
         cancelledCount: cancelled.length,
       });
+      if (moved.length > 0) {
+        await sendOpsAlert('Account deletion found a payment the ledger missed', [
+          `User: ${userId}`,
+          `Intents Stripe shows as succeeded/processing: ${moved.join(', ')}`,
+          'Their payments rows still say requires_payment/failed. Reconcile before they retry.',
+        ]);
+      }
       return errorResponse(
         'INTENT_NOT_CANCELLED',
         'A payment is still being processed. Please try again in a moment.',
@@ -256,7 +290,11 @@ Deno.serve(async (request) => {
       );
     }
     console.error('[profile] account data deletion failed', message);
-    return errorResponse('DELETE_FAILED', 'We couldn’t delete your account. Please try again.', 500);
+    return errorResponse(
+      'DELETE_FAILED',
+      'We couldn’t delete your account. Please try again.',
+      500,
+    );
   }
 
   // --- Sweep storage (BEFORE the account — see the ORDER note in the header) --
@@ -348,14 +386,16 @@ Deno.serve(async (request) => {
   // --- Close their payout account at Stripe (best effort) ---------------------
   // The balance was checked as zero above. Not fatal: the account is already
   // gone, and the audit row says whether this happened (RECORD_OF_PROCESSING
-  // §4.13) so a failure can be closed by hand.
+  // §4.12/§4.17) so a failure can be closed by hand — and the operator is
+  // emailed, because nobody reads that column unprompted.
   if (stripeAccountId) {
-    let closed = false;
-    try {
-      const result = await stripe.accounts.del(stripeAccountId);
-      closed = result.deleted === true;
-    } catch (err) {
-      console.error('[profile] payout account close failed', (err as Error).message);
+    const closed = await closePayoutAccount(stripe, stripeAccountId);
+    if (!closed) {
+      await sendOpsAlert('Payout account not closed after an account deletion', [
+        `Stripe account: ${stripeAccountId}`,
+        `Deleted user: ${userId}`,
+        'The person is gone; close this connected account by hand in the Dashboard.',
+      ]);
     }
     if (audit?.id) {
       const { error: closeAuditError } = await admin
@@ -372,6 +412,29 @@ Deno.serve(async (request) => {
   console.log('[profile] account erased', { userId, removedCount });
   return jsonResponse({ deleted: true, storageObjectsRemoved: removedCount });
 });
+
+/**
+ * Close a payout account. Today's are Accounts v2 (create-payout-account), which
+ * close through the v2 endpoint with their configuration named; older ones are
+ * v1 Express and are deleted instead. True only when Stripe confirmed it.
+ */
+async function closePayoutAccount(stripe: Stripe, accountId: string): Promise<boolean> {
+  try {
+    await stripe.v2.core.accounts.close(accountId, { applied_configurations: ['recipient'] });
+    return true;
+  } catch (v2Err) {
+    try {
+      const result = await stripe.accounts.del(accountId);
+      return result.deleted === true;
+    } catch (v1Err) {
+      console.error('[profile] payout account close failed', {
+        v2: (v2Err as Error).message,
+        v1: (v1Err as Error).message,
+      });
+      return false;
+    }
+  }
+}
 
 /** A reason it can't go yet (account_deletion_blockers_for's codes, plus
  *  PAYOUT_ON_ITS_WAY): 409 with the code the app maps to its own words. */

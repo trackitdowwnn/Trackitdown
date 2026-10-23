@@ -10,11 +10,13 @@
 -- settled dispute and review, and a stray unpaid draft: deleted; ledger rows
 -- survive detached with a post_snapshot; the proved stray is gone · 2 ⚠️ a
 -- SPOTTER paid a reward, with a settled review and dispute on someone else's
--- listing: deleted; the payment keeps the record (payee_snapshot), the review
--- and dispute stay anonymised, the other owner's listing is untouched ·
+-- listing: deleted; their sightings go in the data step itself; the payment
+-- keeps the record (payee_snapshot), the review and dispute stay anonymised
+-- (statement cleared), the other owner's listing is untouched ·
 -- 3 each blocker — LIVE_LISTING, MONEY_HELD, REWARD_ON_ITS_WAY, DISPUTE_OPEN,
 -- REVIEW_OPEN — named by account_deletion_blockers() for the caller and
--- refused by delete_account_data · 4 an unproven stray intent refuses
+-- refused by delete_account_data; 3f ⚠️ an UPHELD (settled) dispute blocks
+-- neither side · 4 an unproven stray intent refuses
 -- (INTENT_NOT_CANCELLED) · 5 who may call what.
 -- HOW:   Self-asserting, RAISE on failure (CI's db job). Each check seeds its
 --        own users and rows inside begin…rollback; nothing persists. The auth
@@ -127,9 +129,9 @@ values ('ad000001-0000-0000-0000-00000000000c', 'pi_acctdel_4', 'released', 2500
 insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable)
 values ('ad000002-0000-0000-0000-00000000000c', 'ad000001-0000-0000-0000-00000000000c',
         'ad000000-0000-0000-0000-00000000000b', 'unverified', 'Ancoats', true);
-insert into public.refund_disputes (post_id, sighting_id, spotter_id, status, resolved_at)
+insert into public.refund_disputes (post_id, sighting_id, spotter_id, status, resolved_at, statement)
 values ('ad000001-0000-0000-0000-00000000000c', 'ad000002-0000-0000-0000-00000000000c',
-        'ad000000-0000-0000-0000-00000000000b', 'rejected', now());
+        'ad000000-0000-0000-0000-00000000000b', 'rejected', now(), 'I saw it on Great Ancoats St');
 insert into public.payout_reviews (post_id, owner_id, spotter_id, reasons, resolution, resolved_at)
 values ('ad000001-0000-0000-0000-00000000000c', 'ad000000-0000-0000-0000-00000000000c',
         'ad000000-0000-0000-0000-00000000000b', array['shared_device'], 'approved', now());
@@ -139,6 +141,14 @@ declare
   v_summary jsonb;
 begin
   v_summary := public.delete_account_data('ad000000-0000-0000-0000-00000000000b', '{}');
+
+  -- Their sightings go IN the data step, not later with the auth row — so no
+  -- owner can credit one in between (security review H2).
+  if exists (select 1 from public.sightings where spotter_id = 'ad000000-0000-0000-0000-00000000000b')
+     or (v_summary ->> 'sightings_deleted')::int <> 1 then
+    raise exception 'CHECK 2 FAILED: the spotter''s sightings outlived the data step: %', v_summary;
+  end if;
+
   delete from auth.users where id = 'ad000000-0000-0000-0000-00000000000b';
 
   if exists (select 1 from public.stripe_connected_accounts where id = 'ad000003-0000-0000-0000-00000000000b') then
@@ -160,9 +170,11 @@ begin
                   where post_id = 'ad000001-0000-0000-0000-00000000000c' and spotter_id is null) then
     raise exception 'CHECK 2 FAILED: the settled review on X''s listing was lost or kept the spotter';
   end if;
+  -- …and without their words, marked told so nothing tries to tell them.
   if not exists (select 1 from public.refund_disputes
                   where post_id = 'ad000001-0000-0000-0000-00000000000c'
-                    and spotter_id is null and sighting_id is null) then
+                    and spotter_id is null and sighting_id is null
+                    and statement is null and outcome_notified_at is not null) then
     raise exception 'CHECK 2 FAILED: the settled dispute on X''s listing was lost or kept the spotter';
   end if;
   if not exists (select 1 from public.posts where id = 'ad000001-0000-0000-0000-00000000000c') then
@@ -219,17 +231,16 @@ values ('ad000001-0000-0000-0000-0000000000d2', 'pi_acctdel_d2', 'held', 25000, 
 select pg_temp.expect_blocked('ad000000-0000-0000-0000-0000000000d2', 'MONEY_HELD');
 rollback;
 
--- 3c REWARD_ON_ITS_WAY (a payment to their payout account not yet released)
+-- 3c REWARD_ON_ITS_WAY (their sighting credited on someone else's listing,
+-- whose payout hasn't happened yet)
 begin;
 select pg_temp.make_user('ad000000-0000-0000-0000-0000000000d3');
 select pg_temp.make_user('ad000000-0000-0000-0000-0000000000c3');
 insert into public.posts (id, owner_id, status, bounty_amount_pence, plate)
-values ('ad000001-0000-0000-0000-0000000000c3', 'ad000000-0000-0000-0000-0000000000c3', 'cancelled', 25000, 'AD3C RWD');
-insert into public.stripe_connected_accounts (id, profile_id, stripe_account_id, onboarding_complete, payouts_enabled)
-values ('ad000003-0000-0000-0000-0000000000d3', 'ad000000-0000-0000-0000-0000000000d3', 'acct_acctdel_d3', true, true);
-insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, kind, payee_account_id)
-values ('ad000001-0000-0000-0000-0000000000c3', 'pi_acctdel_d3', 'held', 25000, 'bounty_escrow',
-        'ad000003-0000-0000-0000-0000000000d3');
+values ('ad000001-0000-0000-0000-0000000000c3', 'ad000000-0000-0000-0000-0000000000c3', 'recovery_claimed', 25000, 'AD3C RWD');
+insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable)
+values ('ad000002-0000-0000-0000-0000000000d3', 'ad000001-0000-0000-0000-0000000000c3',
+        'ad000000-0000-0000-0000-0000000000d3', 'credited', 'Ancoats', true);
 select pg_temp.expect_blocked('ad000000-0000-0000-0000-0000000000d3', 'REWARD_ON_ITS_WAY');
 rollback;
 
@@ -258,6 +269,46 @@ insert into public.payout_reviews (post_id, owner_id, spotter_id, reasons)
 values ('ad000001-0000-0000-0000-0000000000c5', 'ad000000-0000-0000-0000-0000000000c5',
         'ad000000-0000-0000-0000-0000000000d5', array['shared_device']);
 select pg_temp.expect_blocked('ad000000-0000-0000-0000-0000000000d5', 'REVIEW_OPEN');
+rollback;
+
+-- 3f an UPHELD dispute is settled, not open: it never blocks (security review
+-- H1 — 'upheld' is final, so counting it blocked both sides for ever). The
+-- owner (U) and the spotter (V) on U's expired listing can each go.
+begin;
+select pg_temp.make_user('ad000000-0000-0000-0000-0000000000f1'); -- owner U
+select pg_temp.make_user('ad000000-0000-0000-0000-0000000000f2'); -- spotter V
+insert into public.posts (id, owner_id, status, bounty_amount_pence, plate)
+values ('ad000001-0000-0000-0000-0000000000f1', 'ad000000-0000-0000-0000-0000000000f1', 'expired', 25000, 'AD3F UPH');
+insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, kind)
+values ('ad000001-0000-0000-0000-0000000000f1', 'pi_acctdel_f1', 'refunded', 25000, 'bounty_escrow');
+insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable)
+values ('ad000002-0000-0000-0000-0000000000f2', 'ad000001-0000-0000-0000-0000000000f1',
+        'ad000000-0000-0000-0000-0000000000f2', 'unverified', 'Ancoats', true);
+insert into public.refund_disputes (post_id, sighting_id, spotter_id, status, resolved_at)
+values ('ad000001-0000-0000-0000-0000000000f1', 'ad000002-0000-0000-0000-0000000000f2',
+        'ad000000-0000-0000-0000-0000000000f2', 'upheld', now());
+do $$
+begin
+  -- The spotter first: the settled dispute stays on U's listing, anonymised.
+  if jsonb_array_length(public.account_deletion_blockers_for('ad000000-0000-0000-0000-0000000000f2')) <> 0 then
+    raise exception 'CHECK 3f FAILED: an upheld dispute blocked its spotter: %',
+      public.account_deletion_blockers_for('ad000000-0000-0000-0000-0000000000f2');
+  end if;
+  perform public.delete_account_data('ad000000-0000-0000-0000-0000000000f2', '{}');
+  if not exists (select 1 from public.refund_disputes
+                  where post_id = 'ad000001-0000-0000-0000-0000000000f1'
+                    and status = 'upheld' and spotter_id is null) then
+    raise exception 'CHECK 3f FAILED: the upheld dispute was lost or kept its spotter';
+  end if;
+
+  -- Then the owner: the listing's own guard lets a settled dispute through
+  -- too, and the dispute rides into the ledger snapshot.
+  perform public.delete_account_data('ad000000-0000-0000-0000-0000000000f1', '{}');
+  if (select post_snapshot -> 'refund_disputes' -> 0 ->> 'status' from public.payments
+       where stripe_payment_intent_id = 'pi_acctdel_f1') is distinct from 'upheld' then
+    raise exception 'CHECK 3f FAILED: the owner''s upheld dispute was not archived into the snapshot';
+  end if;
+end $$;
 rollback;
 
 -- -----------------------------------------------------------------------------

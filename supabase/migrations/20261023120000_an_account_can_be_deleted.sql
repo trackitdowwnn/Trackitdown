@@ -35,10 +35,12 @@
 --        (20260921100000) already does for one listing.
 --
 --        ⚠️ delete_post_for_account is delete_old_closed_post (20261022100000)
---        BYTE FOR BYTE except the block marked "NEW 20261023120000": instead of
---        "recovered/expired and a year old", it takes ANY status but a live
---        one. Diff it against that function; the money guards, the proof of
---        dead intents and the afterlife are deliberately identical.
+--        BYTE FOR BYTE except the two blocks marked "NEW 20261023120000":
+--        (1) instead of "recovered/expired and a year old", it takes ANY
+--        status but a live one; (2) only an 'open' dispute refuses — 'upheld'
+--        is final, so the original guard would refuse a settled listing for
+--        ever. Diff it against that function; the other money guards, the
+--        proof of dead intents and the afterlife are deliberately identical.
 --
 --        Only the three spotter-side columns become NULLABLE (FKs unchanged):
 --        a settled review/dispute on someone else's listing is that owner's
@@ -62,7 +64,7 @@ comment on column public.payments.payee_snapshot is
   'Set when the payee''s account is deleted (20261023120000): {stripe_account_id, detached_at}. payee_account_id is then NULL. Keeps money-out records reconcilable with no live link to a person.';
 
 -- Whether their payout account was closed at Stripe after the deletion (null:
--- they had none; false: closing failed — RECORD_OF_PROCESSING §4.13).
+-- they had none; false: closing failed — RECORD_OF_PROCESSING §4.17).
 alter table public.account_deletions add column if not exists stripe_account_closed boolean;
 
 -- Settled records on someone else's listing outlive the spotter, anonymised.
@@ -99,25 +101,26 @@ as $$
           where owner_id = p_user_id and expires_at > now())
     )::int
     union all
-    -- A reward owed TO them: credited on a listing whose payout is pending,
-    -- or a payment to their payout account not yet released.
-    select 3, 'REWARD_ON_ITS_WAY', (
-      (select count(*) from public.sightings s
-         join public.posts po on po.id = s.post_id
-        where s.spotter_id = p_user_id
-          and s.credited_at is not null
-          and po.status = 'recovery_claimed')
-      + (select count(*) from public.payments pay
-           join public.stripe_connected_accounts sca on sca.id = pay.payee_account_id
-          where sca.profile_id = p_user_id
-            and pay.status = 'held')
-    )::int
+    -- A reward owed TO them: their sighting is credited on a listing whose
+    -- payout hasn't happened yet (payout_awaiting_payee's own test). The
+    -- payee is only stamped on a payment as it's RELEASED, so there is no
+    -- "held payment to them" state to look for (security review).
+    select 3, 'REWARD_ON_ITS_WAY', count(*)::int
+      from public.sightings s
+      join public.posts po on po.id = s.post_id
+     where s.spotter_id = p_user_id
+       and s.status = 'credited'
+       and po.status = 'recovery_claimed'
     union all
-    -- A dispute still being decided, on their listing or by them.
+    -- A dispute still being decided, on their listing or by them. ONLY
+    -- 'open': 'upheld' is final (nothing moves a dispute on from it), so
+    -- counting it blocked anyone who ever won or lost one for ever (security
+    -- review H1). An upheld dispute whose money still moves is caught above
+    -- (LIVE_LISTING / MONEY_HELD / REWARD_ON_ITS_WAY).
     select 4, 'DISPUTE_OPEN', count(*)::int
       from public.refund_disputes d
       left join public.posts po on po.id = d.post_id
-     where d.status in ('open', 'upheld')
+     where d.status = 'open'
        and (d.spotter_id = p_user_id or po.owner_id = p_user_id)
     union all
     -- A payout review not yet resolved, either side.
@@ -222,10 +225,13 @@ begin
     raise exception 'MONEY_IN_FLIGHT';
   end if;
 
+  -- NEW 20261023120000 (2 of 2) — 'open' only, not ('open', 'upheld'):
+  -- 'upheld' is final, so the original guard would refuse a settled listing
+  -- for ever (security review H1). Money still moving is refused above.
   if exists (
     select 1 from public.refund_disputes
     where post_id = p_post_id
-      and status in ('open', 'upheld')
+      and status = 'open'
   ) then
     raise exception 'DISPUTE_OPEN';
   end if;
@@ -339,6 +345,7 @@ declare
   v_payee      integer := 0;
   v_reviews    integer := 0;
   v_disputes   integer := 0;
+  v_sightings  integer := 0;
 begin
   if p_user_id is null then
     raise exception 'NOT_AUTHENTICATED';
@@ -347,6 +354,19 @@ begin
   -- One deletion per account at a time: a double tap, or two devices, must
   -- not interleave.
   perform pg_advisory_xact_lock(hashtextextended('delete_account:' || p_user_id::text, 0));
+
+  -- Every OTHER listing they have a sighting on, locked before the blockers
+  -- are read: claim_recovery locks the post FOR UPDATE before it credits, so
+  -- an owner can't credit their sighting between the REWARD_ON_ITS_WAY check
+  -- and the sightings delete at the end (security review H2). A credit that
+  -- got in first is seen by the check; one that comes after finds no sighting.
+  perform 1
+     from public.posts po
+    where po.owner_id <> p_user_id
+      and exists (select 1 from public.sightings s
+                   where s.post_id = po.id and s.spotter_id = p_user_id)
+    order by po.id
+    for update;
 
   -- The same reasons the app showed — re-checked here, where it counts.
   v_blockers := public.account_deletion_blockers_for(p_user_id);
@@ -378,23 +398,33 @@ begin
   -- Settled reviews and disputes on OTHER people's listings: the owner's
   -- record stays, anonymised. (Open ones were refused above; ones on their
   -- own listings went with those listings.) The sighting goes with the
-  -- account, so its link is cleared here or it would veto the cascade.
+  -- account, so its link is cleared here or it would veto the cascade. The
+  -- statement is their own words, so it goes too; the outcome is marked
+  -- notified so nothing tries to tell a person who no longer exists.
   update public.payout_reviews
      set spotter_id = null
    where spotter_id = p_user_id;
   get diagnostics v_reviews = row_count;
 
   update public.refund_disputes
-     set spotter_id  = null,
-         sighting_id = null
+     set spotter_id          = null,
+         sighting_id         = null,
+         statement           = null,
+         outcome_notified_at = coalesce(outcome_notified_at, now())
    where spotter_id = p_user_id;
   get diagnostics v_disputes = row_count;
+
+  -- Their sightings on other listings, NOW, in this transaction — not later
+  -- by the auth cascade — while those listings are still locked (above).
+  delete from public.sightings where spotter_id = p_user_id;
+  get diagnostics v_sightings = row_count;
 
   return jsonb_build_object(
     'posts_deleted',       v_posts,
     'payments_detached',   v_payee,
     'reviews_anonymised',  v_reviews,
-    'disputes_anonymised', v_disputes
+    'disputes_anonymised', v_disputes,
+    'sightings_deleted',   v_sightings
   );
 end;
 $$;
