@@ -29,6 +29,8 @@ export type Row = Record<string, unknown>;
 export interface DataExportRaw {
   /** From auth — the address they sign in with. */
   email: string | null;
+  /** From auth — how they sign in (providers, phone, last sign-in). */
+  signIn: Row | null;
   profile: Row | null;
   avatarUrl: string | null;
   posts: Row[];
@@ -163,7 +165,9 @@ export function buildDataExport(raw: DataExportRaw, userId: string, now: Date): 
   const featuresByPost = byKey(raw.postFeatures, 'post_id');
   const distinctiveByPost = byKey(raw.postDistinctive, 'post_id');
   const othersSightingsByPost = byKey(
-    raw.sightingsOnMyListings.filter((s) => s.spotter_id !== userId),
+    // Backstop to the gather's filter: never their own spotting, never a
+    // report the spotter withdrew (it left the owner's list — DOMAIN.md).
+    raw.sightingsOnMyListings.filter((s) => s.spotter_id !== userId && s.status !== 'withdrawn'),
     'post_id',
   );
   const photosByVehicle = byKey(raw.vehiclePhotos, 'vehicle_id');
@@ -179,17 +183,21 @@ export function buildDataExport(raw: DataExportRaw, userId: string, now: Date): 
       what_this_is:
         'A copy of the personal data Trackitdown holds about you, as of the time above.',
       not_included: [
-        'Card details — held by our payment partner, never by us.',
-        'Other people’s personal data — in chats and on sightings of your listings they appear as "other person".',
-        'Internal fraud and safety checks, and anonymous app usage statistics.',
+        'Card details, and the identity and bank details you gave for payouts — held by our payment partner, never by us. Ask them for a copy.',
+        'Other people’s identities — in chats and on sightings of your listings they appear as "other person". (Their messages to you are included, as part of your conversations.)',
+        'Internal fraud and safety checks (withheld to prevent crime), and anonymous app usage statistics.',
+        'The documents you uploaded to verify a listing — ask support for copies.',
         'Device push tokens (only which devices are registered).',
       ],
+      your_rights:
+        'Why we use your data, who we share it with, how long we keep it and your rights: Profile → Support & legal → Privacy policy.',
       photos:
         'Photos are links. Links to private photos stop working after 24 hours — download again for fresh ones.',
       delete_your_account: 'Profile → Danger zone → Delete account.',
     },
     account: {
       email: raw.email,
+      sign_in: pick(raw.signIn, ['providers', 'phone', 'account_created_at', 'last_sign_in_at']),
       ...pick(raw.profile, [
         'first_name',
         'display_name',
@@ -249,12 +257,14 @@ export function buildDataExport(raw: DataExportRaw, userId: string, now: Date): 
       // Which side they were on — never the other person's id.
       you_are: thread.owner_id === userId ? 'owner' : 'spotter',
       started_at: thread.created_at ?? null,
-      messages: (messagesByThread.get(thread.id) ?? []).map((message) => ({
-        from: message.sender_id === userId ? 'you' : 'other person',
-        kind: message.kind ?? null,
-        text: message.content ?? null,
-        sent_at: message.created_at ?? null,
-      })),
+      messages: [...(messagesByThread.get(thread.id) ?? [])]
+        .sort((a, b) => String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')))
+        .map((message) => ({
+          from: message.sender_id === userId ? 'you' : 'other person',
+          kind: message.kind ?? null,
+          text: message.content ?? null,
+          sent_at: message.created_at ?? null,
+        })),
     })),
     watchlist: {
       collections: picks(raw.watchlistCollections, ['id', 'name', 'created_at']),
@@ -290,6 +300,7 @@ export function buildDataExport(raw: DataExportRaw, userId: string, now: Date): 
     ]),
     payments: picks(raw.payments, [
       'role',
+      'listing',
       'kind',
       'status',
       'amount_pence',
@@ -347,6 +358,7 @@ export function buildDataExport(raw: DataExportRaw, userId: string, now: Date): 
         'platform',
         'os_version',
         'device_model',
+        'breadcrumbs',
         'created_at',
       ]),
       screenshots: raw.bugScreenshotUrls[String(report.id)] ?? [],

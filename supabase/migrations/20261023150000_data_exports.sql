@@ -68,17 +68,30 @@ begin
     raise exception 'INVALID_INPUT';
   end if;
 
+  -- Recorded files past 24h — plus any OLD file in the bucket no live request
+  -- row names (id null): one uploaded as its account was being deleted (the
+  -- row cascaded away), or whose rollback failed. Otherwise those would hold a
+  -- whole person's data for ever (security review of #270).
   return query
-    select r.id, r.object_path
-      from public.data_export_requests r
-     where r.deleted_at is null
-       and r.created_at < now() - interval '24 hours'
-     order by r.created_at
-     limit p_limit;
+    (select r.id, r.object_path
+       from public.data_export_requests r
+      where r.deleted_at is null
+        and r.created_at < now() - interval '24 hours'
+      order by r.created_at
+      limit p_limit)
+    union all
+    (select null::uuid, o.name
+       from storage.objects o
+      where o.bucket_id = 'data-exports'
+        and o.created_at < now() - interval '25 hours'
+        and not exists (select 1 from public.data_export_requests r
+                         where r.object_path = o.name and r.deleted_at is null)
+      order by o.created_at
+      limit p_limit);
 end $$;
 
 comment on function public.claim_expired_data_exports(integer) is
-  'Export files older than 24h not yet removed, oldest first. Read-only — the caller removes the objects through the Storage API, then calls forget_data_export. SERVICE ROLE ONLY.';
+  'Export files to remove, oldest first: recorded ones past 24h, and stray files past 25h that no live request names (id null). Read-only — the caller removes the objects through the Storage API, then calls forget_data_export with the non-null ids. SERVICE ROLE ONLY.';
 
 -- ⚠️ Separate from the claim on purpose (as forget_orphaned_photos): marking
 -- at claim time would lose a file whose removal then failed.

@@ -18,6 +18,7 @@ const NOW = new Date('2026-10-23T12:00:00Z');
 function raw(over: Partial<DataExportRaw> = {}): DataExportRaw {
   return {
     email: 'alice@example.com',
+    signIn: { providers: ['email'], phone: null, last_sign_in_at: '2026-10-23' },
     profile: { id: A, first_name: 'Alice', display_name: 'Alice A', created_at: '2026-01-01' },
     avatarUrl: 'https://cdn/avatars/a.jpg',
     posts: [
@@ -168,6 +169,40 @@ describe('buildDataExport', () => {
     expect(sighting).not.toHaveProperty('spotter_id');
     expect(sighting).not.toHaveProperty('note');
     expect(sighting).not.toHaveProperty('id');
+  });
+
+  // ⚠️ A report the spotter took back left the owner's list — it mustn't
+  // come back in their export.
+  it('a withdrawn sighting on their listing is left out', () => {
+    const out = buildDataExport(
+      raw({
+        sightingsOnMyListings: [
+          { post_id: 'post-a', spotter_id: B, area_label: 'Withdrawn place', status: 'withdrawn' },
+        ],
+      }),
+      A,
+      NOW,
+    );
+    expect(JSON.stringify(out)).not.toContain('Withdrawn place');
+  });
+
+  it('a deleted listing’s payment still says which car it was', () => {
+    const out = buildDataExport(
+      raw({
+        payments: [
+          {
+            role: 'paid',
+            kind: 'listing_fee',
+            amount_pence: 500,
+            listing: { plate: 'OLD 1', make: 'VW', model: 'Golf' },
+          },
+        ],
+      }),
+      A,
+      NOW,
+    ) as { payments: { listing: unknown }[]; account: { sign_in: unknown } };
+    expect(out.payments[0].listing).toEqual({ plate: 'OLD 1', make: 'VW', model: 'Golf' });
+    expect(out.account.sign_in).toEqual(expect.objectContaining({ providers: ['email'] }));
   });
 
   it('their own sightings keep their own notes and photos', () => {

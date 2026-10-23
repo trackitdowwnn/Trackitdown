@@ -333,7 +333,12 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
 - **Retention:** the file 24 hours (removed by the hourly sweep), and with the
   account if it is deleted first; the request row with the account.
 - **Security:** service-role only (no storage policy, RLS on the log); never
-  logged (URL, payload, email).
+  logged (URL, payload, email). Every list is read in pages (never a silently
+  cut-down file); stray files no request names are swept after 25h.
+- **Withheld, and why:** internal fraud signals (`payout_reviews`,
+  `device_links`, review flags) — DPA 2018 Sch. 2 para 2 (prevention of crime);
+  other people's identities — Art. 15(4). Their messages within the user's
+  own conversations ARE included (owner's decision, 2026-10-23).
 
 ## 5. Known gaps — where the code, the policy and this record disagree
 

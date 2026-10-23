@@ -53,20 +53,51 @@ do $$
 declare
   v_ids uuid[];
 begin
-  select array_agg(id) into v_ids from public.claim_expired_data_exports(100)
-   where id::text like 'de000000-%';
+  select array_agg(c.id) into v_ids from public.claim_expired_data_exports(100) c
+   where c.id::text like 'de000000-%';
   if v_ids is distinct from array['de000000-0000-0000-0000-000000000001'::uuid] then
     raise exception 'CHECK 3 FAILED: claim should return only the >24h, undeleted file, got %', v_ids;
   end if;
 
   perform public.forget_data_export(v_ids);
-  if exists (select 1 from public.claim_expired_data_exports(100) where id = v_ids[1]) then
+  if exists (select 1 from public.claim_expired_data_exports(100) c where c.id = v_ids[1]) then
     raise exception 'CHECK 3 FAILED: a forgotten file was claimed again';
   end if;
   if (select deleted_at from public.data_export_requests where id = v_ids[1]) is null then
     raise exception 'CHECK 3 FAILED: forget did not mark the file removed';
   end if;
 end $$;
+rollback;
+
+-- 3b — ⚠️ a stray file (no live request names it) is claimed once old, with no
+-- id; a young one is not. And a signed-in user can't see either.
+begin;
+insert into storage.objects (bucket_id, name, created_at)
+values ('data-exports', '1111/stray.json', now() - interval '26 hours'),
+       ('data-exports', '1111/young-stray.json', now() - interval '1 hour');
+
+do $$
+begin
+  if not exists (select 1 from public.claim_expired_data_exports(100) c
+                  where c.id is null and c.object_path = '1111/stray.json') then
+    raise exception 'CHECK 3b FAILED: an old stray export file was not claimed';
+  end if;
+  if exists (select 1 from public.claim_expired_data_exports(100) c
+              where c.object_path = '1111/young-stray.json') then
+    raise exception 'CHECK 3b FAILED: a young file was claimed';
+  end if;
+end $$;
+
+select set_config('request.jwt.claims',
+  '{"sub": "11111111-1111-1111-1111-111111111111", "role": "authenticated"}', true);
+set local role authenticated;
+do $$
+begin
+  if exists (select 1 from storage.objects where bucket_id = 'data-exports') then
+    raise exception 'CHECK 1 FAILED: a signed-in user can see data-exports objects';
+  end if;
+end $$;
+reset role;
 rollback;
 
 -- 4 — points: their own, nobody else's.

@@ -297,7 +297,9 @@ Deno.serve(async (request) => {
     if (exportClaimError) {
       console.error('[storage] export claim failed', exportClaimError.message);
     } else {
-      const rows = (expired ?? []) as { id: string; object_path: string }[];
+      // id is null for a stray file no request row names — removed, nothing
+      // to mark.
+      const rows = (expired ?? []) as { id: string | null; object_path: string }[];
       if (rows.length > 0) {
         const { error: removeError } = await admin.storage
           .from('data-exports')
@@ -307,7 +309,7 @@ Deno.serve(async (request) => {
           console.error('[storage] export remove failed', removeError.message);
         } else {
           const { error: forgetError } = await admin.rpc('forget_data_export', {
-            p_ids: rows.map((row) => row.id),
+            p_ids: rows.map((row) => row.id).filter((id): id is string => id !== null),
           });
           if (forgetError) {
             console.error('[storage] export forget failed', forgetError.message);

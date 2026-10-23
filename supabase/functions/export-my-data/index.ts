@@ -1,7 +1,7 @@
 /**
  * WHAT:  Edge Function behind Profile's "Download your data" (UK GDPR Art. 15
  *        access / Art. 20 portability). Proves the caller from the JWT, then:
- *          1. a file made in the last 24 hours that still exists? Re-sign
+ *          1. a file made in the last 22 hours that still exists? Re-sign
  *             THAT (a lost link costs nothing; one build a day);
  *          2. otherwise gather every row about them with the service role,
  *             build the export (_shared/dataExport — what goes in, and what
@@ -15,8 +15,12 @@
  *        else. ⚠️ Every query below is filtered by that user id — the service
  *        role reads past RLS, so the filter IS the access control.
  *
- *        ANY gather error fails the whole export (EXPORT_FAILED): a file that
- *        silently lacks a section would tell someone we hold less than we do.
+ *        NEVER A PARTIAL FILE. Any gather error fails the whole export
+ *        (EXPORT_FAILED), and every list is read in pages until a short page
+ *        comes back — PostgREST caps a response at 1,000 rows even for the
+ *        service role, so a single read would silently drop the rest of a busy
+ *        account's messages (security review of #270). Id lists are queried in
+ *        chunks so a long one can't overflow the URL.
  *
  *        Never logged: the URL, the payload, the email. Ids, counts and byte
  *        size only (docs/LOGGING.md).
@@ -36,43 +40,62 @@ const BUCKET = 'data-exports';
 const LINK_SECONDS = 15 * 60;
 /** How long links to private photos inside the file work. */
 const PHOTO_LINK_SECONDS = 24 * 60 * 60;
-const REUSE_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** Reuse a file this young — well inside the 24h sweep, so a re-signed link
+ *  can't outlive the file it points at. */
+const REUSE_WINDOW_MS = 22 * 60 * 60 * 1000;
+/** PostgREST's max rows per response. */
+const PAGE = 1000;
+/** Ids per `.in()` — keeps the request URL short. */
+const ID_CHUNK = 100;
 
 type Admin = ReturnType<typeof createServiceRoleClient>;
+type Result = { data: unknown; error: { message: string } | null };
+// The PostgREST builder, loosely: only what paging needs.
+type Query = {
+  order: (column: string, options?: { ascending?: boolean }) => Query;
+  range: (from: number, to: number) => PromiseLike<Result>;
+};
 
 class GatherError extends Error {}
 
-/** A query's rows, or the whole export fails — never a partial file. */
-async function rows(
+/**
+ * EVERY row a query matches, page by page — never the first 1,000. `query`
+ * builds a fresh filtered select each time (a builder can't be re-ranged);
+ * `orderBy` makes the pages stable (the last column should be unique-ish).
+ */
+async function all(
   label: string,
-  query: PromiseLike<{ data: unknown; error: { message: string } | null }>,
+  query: () => Query,
+  orderBy: readonly string[] = ['created_at'],
 ): Promise<Row[]> {
-  const { data, error } = await query;
-  if (error) {
-    console.error('[profile] export gather failed', { label });
-    throw new GatherError(label);
+  const out: Row[] = [];
+  for (let from = 0; ; from += PAGE) {
+    let ordered = query();
+    for (const column of orderBy) ordered = ordered.order(column, { ascending: true });
+    const { data, error } = await ordered.range(from, from + PAGE - 1);
+    if (error) {
+      console.error('[profile] export gather failed', { label });
+      throw new GatherError(label);
+    }
+    const page = (data as Row[] | null) ?? [];
+    out.push(...page);
+    if (page.length < PAGE) return out;
   }
-  return (data as Row[] | null) ?? [];
 }
 
-/** Rows whose `column` is one of `ids` — none (no query) when there are none. */
-function rowsIn(
-  admin: Admin,
+/** Rows whose `column` is one of `ids`, in chunks — none when there are none. */
+async function allIn(
   label: string,
-  table: string,
-  cols: string,
-  column: string,
   ids: unknown[],
+  query: (chunk: string[]) => Query,
+  orderBy?: readonly string[],
 ): Promise<Row[]> {
-  return ids.length === 0
-    ? Promise.resolve([])
-    : rows(
-        label,
-        admin
-          .from(table)
-          .select(cols)
-          .in(column, ids as string[]),
-      );
+  const out: Row[] = [];
+  for (let i = 0; i < ids.length; i += ID_CHUNK) {
+    const chunk = ids.slice(i, i + ID_CHUNK) as string[];
+    out.push(...(await all(label, () => query(chunk), orderBy)));
+  }
+  return out;
 }
 
 async function signAll(
@@ -81,16 +104,17 @@ async function signAll(
   paths: string[],
 ): Promise<Map<string, string>> {
   const out = new Map<string, string>();
-  if (paths.length === 0) return out;
-  const { data, error } = await admin.storage
-    .from(bucket)
-    .createSignedUrls(paths, PHOTO_LINK_SECONDS);
-  if (error) {
-    console.error('[profile] export photo signing failed', { bucket });
-    throw new GatherError(`sign:${bucket}`);
-  }
-  for (const entry of data ?? []) {
-    if (entry.path && entry.signedUrl) out.set(entry.path, entry.signedUrl);
+  for (let i = 0; i < paths.length; i += ID_CHUNK) {
+    const { data, error } = await admin.storage
+      .from(bucket)
+      .createSignedUrls(paths.slice(i, i + ID_CHUNK), PHOTO_LINK_SECONDS);
+    if (error) {
+      console.error('[profile] export photo signing failed', { bucket });
+      throw new GatherError(`sign:${bucket}`);
+    }
+    for (const entry of data ?? []) {
+      if (entry.path && entry.signedUrl) out.set(entry.path, entry.signedUrl);
+    }
   }
   return out;
 }
@@ -101,60 +125,56 @@ const SIGHTING_COLS =
 const PAYMENT_COLS =
   'id, kind, status, amount_pence, transfer_amount_pence, platform_fee_pence, refunded_amount_pence, created_at, captured_at, released_at, refunded_at, term_ends_at';
 
-async function gather(admin: Admin, userId: string, email: string | null): Promise<DataExportRaw> {
-  const [profile] = await rows(
-    'profile',
-    admin
-      .from('profiles')
-      .select(
-        'first_name, display_name, created_at, avatar_path, sightings_reported, sightings_helpful, recoveries_credited',
-      )
-      .eq('id', userId),
+interface AuthUser {
+  id: string;
+  email?: string | null;
+  phone?: string | null;
+  created_at?: string;
+  last_sign_in_at?: string | null;
+  app_metadata?: { providers?: string[]; provider?: string };
+}
+
+async function gather(admin: Admin, user: AuthUser): Promise<DataExportRaw> {
+  const userId = user.id;
+  // deno-lint-ignore no-explicit-any -- the builder's generics, flattened for paging
+  const from = (table: string, cols: string) => admin.from(table).select(cols) as any;
+
+  const [profile] = await all('profile', () =>
+    from(
+      'profiles',
+      'first_name, display_name, created_at, avatar_path, sightings_reported, sightings_helpful, recoveries_credited',
+    ).eq('id', userId),
   );
-  const posts = await rows(
-    'posts',
-    admin
-      .from('posts')
-      .select(
-        'id, status, plate, make, model, year, colour, colour_finish, body_type, bounty_amount_pence, listing_fee_pence, last_seen_at, last_seen_area, last_seen_locality, stolen_from, keys_taken, distinguishing_features, owner_note, desc_recognise, desc_drives, created_at, activated_at, expires_at, recovered_at, closed_at, archived_at',
-      )
-      .eq('owner_id', userId),
+  const posts = await all('posts', () =>
+    from(
+      'posts',
+      'id, status, plate, make, model, year, colour, colour_finish, body_type, bounty_amount_pence, listing_fee_pence, last_seen_at, last_seen_area, last_seen_locality, stolen_from, keys_taken, distinguishing_features, owner_note, desc_recognise, desc_drives, created_at, activated_at, expires_at, recovered_at, closed_at, archived_at',
+    ).eq('owner_id', userId),
   );
   const postIds = posts.map((p) => p.id);
-  const vehicles = await rows(
-    'vehicles',
-    admin
-      .from('vehicles')
-      .select(
-        'id, plate, make, model, year, colour, colour_finish, colour_note, body_type, nickname, created_at, updated_at',
-      )
-      .eq('user_id', userId),
+  const vehicles = await all('vehicles', () =>
+    from(
+      'vehicles',
+      'id, plate, make, model, year, colour, colour_finish, colour_note, body_type, nickname, created_at, updated_at',
+    ).eq('user_id', userId),
   );
   const vehicleIds = vehicles.map((v) => v.id);
-  const mySightings = await rows(
-    'my sightings',
-    admin
-      .from('sightings')
-      .select(
-        `${SIGHTING_COLS}, note, damage_note, missing_parts_note, withdraw_reason, withdraw_note, credited_at`,
-      )
-      .eq('spotter_id', userId),
+  const mySightings = await all('my sightings', () =>
+    from(
+      'sightings',
+      `${SIGHTING_COLS}, note, damage_note, missing_parts_note, withdraw_reason, withdraw_note, credited_at`,
+    ).eq('spotter_id', userId),
   );
-  const threads = await rows(
-    'threads',
-    admin
-      .from('threads')
-      .select('id, post_id, owner_id, spotter_id, created_at')
-      .or(`owner_id.eq.${userId},spotter_id.eq.${userId}`),
+  const threads = await all('threads', () =>
+    from('threads', 'id, post_id, owner_id, spotter_id, created_at').or(
+      `owner_id.eq.${userId},spotter_id.eq.${userId}`,
+    ),
   );
-  const connected = await rows(
-    'payout account',
-    admin
-      .from('stripe_connected_accounts')
-      .select(
-        'id, onboarding_complete, payouts_enabled, bank_last4, last_payout_status, last_payout_amount_pence, last_payout_arrival_date, created_at',
-      )
-      .eq('profile_id', userId),
+  const connected = await all('payout account', () =>
+    from(
+      'stripe_connected_accounts',
+      'id, onboarding_complete, payouts_enabled, bank_last4, last_payout_status, last_payout_amount_pence, last_payout_arrival_date, created_at',
+    ).eq('profile_id', userId),
   );
 
   const [
@@ -193,161 +213,127 @@ async function gather(admin: Admin, userId: string, email: string | null): Promi
       }
       return (data ?? { posts: [], alert_zones: [] }) as { posts: Row[]; alert_zones: Row[] };
     })(),
-    rowsIn(admin, 'post photos', 'post_photos', 'post_id, url, position', 'post_id', postIds),
-    rowsIn(admin, 'post features', 'post_feature', 'post_id, feature_key', 'post_id', postIds),
-    rowsIn(
-      admin,
-      'post distinctive',
-      'post_distinctive_feature',
-      'post_id, description, photo_url',
-      'post_id',
+    allIn('post photos', postIds, (ids) =>
+      from('post_photos', 'post_id, url, position').in('post_id', ids),
+    ),
+    allIn(
+      'post features',
       postIds,
+      (ids) => from('post_feature', 'post_id, feature_key').in('post_id', ids),
+      ['post_id', 'feature_key'],
     ),
-    rowsIn(
-      admin,
-      'vehicle photos',
-      'vehicle_photos',
-      'vehicle_id, url, position',
-      'vehicle_id',
-      vehicleIds,
+    allIn('post distinctive', postIds, (ids) =>
+      from('post_distinctive_feature', 'post_id, description, photo_url').in('post_id', ids),
     ),
-    rowsIn(
-      admin,
-      'vehicle distinctive',
-      'vehicle_distinctive_feature',
-      'vehicle_id, description, photo_url',
-      'vehicle_id',
-      vehicleIds,
+    allIn('vehicle photos', vehicleIds, (ids) =>
+      from('vehicle_photos', 'vehicle_id, url, position').in('vehicle_id', ids),
     ),
-    rowsIn(
-      admin,
+    allIn('vehicle distinctive', vehicleIds, (ids) =>
+      from('vehicle_distinctive_feature', 'vehicle_id, description, photo_url').in(
+        'vehicle_id',
+        ids,
+      ),
+    ),
+    allIn(
       'sighting photos',
-      'sighting_photos',
-      'sighting_id, path, lat, lng, accuracy_m, captured_at',
-      'sighting_id',
       mySightings.map((s) => s.id),
+      (ids) =>
+        from('sighting_photos', 'sighting_id, path, lat, lng, accuracy_m, captured_at').in(
+          'sighting_id',
+          ids,
+        ),
     ),
-    rowsIn(admin, 'sightings on listings', 'sightings', SIGHTING_COLS, 'post_id', postIds),
-    rowsIn(
-      admin,
+    // ⚠️ Not the withdrawn ones: a report the spotter took back disappears from
+    // the owner's list (DOMAIN.md), and the export mustn't bring it back.
+    allIn('sightings on listings', postIds, (ids) =>
+      from('sightings', SIGHTING_COLS).in('post_id', ids).neq('status', 'withdrawn'),
+    ),
+    allIn(
       'messages',
-      'messages',
-      'thread_id, sender_id, kind, content, created_at',
-      'thread_id',
       threads.map((t) => t.id),
+      (ids) =>
+        from('messages', 'id, thread_id, sender_id, kind, content, created_at').in(
+          'thread_id',
+          ids,
+        ),
+      ['created_at', 'id'],
     ),
-    rows(
-      'collections',
-      admin.from('watchlist_collections').select('id, name, created_at').eq('user_id', userId),
+    all('collections', () =>
+      from('watchlist_collections', 'id, name, created_at').eq('user_id', userId),
     ),
-    rows(
-      'watchlist',
-      admin
-        .from('watchlist_items')
-        .select('post_id, collection_id, created_at')
-        .eq('user_id', userId),
+    all('watchlist', () =>
+      from('watchlist_items', 'post_id, collection_id, created_at').eq('user_id', userId),
     ),
-    rows(
-      'alert zones',
-      admin
-        .from('alert_zones')
-        .select(
-          'id, name, radius_m, enabled, approximate, make, model, colour, body_type, min_bounty_pence, recency_days, created_at',
-        )
-        .eq('user_id', userId),
+    all('alert zones', () =>
+      from(
+        'alert_zones',
+        'id, name, radius_m, enabled, approximate, make, model, colour, body_type, min_bounty_pence, recency_days, created_at',
+      ).eq('user_id', userId),
     ),
-    rows(
+    all(
       'notifications',
-      admin
-        .from('notifications')
-        .select('kind, title, body, created_at, read_at')
-        .eq('user_id', userId),
+      () =>
+        from('notifications', 'id, kind, title, body, created_at, read_at').eq('user_id', userId),
+      ['created_at', 'id'],
     ),
-    rows(
+    all(
       'preferences',
-      admin
-        .from('notification_preferences')
-        .select(
+      () =>
+        from(
+          'notification_preferences',
           'alerts_enabled, messages_enabled, my_sightings_enabled, money_enabled, watched_enabled, updated_at',
-        )
-        .eq('user_id', userId),
+        ).eq('user_id', userId),
+      ['updated_at'],
     ),
-    rowsIn(admin, 'payments', 'payments', PAYMENT_COLS, 'post_id', postIds),
-    // Listings already deleted keep their ledger detached, owner in the snapshot.
-    rows(
-      'payments (deleted listings)',
-      admin.from('payments').select(PAYMENT_COLS).eq('post_snapshot->>owner_id', userId),
+    allIn('payments', postIds, (ids) => from('payments', PAYMENT_COLS).in('post_id', ids)),
+    // Listings already deleted keep their ledger detached; the snapshot says
+    // which car it was (their own listing).
+    all('payments (deleted listings)', () =>
+      from('payments', `${PAYMENT_COLS}, post_snapshot`).eq('post_snapshot->>owner_id', userId),
     ),
-    rowsIn(
-      admin,
+    allIn(
       'payouts',
-      'payments',
-      PAYMENT_COLS,
-      'payee_account_id',
       connected.map((c) => c.id),
+      (ids) => from('payments', PAYMENT_COLS).in('payee_account_id', ids),
     ),
-    rows(
-      'refund holds',
-      admin
-        .from('refund_holds')
-        .select('post_id, exit_path, created_at, expires_at')
-        .eq('owner_id', userId),
+    all('refund holds', () =>
+      from('refund_holds', 'post_id, exit_path, created_at, expires_at').eq('owner_id', userId),
     ),
-    rows(
-      'my disputes',
-      admin
-        .from('refund_disputes')
-        .select('post_id, status, statement, created_at, resolved_at')
-        .eq('spotter_id', userId),
+    all('my disputes', () =>
+      from('refund_disputes', 'post_id, status, statement, created_at, resolved_at').eq(
+        'spotter_id',
+        userId,
+      ),
     ),
-    rowsIn(
-      admin,
-      'disputes on listings',
-      'refund_disputes',
-      'post_id, status, created_at, resolved_at',
-      'post_id',
-      postIds,
+    allIn('disputes on listings', postIds, (ids) =>
+      from('refund_disputes', 'post_id, status, created_at, resolved_at').in('post_id', ids),
     ),
-    rows(
-      'reports',
-      admin.from('flags').select('target_type, reason, created_at').eq('reporter_id', userId),
+    all('reports', () =>
+      from('flags', 'target_type, reason, created_at').eq('reporter_id', userId),
     ),
-    rows(
-      'listing reports',
-      admin.from('post_flags').select('post_id, reason, created_at').eq('reporter_id', userId),
+    all('listing reports', () =>
+      from('post_flags', 'post_id, reason, created_at').eq('reporter_id', userId),
     ),
-    rows(
-      'blocks',
-      admin.from('user_blocks').select('blocked_id, created_at').eq('blocker_id', userId),
+    all('blocks', () => from('user_blocks', 'blocked_id, created_at').eq('blocker_id', userId)),
+    all('bug reports', () =>
+      from(
+        'bug_reports',
+        'id, message, expected, area, severity, frequency, app_version, platform, os_version, device_model, breadcrumbs, created_at, screenshot_paths',
+      ).eq('reporter_id', userId),
     ),
-    rows(
-      'bug reports',
-      admin
-        .from('bug_reports')
-        .select(
-          'id, message, expected, area, severity, frequency, app_version, platform, os_version, device_model, created_at, screenshot_paths',
-        )
-        .eq('reporter_id', userId),
-    ),
-    rows('devices', admin.from('push_tokens').select('platform, updated_at').eq('user_id', userId)),
-    rowsIn(
-      admin,
-      'verification documents',
-      'verification_documents',
-      'post_id, created_at',
-      'post_id',
-      postIds,
+    all('devices', () => from('push_tokens', 'platform, updated_at').eq('user_id', userId), [
+      'updated_at',
+    ]),
+    allIn('verification documents', postIds, (ids) =>
+      from('verification_documents', 'post_id, created_at').in('post_id', ids),
     ),
   ]);
 
   // Blocked people: the first name the app already shows them, nothing more.
-  const blockedNames = await rowsIn(
-    admin,
+  const blockedNames = await allIn(
     'blocked names',
-    'profiles',
-    'id, first_name',
-    'id',
     blockRows.map((b) => b.blocked_id),
+    (ids) => from('profiles', 'id, first_name').in('id', ids),
   );
   const nameById = new Map(blockedNames.map((p) => [p.id, p.first_name]));
   const blocks = blockRows.map((b) => ({
@@ -380,11 +366,19 @@ async function gather(admin: Admin, userId: string, email: string | null): Promi
     : null;
 
   // A payment can match twice (paid on a listing they own AND received);
-  // keep one per id, the "paid" side first.
+  // keep one per id, the "paid" side first. A deleted listing's payment says
+  // which car it was, from its snapshot — their own listing's details.
   const seen = new Set<unknown>();
   const payments = [
     ...paidOnListings.map((p) => ({ ...p, role: 'paid' })),
-    ...paidOnDeletedListings.map((p) => ({ ...p, role: 'paid' })),
+    ...paidOnDeletedListings.map(({ post_snapshot: snapshot, ...p }) => {
+      const s = (snapshot ?? {}) as Row;
+      return {
+        ...p,
+        role: 'paid',
+        listing: { plate: s.plate ?? null, make: s.make ?? null, model: s.model ?? null },
+      };
+    }),
     ...received.map((p) => ({ ...p, role: 'received' })),
   ].filter((p) => {
     if (seen.has(p.id)) return false;
@@ -393,7 +387,15 @@ async function gather(admin: Admin, userId: string, email: string | null): Promi
   });
 
   return {
-    email,
+    email: user.email ?? null,
+    signIn: {
+      providers:
+        user.app_metadata?.providers ??
+        (user.app_metadata?.provider ? [user.app_metadata.provider] : []),
+      phone: user.phone || null,
+      account_created_at: user.created_at ?? null,
+      last_sign_in_at: user.last_sign_in_at ?? null,
+    },
     profile: profile ?? null,
     avatarUrl,
     posts,
@@ -495,7 +497,7 @@ Deno.serve(async (request) => {
   // 2 — build a new one.
   let json: string;
   try {
-    const raw = await gather(admin, userId, userData.user.email ?? null);
+    const raw = await gather(admin, userData.user as AuthUser);
     json = JSON.stringify(buildDataExport(raw, userId, new Date()), null, 2);
   } catch (error) {
     if (!(error instanceof GatherError)) {
@@ -525,9 +527,13 @@ Deno.serve(async (request) => {
     .select('id')
     .single();
   if (recordError) {
-    // Unrecorded means the sweep would never remove it — take it back now.
+    // Unrecorded: take it back now. If that fails too, the hourly sweep still
+    // finds it — it also removes old files no request row names.
     console.error('[profile] export record failed', recordError.message);
-    await admin.storage.from(BUCKET).remove([path]);
+    const { error: rollbackError } = await admin.storage.from(BUCKET).remove([path]);
+    if (rollbackError) {
+      console.error('[profile] export rollback failed — left for the sweep', { userId });
+    }
     return failed();
   }
 
