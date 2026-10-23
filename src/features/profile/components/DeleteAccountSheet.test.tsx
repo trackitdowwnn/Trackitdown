@@ -104,10 +104,11 @@ describe('blocked', () => {
     ]);
     const screen = await openSheet();
 
-    expect(await screen.findByText('You can’t delete your account yet.')).toBeTruthy();
-    expect(
-      screen.getByText('2 listings have a reward or a recovery in progress. Close them first.'),
-    ).toBeTruthy();
+    expect(await screen.findByText('Before you can delete')).toBeTruthy();
+    // Each reason a row: a short title, and what to do beneath it.
+    expect(screen.getByText('2 listings in progress')).toBeTruthy();
+    expect(screen.getByText('A reward for you')).toBeTruthy();
+    expect(screen.getByText('Set up payouts to receive it first.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Delete account' })).toBeNull();
     expect(screen.queryByTestId('delete-account-input')).toBeNull();
   });
@@ -129,7 +130,11 @@ describe('clear to delete', () => {
 
     expect(await screen.findByText('Deleted')).toBeTruthy();
     expect(screen.getByText('Kept')).toBeTruthy();
-    expect(screen.getByText('Payment records, for 6 years as the law requires')).toBeTruthy();
+    expect(screen.getByText('Payment records')).toBeTruthy();
+    expect(screen.getByText('For 6 years, as the law requires')).toBeTruthy();
+    // The warning sits right above the box they type in. (TextField reads
+    // label + hint out on the field itself, so the Text is a11y-hidden.)
+    expect(screen.getByText('This can’t be undone.', { includeHiddenElements: true })).toBeTruthy();
   });
 
   // ⚠️ 20261023140000: a live listing with no reward money goes WITH the
@@ -138,7 +143,8 @@ describe('clear to delete', () => {
     mockLiveCount.mockResolvedValue(1);
     const screen = await openSheet();
 
-    expect(await screen.findByText('Your live listing — taken down now')).toBeTruthy();
+    expect(await screen.findByText('Your live listing')).toBeTruthy();
+    expect(screen.getByText('Taken down now')).toBeTruthy();
     expect(mockLiveCount).toHaveBeenCalledWith('u1');
   });
 
