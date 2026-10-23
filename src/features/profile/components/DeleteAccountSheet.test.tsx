@@ -35,7 +35,8 @@ jest.mock('../api/profileApi', () => ({
 }));
 
 const mockNavigate = jest.fn();
-jest.mock('expo-router', () => ({ useRouter: () => ({ navigate: mockNavigate }) }));
+const mockPush = jest.fn();
+jest.mock('expo-router', () => ({ useRouter: () => ({ navigate: mockNavigate, push: mockPush }) }));
 
 const mockToast = jest.fn();
 jest.mock('@/shared/ui', () => {
@@ -113,6 +114,17 @@ describe('blocked', () => {
     expect(screen.queryByTestId('delete-account-input')).toBeNull();
   });
 
+  // A reason with a place to fix it opens that place — not a dead end.
+  it.each([
+    ['LIVE_LISTING', '/my-posts'],
+    ['REWARD_ON_ITS_WAY', '/payouts'],
+  ])('%s opens %s', async (code, path) => {
+    mockFetchBlockers.mockResolvedValue([{ code, count: 1 }]);
+    const screen = await openSheet();
+    await fireEvent.press(await screen.findByTestId(`delete-account-reason-${code}`));
+    expect(mockPush).toHaveBeenCalledWith(path);
+  });
+
   it('offers a retry when the check itself fails — never a button on a guess', async () => {
     mockLiveCount.mockRejectedValueOnce(new Error('offline'));
     const screen = await openSheet();
@@ -128,8 +140,8 @@ describe('clear to delete', () => {
   it('says what goes and what stays', async () => {
     const screen = await openSheet();
 
-    expect(await screen.findByText('Deleted')).toBeTruthy();
-    expect(screen.getByText('Kept')).toBeTruthy();
+    expect(await screen.findByText('What’s deleted')).toBeTruthy();
+    expect(screen.getByText('What’s kept')).toBeTruthy();
     expect(screen.getByText('Payment records')).toBeTruthy();
     expect(screen.getByText('For 6 years, as the law requires')).toBeTruthy();
     // The warning sits right above the box they type in. (TextField reads
@@ -144,7 +156,7 @@ describe('clear to delete', () => {
     const screen = await openSheet();
 
     expect(await screen.findByText('Your live listing')).toBeTruthy();
-    expect(screen.getByText('Taken down now')).toBeTruthy();
+    expect(screen.getByText('Taken down when you delete')).toBeTruthy();
     expect(mockLiveCount).toHaveBeenCalledWith('u1');
   });
 

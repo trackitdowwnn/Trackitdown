@@ -35,9 +35,10 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import { type Ref, useCallback, useImperativeHandle, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import {
+  motion,
   spacing,
   sizes,
   typography,
@@ -74,6 +75,12 @@ const DELETED: { icon: LucideIcon; title: string }[] = [
 ];
 
 /** An icon per reason, so the list scans like the rest of the app's rows. */
+/** Reasons with somewhere to fix them: the row opens it. */
+const BLOCKER_FIX: Record<string, '/my-posts' | '/payouts'> = {
+  LIVE_LISTING: '/my-posts',
+  REWARD_ON_ITS_WAY: '/payouts',
+};
+
 const BLOCKER_ICON: Record<string, LucideIcon> = {
   LIVE_LISTING: Car,
   MONEY_HELD: Banknote,
@@ -108,9 +115,9 @@ export function DeleteAccountSheet({ ref, userId }: DeleteAccountSheetProps) {
 
   // Both, or neither: without the live-listing count the sheet can't warn that
   // deleting takes a listing down, so a failed read is an error, never a 0.
-  const load = useCallback(() => {
+  const load = useCallback((): Promise<void> => {
     setStatus('loading');
-    Promise.all([fetchDeletionBlockers(), fetchLiveListingCount(userId)])
+    return Promise.all([fetchDeletionBlockers(), fetchLiveListingCount(userId)])
       .then(([rows, live]) => {
         setBlockers(rows);
         setLiveListings(live);
@@ -119,12 +126,15 @@ export function DeleteAccountSheet({ ref, userId }: DeleteAccountSheetProps) {
       .catch(() => setStatus('error'));
   }, [userId]);
 
-  // Read fresh on every open — what blocks can change between visits.
+  // Read fresh on every open — what blocks can change between visits. The
+  // sheet rises once the answer is in, or after the skeleton grace if the
+  // network is slow — so it doesn't open small and then jump to full height.
   useImperativeHandle(ref, () => ({
     open: () => {
       setTyped('');
-      load();
-      sheetRef.current?.open();
+      const answered = load();
+      const grace = new Promise<void>((resolve) => setTimeout(resolve, motion.skeletonGrace));
+      void Promise.race([answered, grace]).then(() => sheetRef.current?.open());
     },
     close: () => sheetRef.current?.close(),
   }));
@@ -157,26 +167,41 @@ export function DeleteAccountSheet({ ref, userId }: DeleteAccountSheetProps) {
     }
   }, [confirmed, load, router, toast]);
 
+  // A blocking reason that has a place to fix it opens that place.
+  const goFix = useCallback(
+    (path: '/my-posts' | '/payouts') => {
+      sheetRef.current?.close();
+      router.push(path);
+    },
+    [router],
+  );
+
+  const clear = status === 'ready' && blockers.length === 0;
+
   return (
     <BottomSheet
       ref={sheetRef}
       title="Delete account"
+      // Red only while something destructive is on offer — not over a list
+      // of reasons it can't happen yet.
       titleIcon={
-        <TriangleAlert
-          size={sizes.iconSm}
-          color={palette.danger}
-          accessible={false}
-          importantForAccessibility="no"
-        />
+        clear ? (
+          <TriangleAlert
+            size={sizes.iconSm}
+            color={palette.danger}
+            accessible={false}
+            importantForAccessibility="no"
+          />
+        ) : undefined
       }
+      // Keep the red button — under the DELETE box — clear of the keyboard,
+      // not just the box.
+      revealMargin={spacing.lg + sizes.control + spacing.md}
     >
       {status === 'loading' ? (
-        <ActivityIndicator
-          color={palette.textSecondary}
-          style={styles.loading}
-          accessibilityLabel="Checking your account"
-          testID="delete-account-loading"
-        />
+        <Text style={styles.checking} testID="delete-account-loading">
+          Checking your account…
+        </Text>
       ) : status === 'error' ? (
         <View style={styles.body}>
           <Text style={styles.reason}>We couldn’t check your account.</Text>
@@ -190,12 +215,16 @@ export function DeleteAccountSheet({ ref, userId }: DeleteAccountSheetProps) {
           <ListRowGroup title="Before you can delete">
             {blockers.map((blocker) => {
               const reason = deletionReason(blocker);
+              const fix = BLOCKER_FIX[blocker.code];
               return (
                 <ListRow
                   key={blocker.code}
                   icon={BLOCKER_ICON[blocker.code] ?? Clock}
                   title={reason.title}
                   subtitle={reason.detail}
+                  wrap
+                  onPress={fix ? () => goFix(fix) : undefined}
+                  testID={`delete-account-reason-${blocker.code}`}
                 />
               );
             })}
@@ -203,7 +232,7 @@ export function DeleteAccountSheet({ ref, userId }: DeleteAccountSheetProps) {
         </View>
       ) : (
         <View style={styles.body} testID="delete-account-clear">
-          <ListRowGroup title="Deleted">
+          <ListRowGroup title="What’s deleted">
             {/* First: a live listing comes down with the account
                 (20261023140000) — the one item they might not expect. */}
             {liveListings > 0 ? (
@@ -212,15 +241,16 @@ export function DeleteAccountSheet({ ref, userId }: DeleteAccountSheetProps) {
                 title={
                   liveListings === 1 ? 'Your live listing' : `Your ${liveListings} live listings`
                 }
-                subtitle="Taken down now"
+                subtitle="Taken down when you delete"
+                wrap
                 testID="delete-account-live-listings"
               />
             ) : null}
             {DELETED.map((item) => (
-              <ListRow key={item.title} icon={item.icon} title={item.title} />
+              <ListRow key={item.title} icon={item.icon} title={item.title} wrap />
             ))}
           </ListRowGroup>
-          <ListRowGroup title="Kept">
+          <ListRowGroup title="What’s kept">
             {/* The ledger survives, detached (20261023120000) — the tax
                 records rule. Deliberately NOT "nothing identifies you": the
                 snapshot keeps the plate. */}
@@ -228,6 +258,7 @@ export function DeleteAccountSheet({ ref, userId }: DeleteAccountSheetProps) {
               icon={Receipt}
               title="Payment records"
               subtitle="For 6 years, as the law requires"
+              wrap
             />
           </ListRowGroup>
           <View style={styles.confirm}>
@@ -242,6 +273,9 @@ export function DeleteAccountSheet({ ref, userId }: DeleteAccountSheetProps) {
               autoCapitalize="characters"
               autoCorrect={false}
               autoComplete="off"
+              importantForAutofill="no"
+              // The keyboard's own key closes it, uncovering the button.
+              returnKeyType="done"
               disabled={deleting}
               testID="delete-account-input"
             />
@@ -273,8 +307,14 @@ const makeStyles = (c: Palette) =>
       gap: spacing.lg,
       paddingHorizontal: spacing.md,
     },
-    loading: {
-      paddingVertical: spacing.xxl,
+    // One calm line while the sheet checks — no spinner (DESIGN_SYSTEM:
+    // spinners are for the three sanctioned waits), no skeleton shaped like
+    // an answer it doesn't have yet.
+    checking: {
+      ...typography.body,
+      color: c.textSecondary,
+      paddingHorizontal: spacing.md,
+      paddingBottom: spacing.xl,
     },
     reason: {
       ...typography.body,
