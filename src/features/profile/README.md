@@ -8,8 +8,9 @@ Reputation v1 counters as a passport-style stat column — whole card taps to
 edit), a "Your spotter story" row pushing the narrative reputation card
 (highlights, badges at 1/5/25, next-goal bar — social proof only, never
 payout-affecting), settings groups with heading-scale titles and hairline
-dividers, support/legal links, and a **Danger zone** group (2026-10-23: Log
-out, Log out of all devices, red Delete account), then the app version. Also exports
+dividers, support/legal links, a plain Log out row, and a red-outlined
+**Danger zone** card (2026-10-23: Log out of all devices, red Delete account),
+then the app version. Also exports
 `PublicProfileSheet` — the passport owners see for a spotter, a `// SAFETY`
 privacy boundary showing ONLY first name, avatar, reputation, and
 member-since; earned trust only (no goal/progress UI publicly).

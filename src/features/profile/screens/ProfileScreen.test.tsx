@@ -442,14 +442,17 @@ describe('signed in', () => {
     expect(mockSignOut).not.toHaveBeenCalled();
   });
 
-  it('danger zone: Log out, Log out of all devices, then Delete account', async () => {
+  it('Log out above a red Danger zone holding Log out of all devices and Delete account', async () => {
     const { getByTestId, getByText } = await render(<ProfileScreen />);
     expect(getByText('Danger zone')).toBeTruthy();
     const zone = getByTestId('danger-zone');
-    const ids = ['row-sign-out', 'row-sign-out-everywhere', 'row-delete-account'];
-    for (const id of ids) {
+    // Only the risky two inside the red box; plain Log out sits above it.
+    for (const id of ['row-sign-out-everywhere', 'row-delete-account']) {
       expect(within(zone).getByTestId(id)).toBeTruthy();
     }
+    expect(within(zone).queryByTestId('row-sign-out')).toBeNull();
+    expect(getByTestId('row-sign-out')).toBeTruthy();
+    expect(within(zone).getByTestId('list-row-group-danger-card')).toBeTruthy();
   });
 
   it('log out signs out THIS device only', async () => {

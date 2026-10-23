@@ -952,11 +952,12 @@ to use.
   (`surface`, `radii.xl`, soft shadow, `sizes.avatarXl` avatar); counters
   render as value-over-caption stat rows with hairlines between; settings
   groups take `heading`-scale titles with hairline dividers between rows;
-  the account actions sit in a "Danger zone" `ListRowGroup` at the bottom
-  (2026-10-23, superseding the underlined-text cluster): an ordinary group
-  heading, not a red box, with `danger` only on the Delete account row
-  (`ListRow destructive`) and on the final `danger` button of its own
-  type-DELETE screen — findable-but-quiet on the root. The trusted-spotter
+  plain "Log out" is an ordinary row; below it the "Danger zone" is
+  `ListRowGroup tone="danger"` (2026-10-23, owner: a plain heading "doesn't
+  read as a danger zone") — a `danger` title led by a warning icon, the rows
+  in a 1px `danger` outline card (`radii.lg`), holding only Log out of all
+  devices and the destructive Delete account. The ONE `tone="danger"` use;
+  keep it rare or it stops meaning anything. The trusted-spotter
   avatar chip fills with `primary` as a STATUS mark — a sanctioned exception
   to the actions-only rule (it mirrors the reference's verification badge
   and stays distinct from any nearby CTA). The second exception is the

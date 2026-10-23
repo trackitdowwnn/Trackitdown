@@ -446,18 +446,21 @@ function LoadedProfile({
           ) : null}
         </ListRowGroup>
 
-        {/* Danger zone (owner, 2026-10-23: "quiet section, red text"). The
-            same calm group as the rest of the page — a heading, not a red box
-            — with red only on the row that can't be undone (and on the final
-            button of its own screen). Deletion stays on the ROOT per our
-            App-Store rule, one push from its confirm screen. */}
-        <ListRowGroup title="Danger zone" testID="danger-zone">
-          <ListRow
-            icon={LogOut}
-            title="Log out"
-            onPress={() => signOutRef.current?.open()}
-            testID="row-sign-out"
-          />
+        {/* Plain Log out sits OUTSIDE the zone (owner, 2026-10-23): it's
+            routine, and inside the red box it would dilute what the box means. */}
+        <ListRow
+          icon={LogOut}
+          title="Log out"
+          onPress={() => signOutRef.current?.open()}
+          testID="row-sign-out"
+        />
+
+        {/* Danger zone — a red outline card with a warning-icon heading
+            (owner, 2026-10-23: the plain heading "doesn't read as a danger
+            zone"). Only what reaches beyond this phone or can't be undone goes
+            in. Deletion stays on the ROOT per our App-Store rule, one push
+            from its confirm screen. */}
+        <ListRowGroup title="Danger zone" tone="danger" testID="danger-zone">
           <ListRow
             icon={MonitorSmartphone}
             title="Log out of all devices"

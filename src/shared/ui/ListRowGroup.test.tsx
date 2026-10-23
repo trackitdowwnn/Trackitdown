@@ -63,6 +63,34 @@ describe('ListRowGroup', () => {
     expect(queryAllByTestId('list-row-group-divider')).toHaveLength(1);
   });
 
+  describe('danger tone', () => {
+    it('outlines the rows in a card, with a warning icon by the title', async () => {
+      const { getByTestId, getByRole, queryAllByTestId } = await render(
+        <ListRowGroup title="Danger zone" tone="danger">
+          <Row label="a" />
+          <Row label="b" />
+        </ListRowGroup>,
+      );
+
+      expect(getByTestId('list-row-group-danger-title')).toBeTruthy();
+      expect(getByTestId('list-row-group-danger-card')).toBeTruthy();
+      // Still a jumpable header, and the divider arithmetic is unchanged.
+      expect(getByRole('header', { name: 'Danger zone' })).toBeTruthy();
+      expect(queryAllByTestId('list-row-group-divider')).toHaveLength(1);
+    });
+
+    it('is opt-in: an ordinary group has no card and no icon', async () => {
+      const { queryByTestId } = await render(
+        <ListRowGroup title="Settings">
+          <Row label="a" />
+        </ListRowGroup>,
+      );
+
+      expect(queryByTestId('list-row-group-danger-card')).toBeNull();
+      expect(queryByTestId('list-row-group-danger-title')).toBeNull();
+    });
+  });
+
   it('quiet groups recede and drop their dividers', async () => {
     const { queryAllByTestId } = await render(
       <ListRowGroup title="Developer" quiet>
