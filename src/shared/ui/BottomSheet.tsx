@@ -189,6 +189,13 @@ export interface BottomSheetProps {
    * way. None does today; every sheet shows one (2026-10-15).
    */
   hideClose?: boolean;
+  /**
+   * How far above the keyboard the focused input is kept (default
+   * `spacing.xxxl`). A sheet whose action sits BELOW its input passes enough
+   * to clear that action too (DeleteAccountSheet: the red button under the
+   * DELETE box), or the keyboard covers it the moment they've typed.
+   */
+  revealMargin?: number;
 }
 
 export function BottomSheet({
@@ -198,6 +205,7 @@ export function BottomSheet({
   children,
   onDismiss,
   hideClose = false,
+  revealMargin = REVEAL_MARGIN,
 }: BottomSheetProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
@@ -247,14 +255,14 @@ export function BottomSheet({
           // The keyboard's reported height excludes the navigation bar, which
           // the sheet also sits behind.
           covered: keyboardLift + insets.bottom,
-          margin: REVEAL_MARGIN,
+          margin: revealMargin,
         });
         if (offset !== null) scrollRef.current?.scrollTo({ y: offset, animated: true });
       },
       // Not inside this sheet (another screen's input) — nothing to reveal.
       () => {},
     );
-  }, [keyboardLift, insets.bottom]);
+  }, [keyboardLift, insets.bottom, revealMargin]);
 
   // gorhom forwards this from its UI-thread handler, already throttled.
   const handleScroll = useCallback((event: { nativeEvent: { contentOffset: { y: number } } }) => {

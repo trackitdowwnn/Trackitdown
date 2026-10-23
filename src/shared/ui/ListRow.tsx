@@ -75,6 +75,13 @@ export interface ListRowProps {
    */
   trailing?: ReactNode;
   disabled?: boolean;
+  /**
+   * Let the title and subtitle wrap instead of truncating — for rows that are
+   * facts to READ, not a menu to scan (DeleteAccountSheet's "what's deleted"
+   * and reasons). At large text sizes a one-line title ends in "…", which in
+   * a list of consequences loses meaning, not just tidiness.
+   */
+  wrap?: boolean;
   testID?: string;
 }
 
@@ -89,6 +96,7 @@ export function ListRow({
   toggled,
   trailing,
   disabled = false,
+  wrap = false,
   testID,
 }: ListRowProps) {
   const styles = useThemedStyles(makeStyles);
@@ -143,11 +151,11 @@ export function ListRow({
     >
       {Icon ? <Icon size={sizes.icon} color={iconColor} /> : null}
       <View style={styles.textBlock}>
-        <Text style={[styles.title, { color: titleColor }]} numberOfLines={1}>
+        <Text style={[styles.title, { color: titleColor }]} numberOfLines={wrap ? undefined : 1}>
           {title}
         </Text>
         {subtitle ? (
-          <Text style={styles.subtitle} numberOfLines={2}>
+          <Text style={styles.subtitle} numberOfLines={wrap ? undefined : 2}>
             {subtitle}
           </Text>
         ) : null}

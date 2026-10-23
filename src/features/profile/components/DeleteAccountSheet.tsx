@@ -22,11 +22,23 @@
  */
 
 import { useRouter } from 'expo-router';
-import { TriangleAlert } from 'lucide-react-native';
+import {
+  Banknote,
+  Car,
+  Clock,
+  FileText,
+  MessageCircle,
+  Receipt,
+  Scale,
+  TriangleAlert,
+  UserRound,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { type Ref, useCallback, useImperativeHandle, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import {
+  motion,
   spacing,
   sizes,
   typography,
@@ -34,7 +46,15 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import { BottomSheet, Button, TextField, useToast, type BottomSheetRef } from '@/shared/ui';
+import {
+  BottomSheet,
+  Button,
+  ListRow,
+  ListRowGroup,
+  TextField,
+  useToast,
+  type BottomSheetRef,
+} from '@/shared/ui';
 
 import {
   AccountDeletionError,
@@ -47,11 +67,27 @@ import { deletionReason } from '../lib/deletionReasons';
 
 const CONFIRM_WORD = 'DELETE';
 
-const DELETED = [
-  'Your profile and photos',
-  'Your listings and sightings',
-  'Your messages, alerts and payout details',
+const DELETED: { icon: LucideIcon; title: string }[] = [
+  { icon: UserRound, title: 'Your profile and photos' },
+  { icon: FileText, title: 'Your listings and sightings' },
+  { icon: MessageCircle, title: 'Messages and alerts' },
+  { icon: Banknote, title: 'Payout details' },
 ];
+
+/** An icon per reason, so the list scans like the rest of the app's rows. */
+/** Reasons with somewhere to fix them: the row opens it. */
+const BLOCKER_FIX: Record<string, '/my-posts' | '/payouts'> = {
+  LIVE_LISTING: '/my-posts',
+  REWARD_ON_ITS_WAY: '/payouts',
+};
+
+const BLOCKER_ICON: Record<string, LucideIcon> = {
+  LIVE_LISTING: Car,
+  MONEY_HELD: Banknote,
+  REWARD_ON_ITS_WAY: Banknote,
+  DISPUTE_OPEN: Scale,
+  REVIEW_OPEN: Clock,
+};
 
 type Status = 'loading' | 'ready' | 'error';
 
@@ -79,9 +115,9 @@ export function DeleteAccountSheet({ ref, userId }: DeleteAccountSheetProps) {
 
   // Both, or neither: without the live-listing count the sheet can't warn that
   // deleting takes a listing down, so a failed read is an error, never a 0.
-  const load = useCallback(() => {
+  const load = useCallback((): Promise<void> => {
     setStatus('loading');
-    Promise.all([fetchDeletionBlockers(), fetchLiveListingCount(userId)])
+    return Promise.all([fetchDeletionBlockers(), fetchLiveListingCount(userId)])
       .then(([rows, live]) => {
         setBlockers(rows);
         setLiveListings(live);
@@ -90,12 +126,15 @@ export function DeleteAccountSheet({ ref, userId }: DeleteAccountSheetProps) {
       .catch(() => setStatus('error'));
   }, [userId]);
 
-  // Read fresh on every open — what blocks can change between visits.
+  // Read fresh on every open — what blocks can change between visits. The
+  // sheet rises once the answer is in, or after the skeleton grace if the
+  // network is slow — so it doesn't open small and then jump to full height.
   useImperativeHandle(ref, () => ({
     open: () => {
       setTyped('');
-      load();
-      sheetRef.current?.open();
+      const answered = load();
+      const grace = new Promise<void>((resolve) => setTimeout(resolve, motion.skeletonGrace));
+      void Promise.race([answered, grace]).then(() => sheetRef.current?.open());
     },
     close: () => sheetRef.current?.close(),
   }));
@@ -128,92 +167,128 @@ export function DeleteAccountSheet({ ref, userId }: DeleteAccountSheetProps) {
     }
   }, [confirmed, load, router, toast]);
 
+  // A blocking reason that has a place to fix it opens that place.
+  const goFix = useCallback(
+    (path: '/my-posts' | '/payouts') => {
+      sheetRef.current?.close();
+      router.push(path);
+    },
+    [router],
+  );
+
+  const clear = status === 'ready' && blockers.length === 0;
+
   return (
     <BottomSheet
       ref={sheetRef}
       title="Delete account"
+      // Red only while something destructive is on offer — not over a list
+      // of reasons it can't happen yet.
       titleIcon={
-        <TriangleAlert
-          size={sizes.iconSm}
-          color={palette.danger}
-          accessible={false}
-          importantForAccessibility="no"
-        />
+        clear ? (
+          <TriangleAlert
+            size={sizes.iconSm}
+            color={palette.danger}
+            accessible={false}
+            importantForAccessibility="no"
+          />
+        ) : undefined
       }
+      // Keep the red button — under the DELETE box — clear of the keyboard,
+      // not just the box.
+      revealMargin={spacing.lg + sizes.control + spacing.md}
     >
       {status === 'loading' ? (
-        <ActivityIndicator
-          color={palette.textSecondary}
-          style={styles.loading}
-          accessibilityLabel="Checking your account"
-          testID="delete-account-loading"
-        />
+        <Text style={styles.checking} testID="delete-account-loading">
+          Checking your account…
+        </Text>
       ) : status === 'error' ? (
         <View style={styles.body}>
           <Text style={styles.reason}>We couldn’t check your account.</Text>
           <Button label="Try again" variant="secondary" onPress={load} />
         </View>
       ) : blockers.length > 0 ? (
+        // The app's row language (owner, 2026-10-23: "use the current design
+        // language" — the old stacked sentences were hard to read): a titled
+        // group of icon rows, each a short title with what to do beneath.
         <View style={styles.body} testID="delete-account-blocked">
-          <Text style={styles.lead}>You can’t delete your account yet.</Text>
-          {/* The main content here, so primary ink — each line says what to do. */}
-          {blockers.map((blocker) => (
-            <Text key={blocker.code} style={styles.reason}>
-              {deletionReason(blocker)}
-            </Text>
-          ))}
+          <ListRowGroup title="Before you can delete">
+            {blockers.map((blocker) => {
+              const reason = deletionReason(blocker);
+              const fix = BLOCKER_FIX[blocker.code];
+              return (
+                <ListRow
+                  key={blocker.code}
+                  icon={BLOCKER_ICON[blocker.code] ?? Clock}
+                  title={reason.title}
+                  subtitle={reason.detail}
+                  wrap
+                  onPress={fix ? () => goFix(fix) : undefined}
+                  testID={`delete-account-reason-${blocker.code}`}
+                />
+              );
+            })}
+          </ListRowGroup>
         </View>
       ) : (
         <View style={styles.body} testID="delete-account-clear">
-          <View style={styles.group}>
-            <Text style={styles.groupTitle} accessibilityRole="header">
-              Deleted
-            </Text>
-            {/* First, and in primary ink: a live listing comes down with the
-                account (20261023140000) — the one item they might not expect. */}
+          <ListRowGroup title="What’s deleted">
+            {/* First: a live listing comes down with the account
+                (20261023140000) — the one item they might not expect. */}
             {liveListings > 0 ? (
-              <Text style={styles.reason} testID="delete-account-live-listings">
-                {liveListings === 1
-                  ? 'Your live listing — taken down now'
-                  : `Your ${liveListings} live listings — taken down now`}
-              </Text>
+              <ListRow
+                icon={Car}
+                title={
+                  liveListings === 1 ? 'Your live listing' : `Your ${liveListings} live listings`
+                }
+                subtitle="Taken down when you delete"
+                wrap
+                testID="delete-account-live-listings"
+              />
             ) : null}
             {DELETED.map((item) => (
-              <Text key={item} style={styles.line}>
-                {item}
-              </Text>
+              <ListRow key={item.title} icon={item.icon} title={item.title} wrap />
             ))}
-          </View>
-          <View style={styles.group}>
-            <Text style={styles.groupTitle} accessibilityRole="header">
-              Kept
-            </Text>
+          </ListRowGroup>
+          <ListRowGroup title="What’s kept">
             {/* The ledger survives, detached (20261023120000) — the tax
                 records rule. Deliberately NOT "nothing identifies you": the
                 snapshot keeps the plate. */}
-            <Text style={styles.line}>Payment records, for 6 years as the law requires</Text>
+            <ListRow
+              icon={Receipt}
+              title="Payment records"
+              subtitle="For 6 years, as the law requires"
+              wrap
+            />
+          </ListRowGroup>
+          <View style={styles.confirm}>
+            <TextField
+              label={`Type ${CONFIRM_WORD} to confirm`}
+              labelPlacement="above"
+              // Between the label and the box (GOV.UK order) — read right
+              // before typing.
+              helperText="This can’t be undone."
+              value={typed}
+              onChangeText={setTyped}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              autoComplete="off"
+              importantForAutofill="no"
+              // The keyboard's own key closes it, uncovering the button.
+              returnKeyType="done"
+              disabled={deleting}
+              testID="delete-account-input"
+            />
+            <Button
+              label="Delete account"
+              variant="danger"
+              disabled={!confirmed}
+              loading={deleting}
+              // Heard, not seen — why the button is dimmed.
+              accessibilityHint={confirmed ? undefined : `Type ${CONFIRM_WORD} above first`}
+              onPress={() => void remove()}
+            />
           </View>
-          <Text style={styles.reason}>This can’t be undone.</Text>
-          <TextField
-            label={`Type ${CONFIRM_WORD} to confirm`}
-            labelPlacement="above"
-            value={typed}
-            onChangeText={setTyped}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            autoComplete="off"
-            disabled={deleting}
-            testID="delete-account-input"
-          />
-          <Button
-            label="Delete account"
-            variant="danger"
-            disabled={!confirmed}
-            loading={deleting}
-            // Heard, not seen — why the button is dimmed.
-            accessibilityHint={confirmed ? undefined : `Type ${CONFIRM_WORD} above first`}
-            onPress={() => void remove()}
-          />
         </View>
       )}
     </BottomSheet>
@@ -223,29 +298,26 @@ export function DeleteAccountSheet({ ref, userId }: DeleteAccountSheetProps) {
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     body: {
-      gap: spacing.lg,
+      gap: spacing.xl,
       paddingBottom: spacing.md,
     },
-    loading: {
-      paddingVertical: spacing.xxl,
+    // The field and button sit on the rows' own inset (ListRow/ListRowGroup
+    // pad spacing.md), so the sheet reads as one column.
+    confirm: {
+      gap: spacing.lg,
+      paddingHorizontal: spacing.md,
     },
-    lead: {
-      ...typography.heading,
-      color: c.textPrimary,
+    // One calm line while the sheet checks — no spinner (DESIGN_SYSTEM:
+    // spinners are for the three sanctioned waits), no skeleton shaped like
+    // an answer it doesn't have yet.
+    checking: {
+      ...typography.body,
+      color: c.textSecondary,
+      paddingHorizontal: spacing.md,
+      paddingBottom: spacing.xl,
     },
     reason: {
       ...typography.body,
       color: c.textPrimary,
-    },
-    group: {
-      gap: spacing.xs,
-    },
-    groupTitle: {
-      ...typography.label,
-      color: c.textPrimary,
-    },
-    line: {
-      ...typography.body,
-      color: c.textSecondary,
     },
   });
