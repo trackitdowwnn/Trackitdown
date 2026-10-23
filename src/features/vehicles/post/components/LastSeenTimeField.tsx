@@ -1,8 +1,9 @@
 /**
- * WHAT:  LastSeenTimeField — the body of "When did you last see it?".
- *        Five one-tap presets sit on the step itself. Below them, a field
- *        shows the stored answer ("Last seen / Today, 13:05 · 1h ago") and
- *        opens a two-stage sheet for an exact moment:
+ * WHAT:  LastSeenTimeField — the body of "When did you last see it?", as
+ *        full-width option cards (owner, 2026-10-22: the recent design
+ *        language). Each preset card shows the exact time it means ("Last
+ *        night / Yesterday, 22:00"); the last, "Pick a date and time", opens
+ *        a two-stage sheet for an exact moment and then shows it:
  *          1. "Pick a date": the app's own calendar (one month, ‹ › arrows, the
  *             last 30 days pickable). Tapping a day moves straight on.
  *          2. "Pick a time": the chosen day with a "Change" link back, then the
@@ -13,14 +14,24 @@
  *        the presets were hidden inside a sheet titled "Last seen" (the step's
  *        own question again), and they never showed as picked. Android also
  *        left the sheet for two system dialogs. Here:
- *          - the common answer is ONE tap on the step, and the picked chip
- *            stays highlighted;
+ *          - the common answer is ONE tap on the step, and the picked card
+ *            stays lit (while it's still true — see below);
  *          - the exact picker is the same on both platforms, inside the sheet;
  *          - it only offers moments that can be true (lib/lastSeenTime.ts), so
  *            nothing is ever silently clamped.
- *        Which preset is highlighted is local state, not a stored answer: after
- *        Back, Edit or a restored draft no chip is lit, and the field carries
- *        the value instead.
+ *        CARDS, NOT CHIPS (2026-10-22): one look with the other one-question
+ *        steps, and the exact time on every card, so a guess ("Last night"
+ *        is 22:00) is never accepted unseen. Only the TIMESTAMP is stored
+ *        (`lastSeenAt`); which card is lit is local state. The lit card never
+ *        claims a time that isn't stored: a chosen preset shows the STORED
+ *        time (so "Just now" can't drift on), and stays lit only while it is
+ *        still offered, still the stored value, and under PRESET_FRESH_MS old
+ *        — after that, or after Back, Edit or a restored draft, "Pick a date
+ *        and time" is lit and shows it (code + UI review, 2026-10-22). The step
+ *        moves on by itself through `onPresetPicked` / `onExactPicked`
+ *        (the wizard's advanceSoon); the listing's editor passes neither.
+ *        Tapping "Pick a date and time" calls `onPickerOpen` first, so a
+ *        preset's move-on still pending can't move the step under the sheet.
  *        The calendar and time slots are the shared custom picker (2026-09-29,
  *        CalendarMonth + TimeSlotPicker), so search's date range speaks the
  *        same visual language.
@@ -36,9 +47,18 @@
  * LINKS: src/features/vehicles/post/lib/lastSeenTime.ts (presets, window, draft);
  *        src/features/vehicles/post/components/postSteps.tsx (LastSeenWhenStep);
  *        src/shared/ui/{CalendarMonth,TimeSlotPicker,DateRangeField}.tsx;
- *        src/shared/ui/{ChoiceChips,BottomSheet,Button}.tsx; docs/DESIGN_SYSTEM.md.
+ *        src/shared/ui/{CardSelect,BottomSheet,Button}.tsx; docs/DESIGN_SYSTEM.md.
  */
 
+import {
+  CalendarClock,
+  CalendarDays,
+  Clock,
+  Eye,
+  History,
+  Moon,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { useRef, useState } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
@@ -47,6 +67,7 @@ import {
   clampDraft,
   draftFromDate,
   draftToDate,
+  LAST_SEEN_QUESTIONS,
   lastSeenPresets,
   lastSeenWindow,
   toLastSeenIso,
@@ -54,7 +75,7 @@ import {
   type LastSeenPresetKey,
 } from '../lib/lastSeenTime';
 import { useNow } from '@/shared/hooks';
-import { formatClock, formatDateTimeLabel, timeAgo } from '@/shared/lib';
+import { formatClock, formatDateTimeLabel } from '@/shared/lib';
 import {
   dayA11yLabel,
   dayHeading,
@@ -68,9 +89,9 @@ import {
   type BottomSheetRef,
   Button,
   CalendarMonth,
-  ChoiceChips,
-  FieldTrigger,
+  CardSelect,
   TimeSlotPicker,
+  type CardSelectOption,
 } from '@/shared/ui';
 import { motion, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 
@@ -78,37 +99,57 @@ export interface LastSeenTimeFieldProps {
   /** ISO 8601 UTC, or null when unset. */
   value: string | null;
   onChange: (iso: string) => void;
+  /** After a preset card commits — the wizard moves on (advanceSoon). */
+  onPresetPicked?: () => void;
+  /** After the sheet's Confirm commits — the wizard moves on. */
+  onExactPicked?: () => void;
+  /** "Pick a date and time" was tapped — cancel a preset's pending move-on
+   *  (the wizard's cancelAdvanceSoon), or the step leaves under the sheet. */
+  onPickerOpen?: () => void;
 }
 
-const PICK_LABEL = 'Pick a date and time';
-const DAY_MS = 24 * 60 * 60_000;
+const PICK = 'pick';
+type CardKey = LastSeenPresetKey | typeof PICK;
 
-/**
- * "Today, 13:05 · 1h ago": the moment, then how long ago it was, while that's
- * under a day. Beyond a day the elapsed count stops helping: timeAgo floors, so
- * Saturday evening reads "1d ago" on Monday afternoon. The day name ("Sat 26
- * Sept") already says it. `separator` is " · " on screen and ", " when spoken,
- * so a screen reader doesn't read out "dot".
- */
-function describe(iso: string, now: Date, separator = ' · '): string {
-  const label = formatDateTimeLabel(iso, now);
-  return now.getTime() - new Date(iso).getTime() < DAY_MS
-    ? `${label}${separator}${timeAgo(iso, now)}`
-    : label;
-}
+/** A chosen preset's relative name ("Just now") stays lit this long; then
+ *  the stored time moves to "Pick a date and time", which states it plainly. */
+const PRESET_FRESH_MS = 15 * 60_000;
 
-const spoken = (iso: string, now: Date) => describe(iso, now, ', ');
+/** Each card's glyph — what the moment means, not a clock face six times:
+ *  seen, a little while back, earlier, the night, this time another day. */
+const ICONS: Record<CardKey, LucideIcon> = {
+  'just-now': Eye,
+  'hour-ago': History,
+  'earlier-today': Clock,
+  'last-night': Moon,
+  yesterday: CalendarClock,
+  [PICK]: CalendarDays,
+};
 
-// Once a minute while the step is on screen, so "16h ago" stays true and the
-// preset set follows the clock ("Earlier today" appears at 04:00). useNow, not
-// a render-time `new Date()`: the React Compiler would freeze that.
+/** "Today, 14:30" / "Yesterday, 22:00" / "Sat 26 Sept, 13:05" — the review
+ *  row's own words, so the card and the review agree. */
+const timeLine = (iso: string, now: Date) => formatDateTimeLabel(iso, now);
+
+// Once a minute while the step is on screen, so each card's time and the
+// preset set follow the clock ("Earlier today" appears at 04:00), and a chosen
+// preset goes out once stale. useNow, not a render-time `new Date()`: the
+// React Compiler would freeze that.
 const TICK_MS = 60_000;
 
 /** The body of "When did you last see it?" (see the file header). */
-export function LastSeenTimeField({ value, onChange }: LastSeenTimeFieldProps) {
+export function LastSeenTimeField({
+  value,
+  onChange,
+  onPresetPicked,
+  onExactPicked,
+  onPickerOpen,
+}: LastSeenTimeFieldProps) {
   const styles = useThemedStyles(makeStyles);
   const sheetRef = useRef<BottomSheetRef>(null);
-  const [preset, setPreset] = useState<LastSeenPresetKey | null>(null);
+  // The card tapped on THIS visit, the time it stored, and when. None after
+  // Back, Edit or a restored draft: a stored time then lights "Pick a date
+  // and time", which shows it.
+  const [chosen, setChosen] = useState<{ key: CardKey; iso: string; at: number } | null>(null);
 
   // The sheet works against the moment it OPENED, so its options can't shift
   // under the user's finger as a clock minute ticks over.
@@ -121,21 +162,64 @@ export function LastSeenTimeField({ value, onChange }: LastSeenTimeFieldProps) {
   const renderNow = useNow(TICK_MS);
   const presets = lastSeenPresets(renderNow);
 
+  // A chosen card stays lit only while it is still TRUE: still the stored
+  // value (nothing changed it from outside), still offered ("Earlier today"
+  // hides after midnight), and — for a preset — fresh (a "Just now" two
+  // hours on, or a "Last night" after midnight, would lie). Otherwise a
+  // stored time lights "Pick a date and time", which states it.
+  const chosenStillTrue =
+    chosen !== null &&
+    chosen.iso === value &&
+    (chosen.key === PICK ||
+      (presets.some((option) => option.key === chosen.key) &&
+        renderNow.getTime() - chosen.at < PRESET_FRESH_MS));
+  const selected: CardKey | null = chosenStillTrue ? chosen.key : value ? PICK : null;
+
   // Every commit gets the app's "picked it" haptic and a spoken confirmation.
   // Draft edits inside the sheet get neither: they aren't answers yet.
   const commit = (iso: string) => {
     onChange(iso);
     lightHaptic();
-    AccessibilityInfo.announceForAccessibility(`Last seen ${spoken(iso, new Date())}`);
+    AccessibilityInfo.announceForAccessibility(`Last seen ${timeLine(iso, new Date())}`);
   };
 
-  const pickPreset = (key: LastSeenPresetKey) => {
+  const pickCard = (key: CardKey) => {
+    if (key === PICK) {
+      // A preset tapped a moment ago may still be about to move the step on.
+      onPickerOpen?.();
+      openSheet();
+      return;
+    }
     // Re-evaluated at tap time, not render time: "Just now" means now.
-    const picked = lastSeenPresets(new Date()).find((candidate) => candidate.key === key);
+    const tappedAt = new Date();
+    const picked = lastSeenPresets(tappedAt).find((candidate) => candidate.key === key);
     if (!picked) return;
-    setPreset(key);
-    commit(toLastSeenIso(picked.value));
+    const iso = toLastSeenIso(picked.value);
+    setChosen({ key, iso, at: tappedAt.getTime() });
+    commit(iso);
+    onPresetPicked?.();
   };
+
+  // A chosen card shows the STORED time; the others what a tap would store now.
+  const cards: CardSelectOption<CardKey>[] = [
+    ...presets.map((option) => ({
+      value: option.key,
+      label: option.label,
+      description:
+        selected === option.key && value
+          ? timeLine(value, renderNow)
+          : timeLine(toLastSeenIso(option.value), renderNow),
+      icon: ICONS[option.key],
+    })),
+    {
+      value: PICK,
+      label: 'Pick a date and time',
+      description: selected === PICK && value ? timeLine(value, renderNow) : undefined,
+      icon: ICONS[PICK],
+      // A radio that opens a dialog rather than just selecting: say so.
+      accessibilityHint: 'Opens a calendar',
+    },
+  ];
 
   const openSheet = () => {
     const now = new Date();
@@ -159,34 +243,26 @@ export function LastSeenTimeField({ value, onChange }: LastSeenTimeFieldProps) {
   };
 
   const confirm = () => {
-    setPreset(null);
+    const iso = toLastSeenIso(draftToDate(draft));
+    setChosen({ key: PICK, iso, at: Date.now() });
     sheetRef.current?.close();
-    commit(toLastSeenIso(draftToDate(draft)));
+    commit(iso);
+    onExactPicked?.();
   };
 
   const draftIso = toLastSeenIso(draftToDate(draft));
 
   return (
-    <View style={styles.root}>
-      <ChoiceChips
-        options={presets.map((option) => ({ value: option.key, label: option.label }))}
-        value={preset}
-        onSelect={pickPreset}
-        testID="last-seen-presets"
+    <View>
+      {/* Not clearable: the time is required. "Pick a date and time" opens
+          the sheet on every tap, lit or not. */}
+      <CardSelect
+        options={cards}
+        value={selected}
+        onSelect={pickCard}
+        accessibilityLabel={LAST_SEEN_QUESTIONS.when}
+        testID="last-seen-cards"
       />
-
-      {/* The answer field (shared FieldTrigger, as DateRangeField's). */}
-      <FieldTrigger
-        label="Last seen"
-        value={value ? describe(value, renderNow) : null}
-        placeholder={PICK_LABEL}
-        onPress={openSheet}
-        accessibilityLabel={
-          value ? `Last seen, ${spoken(value, renderNow)}, change date and time` : PICK_LABEL
-        }
-        accessibilityHint="Opens a picker for the exact day and time"
-      />
-
       <BottomSheet ref={sheetRef} title={stage === 'date' ? 'Pick a date' : 'Pick a time'}>
         {/* Keyed on the stage, so each one fades in rather than swapping. */}
         <Animated.View
@@ -263,11 +339,6 @@ export function LastSeenTimeField({ value, onChange }: LastSeenTimeFieldProps) {
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
-    // xl, not lg: the presets and the exact field are ALTERNATIVES, and 16pt
-    // between them read as one group.
-    root: {
-      gap: spacing.xl,
-    },
     sheetBody: {
       gap: spacing.lg,
     },

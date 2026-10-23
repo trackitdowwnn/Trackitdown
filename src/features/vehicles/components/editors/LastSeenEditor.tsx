@@ -12,13 +12,14 @@
  */
 
 import { useState } from 'react';
-import { View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { saveLastSeen } from '../../post/api/editSectionApi';
 import { LastSeenWhenStep, LastSeenWhereStep } from '../../post/components/postSteps';
+import { LAST_SEEN_QUESTIONS } from '../../post/lib/lastSeenTime';
 import type { PostACarAnswers } from '../../post';
 import { deriveLocalityForCoord } from '@/shared/lib/location/placeLabels';
-import { spacing } from '@/shared/theme';
+import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 
 import type { PostDetail } from '../../types';
 import { PostSectionEditor } from './PostSectionEditor';
@@ -32,6 +33,7 @@ export function LastSeenEditor({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const hasPoint = post.lat != null && post.lng != null;
   const [answers, setLocal] = useState<Partial<PostACarAnswers>>({
     lastSeenAt: post.lastSeenAt ?? undefined,
@@ -69,10 +71,38 @@ export function LastSeenEditor({
         });
       }}
     >
-      <View style={{ gap: spacing.xl }}>
-        <LastSeenWhenStep answers={answers} setAnswers={setAnswers} />
-        <LastSeenWhereStep answers={answers} setAnswers={setAnswers} />
+      {/* Each part under its own question (UI review, 2026-10-22): with the
+          time as six cards, the map sits a scroll below — the headings say
+          what each part asks. No advanceSoon: here a card only selects. */}
+      <View style={styles.parts}>
+        <View style={styles.part}>
+          <Text accessibilityRole="header" style={styles.heading}>
+            {LAST_SEEN_QUESTIONS.when}
+          </Text>
+          <LastSeenWhenStep answers={answers} setAnswers={setAnswers} />
+        </View>
+        <View style={styles.part}>
+          <Text accessibilityRole="header" style={styles.heading}>
+            {LAST_SEEN_QUESTIONS.where}
+          </Text>
+          <LastSeenWhereStep answers={answers} setAnswers={setAnswers} />
+        </View>
       </View>
     </PostSectionEditor>
   );
 }
+
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    parts: {
+      gap: spacing.xl,
+    },
+    part: {
+      gap: spacing.md,
+    },
+    // The wizard's question, a step down: these are parts of one editor.
+    heading: {
+      ...typography.heading,
+      color: c.textPrimary,
+    },
+  });

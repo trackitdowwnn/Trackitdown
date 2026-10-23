@@ -1,8 +1,10 @@
 /**
- * WHAT:  Tests for LastSeenTimeField:
- *          - a preset chip commits at once and stays checked;
- *          - the summary line states the stored answer;
- *          - the row opens the sheet;
+ * WHAT:  Tests for LastSeenTimeField (cards since 2026-10-22):
+ *          - each preset card shows the exact time it means;
+ *          - a preset commits at once, stays checked and moves the step on,
+ *            and keeps showing the STORED time as the clock moves;
+ *          - a stored time lights "Pick a date and time", never a preset;
+ *          - "Pick a date and time" opens the sheet;
  *          - Confirm commits the day / hour / quarter-hour picked, and Cancel
  *            commits nothing;
  *          - a stored value preselects the sheet;
@@ -22,7 +24,7 @@ import { AccessibilityInfo } from 'react-native';
 
 import { toLastSeenIso } from '../lib/lastSeenTime';
 import { LastSeenTimeField } from './LastSeenTimeField';
-import { formatClock } from '@/shared/lib';
+import { formatClock, formatDateTimeLabel } from '@/shared/lib';
 import { lightHaptic } from '@/shared/lib/haptics';
 
 jest.mock('react-native-safe-area-context', () =>
@@ -72,7 +74,8 @@ const sheetStage = (view: Queryable) =>
     : view.queryByRole('header', { name: 'Pick a time' })
       ? 'time'
       : null;
-const CHANGE = /change date and time$/;
+/** The last card — it opens the sheet, and shows an exact time once picked. */
+const PICK = /^Pick a date and time/;
 
 /** A calendar day button, by its spoken name ("Saturday 26 September 2026, …"). */
 const dayButton = (weekday: string, date: number) =>
@@ -105,7 +108,17 @@ const isSelected = (element: { props: { accessibilityState?: { selected?: boolea
   element.props.accessibilityState?.selected === true;
 
 /** Holds the value the way the wizard does, so the field re-renders with it. */
-function Harness({ initial = null, onChange }: { initial?: string | null; onChange: (iso: string) => void }) {
+function Harness({
+  initial = null,
+  onChange,
+  onPresetPicked,
+  onExactPicked,
+}: {
+  initial?: string | null;
+  onChange: (iso: string) => void;
+  onPresetPicked?: () => void;
+  onExactPicked?: () => void;
+}) {
   const [value, setValue] = useState<string | null>(initial);
   return (
     <LastSeenTimeField
@@ -114,9 +127,15 @@ function Harness({ initial = null, onChange }: { initial?: string | null; onChan
         setValue(iso);
         onChange(iso);
       }}
+      onPresetPicked={onPresetPicked}
+      onExactPicked={onExactPicked}
     />
   );
 }
+
+/** A card's line, as the field prints it (formatDateTimeLabel follows the
+ *  device locale, so tests compute it the same way rather than pin text). */
+const line = (date: Date) => formatDateTimeLabel(toLastSeenIso(date), new Date());
 
 const isChecked = (element: { props: { accessibilityState?: { checked?: boolean } } }) =>
   element.props.accessibilityState?.checked === true;
@@ -134,43 +153,144 @@ afterEach(async () => {
 });
 
 describe('LastSeenTimeField', () => {
-  it('starts with the presets and the picker row, and no summary', async () => {
+  it('offers six cards — each preset with the exact time it means — under the question', async () => {
     const view = await render(<Harness onChange={jest.fn()} />);
 
-    for (const label of ['Just now', 'About an hour ago', 'Earlier today', 'Last night', 'Yesterday']) {
-      expect(view.getByRole('radio', { name: label })).toBeTruthy();
+    const expected: [string, Date][] = [
+      ['Just now', NOW],
+      ['About an hour ago', new Date(2026, 8, 28, 13, 37)],
+      ['Earlier today', new Date(2026, 8, 28, 11, 37)],
+      ['Last night', new Date(2026, 8, 27, 22, 0)],
+      ['Yesterday', new Date(2026, 8, 27, 14, 37)],
+    ];
+    for (const [label, when] of expected) {
+      // "Last night. Yesterday, 22:00" — the guess is never accepted unseen.
+      expect(view.getByRole('radio', { name: `${label}. ${line(when)}` })).toBeTruthy();
     }
-    expect(view.getByRole('button', { name: 'Pick a date and time' })).toBeTruthy();
-    expect(view.queryByText('Last seen')).toBeNull();
+    // The exact picker, with no time until one is picked; nothing lit yet.
+    expect(view.getByRole('radio', { name: 'Pick a date and time' })).toBeTruthy();
+    expect(view.queryAllByRole('radio').filter(isChecked)).toHaveLength(0);
+    // The group says what it asks, so a screen reader hears it with the cards.
+    const group = view.getByTestId('last-seen-cards');
+    expect(group.props.accessibilityRole).toBe('radiogroup');
+    expect(group.props.accessibilityLabel).toBe('When did you last see it?');
   });
 
-  it('commits a preset at once, keeps it checked, and shows it in the field', async () => {
+  it('commits a preset at once, keeps it checked, says the time, and moves the step on', async () => {
     const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility');
     const onChange = jest.fn();
-    const view = await render(<Harness onChange={onChange} />);
+    const onPresetPicked = jest.fn();
+    const view = await render(<Harness onChange={onChange} onPresetPicked={onPresetPicked} />);
 
-    await fireEvent.press(view.getByRole('radio', { name: 'Last night' }));
+    await fireEvent.press(view.getByRole('radio', { name: /^Last night/ }));
 
     expect(onChange).toHaveBeenCalledWith(toLastSeenIso(new Date(2026, 8, 27, 22, 0)));
-    expect(isChecked(view.getByRole('radio', { name: 'Last night' }))).toBe(true);
-    expect(isChecked(view.getByRole('radio', { name: 'Just now' }))).toBe(false);
-    expect(view.getByText('Last seen')).toBeTruthy();
-    expect(view.getByText(/^Yesterday, .* · 16h ago$/)).toBeTruthy();
-    expect(view.getByRole('button', { name: CHANGE })).toBeTruthy();
-    // VoiceOver hears the time itself, not just "selected", and with a comma
-    // where the screen shows " · ".
-    expect(announce).toHaveBeenLastCalledWith(expect.stringMatching(/^Last seen Yesterday, .*, 16h ago$/));
+    expect(onPresetPicked).toHaveBeenCalledTimes(1);
+    expect(isChecked(view.getByRole('radio', { name: /^Last night/ }))).toBe(true);
+    expect(isChecked(view.getByRole('radio', { name: /^Just now/ }))).toBe(false);
+    expect(isChecked(view.getByRole('radio', { name: PICK }))).toBe(false);
+    // VoiceOver hears the time itself, not just "selected".
+    expect(announce).toHaveBeenLastCalledWith(
+      `Last seen ${line(new Date(2026, 8, 27, 22, 0))}`,
+    );
     announce.mockRestore();
+  });
+
+  it('a chosen preset shows the STORED time, then hands it to "Pick a date and time" once stale', async () => {
+    const view = await render(<Harness onChange={jest.fn()} />);
+    await fireEvent.press(view.getByRole('radio', { name: /^Just now/ }));
+    const stored = new Date(2026, 8, 28, 14, 37);
+
+    // Ten minutes on, still lit — with the time it stored, not 14:47.
+    await act(async () => {
+      jest.advanceTimersByTime(10 * 60_000);
+    });
+    expect(isChecked(view.getByRole('radio', { name: `Just now. ${line(stored)}` }))).toBe(true);
+
+    // Past a quarter of an hour "Just now" would lie: the stored time moves
+    // to the card that states it plainly.
+    await act(async () => {
+      jest.advanceTimersByTime(10 * 60_000);
+    });
+    expect(isChecked(view.getByRole('radio', { name: /^Just now/ }))).toBe(false);
+    expect(isChecked(view.getByRole('radio', { name: `Pick a date and time. ${line(stored)}` }))).toBe(
+      true,
+    );
+  });
+
+  it('keeps the lit preset when the picker is opened and cancelled', async () => {
+    const onChange = jest.fn();
+    const view = await render(<Harness onChange={onChange} />);
+    await fireEvent.press(view.getByRole('radio', { name: /^Last night/ }));
+    onChange.mockClear();
+
+    await fireEvent.press(view.getByRole('radio', { name: PICK }));
+    await fireEvent.press(view.getByRole('button', { name: 'Cancel' }));
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(isChecked(view.getByRole('radio', { name: /^Last night/ }))).toBe(true);
+  });
+
+  it('opening the picker calls onPickerOpen first (a pending move-on is cancelled)', async () => {
+    const onPickerOpen = jest.fn();
+    const view = await render(
+      <LastSeenTimeField value={null} onChange={jest.fn()} onPickerOpen={onPickerOpen} />,
+    );
+    const pick = view.getByRole('radio', { name: PICK });
+    // A radio that opens a dialog says so.
+    expect(pick.props.accessibilityHint).toBe('Opens a calendar');
+    await fireEvent.press(pick);
+    expect(onPickerOpen).toHaveBeenCalledTimes(1);
+    expect(sheetStage(view)).toBe('date');
+  });
+
+  it('hands a chosen "Earlier today" to "Pick a date and time" when midnight hides it', async () => {
+    jest.setSystemTime(new Date(2026, 8, 28, 23, 50));
+    const view = await render(<Harness onChange={jest.fn()} />);
+    await fireEvent.press(view.getByRole('radio', { name: /^Earlier today/ }));
+    const stored = new Date(2026, 8, 28, 20, 50);
+
+    await act(async () => {
+      jest.advanceTimersByTime(12 * 60_000); // 00:02 — "Earlier today" is gone
+    });
+    expect(view.queryByRole('radio', { name: /^Earlier today/ })).toBeNull();
+    expect(isChecked(view.getByRole('radio', { name: `Pick a date and time. ${line(stored)}` }))).toBe(
+      true,
+    );
+  });
+
+  it('after Back, Edit or a restored draft, lights "Pick a date and time" with the stored time — never a preset', async () => {
+    const stored = new Date(2026, 8, 27, 22, 0); // what "Last night" would give
+    const view = await render(<Harness initial={toLastSeenIso(stored)} onChange={jest.fn()} />);
+
+    expect(isChecked(view.getByRole('radio', { name: `Pick a date and time. ${line(stored)}` }))).toBe(
+      true,
+    );
+    expect(isChecked(view.getByRole('radio', { name: /^Last night/ }))).toBe(false);
+  });
+
+  it('hides "Yesterday" late in the evening, where it would sit on top of "Last night"', async () => {
+    jest.setSystemTime(new Date(2026, 8, 28, 22, 30));
+    const view = await render(<Harness onChange={jest.fn()} />);
+    expect(view.queryByRole('radio', { name: /^Yesterday/ })).toBeNull();
+    expect(view.getByRole('radio', { name: /^Last night/ })).toBeTruthy();
+  });
+
+  it('hides "Earlier today" before 04:00', async () => {
+    jest.setSystemTime(new Date(2026, 8, 28, 3, 30));
+    const view = await render(<Harness onChange={jest.fn()} />);
+    expect(view.queryByRole('radio', { name: /^Earlier today/ })).toBeNull();
+    expect(view.getByRole('radio', { name: /^Last night/ })).toBeTruthy();
   });
 
   it('asks for the date first, then the time, and commits both on Confirm', async () => {
     const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility');
     const onChange = jest.fn();
     const view = await render(<Harness onChange={onChange} />);
-    await fireEvent.press(view.getByRole('radio', { name: 'Last night' }));
+    await fireEvent.press(view.getByRole('radio', { name: /^Last night/ }));
 
     // Stage 1: the calendar alone. No time chips, no Confirm yet.
-    await fireEvent.press(view.getByRole('button', { name: CHANGE }));
+    await fireEvent.press(view.getByRole('radio', { name: PICK }));
     expect(sheetStage(view)).toBe('date');
     expect(view.queryByRole('adjustable', { name: 'Time' })).toBeNull();
     expect(view.queryByRole('button', { name: CONFIRM })).toBeNull();
@@ -195,12 +315,29 @@ describe('LastSeenTimeField', () => {
     expect(onChange).toHaveBeenLastCalledWith(toLastSeenIso(new Date(2026, 8, 26, 21, 15)));
     expect(sheetStage(view)).toBeNull();
     announce.mockRestore();
-    // An exact time is not a preset: no chip stays lit.
-    expect(isChecked(view.getByRole('radio', { name: 'Last night' }))).toBe(false);
-    // formatDateTimeLabel follows the device locale, so only the stable part
-    // is pinned. Over a day old, the summary drops the "· 1d ago" suffix.
-    expect(view.getByText(/26/)).toBeTruthy();
-    expect(view.queryByText(/ · \d+[mhdw] ago$/)).toBeNull();
+    // An exact time lights its own card, which now shows it; the preset goes out.
+    expect(isChecked(view.getByRole('radio', { name: /^Last night/ }))).toBe(false);
+    expect(
+      isChecked(
+        view.getByRole('radio', {
+          name: `Pick a date and time. ${line(new Date(2026, 8, 26, 21, 15))}`,
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('moves the step on after Confirm — never after Cancel', async () => {
+    const onExactPicked = jest.fn();
+    const view = await render(<Harness onChange={jest.fn()} onExactPicked={onExactPicked} />);
+
+    await fireEvent.press(view.getByRole('radio', { name: PICK }));
+    await fireEvent.press(view.getByRole('button', { name: 'Cancel' }));
+    expect(onExactPicked).not.toHaveBeenCalled();
+
+    await fireEvent.press(view.getByRole('radio', { name: PICK }));
+    await fireEvent.press(view.getByRole('button', { name: dayButton('Sunday', 27) }));
+    await fireEvent.press(view.getByRole('button', { name: CONFIRM }));
+    expect(onExactPicked).toHaveBeenCalledTimes(1);
   });
 
   it('commits nothing on Cancel, from either stage', async () => {
@@ -208,12 +345,12 @@ describe('LastSeenTimeField', () => {
     const view = await render(<Harness onChange={onChange} />);
 
     // From the date stage...
-    await fireEvent.press(view.getByRole('button', { name: 'Pick a date and time' }));
+    await fireEvent.press(view.getByRole('radio', { name: PICK }));
     await fireEvent.press(view.getByRole('button', { name: 'Cancel' }));
     expect(sheetStage(view)).toBeNull();
 
     // ...and from the time stage.
-    await fireEvent.press(view.getByRole('button', { name: 'Pick a date and time' }));
+    await fireEvent.press(view.getByRole('radio', { name: PICK }));
     expect(sheetStage(view)).toBe('date'); // always opens on the date
     await fireEvent.press(view.getByRole('button', { name: dayButton('Sunday', 27) }));
     await fireEvent.press(view.getByRole('button', { name: 'Cancel' }));
@@ -226,7 +363,7 @@ describe('LastSeenTimeField', () => {
     const stored = toLastSeenIso(new Date(2026, 8, 26, 21, 44));
     const view = await render(<Harness initial={stored} onChange={jest.fn()} />);
 
-    await fireEvent.press(view.getByRole('button', { name: CHANGE }));
+    await fireEvent.press(view.getByRole('radio', { name: PICK }));
     expect(view.getByRole('header', { name: 'September 2026' })).toBeTruthy();
     const stored26 = view.getByRole('button', { name: dayButton('Saturday', 26) });
     expect(isSelected(stored26)).toBe(true);
@@ -239,7 +376,7 @@ describe('LastSeenTimeField', () => {
 
   it('goes back to the calendar from the time, keeping the draft', async () => {
     const view = await render(<Harness onChange={jest.fn()} />);
-    await fireEvent.press(view.getByRole('button', { name: 'Pick a date and time' }));
+    await fireEvent.press(view.getByRole('radio', { name: PICK }));
     await fireEvent.press(view.getByRole('button', { name: dayButton('Sunday', 27) }));
     // Evening lands on 21:00; three steps on is 21:45.
     await fireEvent.press(view.getByRole('radio', { name: 'Evening' }));
@@ -261,7 +398,7 @@ describe('LastSeenTimeField', () => {
   it('offers no future time today', async () => {
     const view = await render(<Harness onChange={jest.fn()} />);
 
-    await fireEvent.press(view.getByRole('button', { name: 'Pick a date and time' }));
+    await fireEvent.press(view.getByRole('radio', { name: PICK }));
 
     // Opens on now: today, 14:30.
     const today = view.getByRole('button', { name: dayButton('Monday', 28) });
@@ -280,7 +417,7 @@ describe('LastSeenTimeField', () => {
 
   it('stops the month arrows at the 30-day window', async () => {
     const view = await render(<Harness onChange={jest.fn()} />);
-    await fireEvent.press(view.getByRole('button', { name: 'Pick a date and time' }));
+    await fireEvent.press(view.getByRole('radio', { name: PICK }));
 
     // Next month is all future: its arrow is disabled.
     expect(view.getByRole('button', { name: 'Next month, October 2026' }).props.accessibilityState).toMatchObject({
@@ -301,33 +438,20 @@ describe('LastSeenTimeField', () => {
     });
   });
 
-  it('keeps "how long ago" true while the step stays open', async () => {
-    const view = await render(<Harness onChange={jest.fn()} />);
-    await fireEvent.press(view.getByRole('radio', { name: 'Last night' }));
-    expect(view.getByText(/ · 16h ago$/)).toBeTruthy();
-
-    // 23 minutes later it's 15:00, 17 hours after 22:00.
-    await act(async () => {
-      jest.advanceTimersByTime(23 * 60_000);
-    });
-
-    expect(view.getByText(/ · 17h ago$/)).toBeTruthy();
-  });
-
   it('gives the "picked it" haptic on a preset and on Confirm, never on Cancel', async () => {
     const view = await render(<Harness onChange={jest.fn()} />);
 
-    await fireEvent.press(view.getByRole('radio', { name: 'Just now' }));
+    await fireEvent.press(view.getByRole('radio', { name: /^Just now/ }));
     expect(lightHaptic).toHaveBeenCalledTimes(1);
 
-    await fireEvent.press(view.getByRole('button', { name: CHANGE }));
+    await fireEvent.press(view.getByRole('radio', { name: PICK }));
     // Draft edits in the sheet aren't answers yet: no haptic.
     await fireEvent.press(view.getByRole('button', { name: dayButton('Sunday', 27) }));
     expect(lightHaptic).toHaveBeenCalledTimes(1);
     await fireEvent.press(view.getByRole('button', { name: 'Cancel' }));
     expect(lightHaptic).toHaveBeenCalledTimes(1);
 
-    await fireEvent.press(view.getByRole('button', { name: CHANGE }));
+    await fireEvent.press(view.getByRole('radio', { name: PICK }));
     await fireEvent.press(view.getByRole('button', { name: dayButton('Monday', 28) }));
     await fireEvent.press(view.getByRole('button', { name: CONFIRM }));
     expect(lightHaptic).toHaveBeenCalledTimes(2);
@@ -336,7 +460,7 @@ describe('LastSeenTimeField', () => {
   it('pulls a later time back when the day changes to today', async () => {
     const view = await render(<Harness onChange={jest.fn()} />);
 
-    await fireEvent.press(view.getByRole('button', { name: 'Pick a date and time' }));
+    await fireEvent.press(view.getByRole('radio', { name: PICK }));
     await fireEvent.press(view.getByRole('button', { name: dayButton('Sunday', 27) }));
     // Evening lands on 21:00; seven steps on is 22:45.
     await fireEvent.press(view.getByRole('radio', { name: 'Evening' }));

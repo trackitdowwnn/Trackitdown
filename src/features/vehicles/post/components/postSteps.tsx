@@ -317,11 +317,25 @@ export function PhotosStep({
   );
 }
 
-export function LastSeenWhenStep({ answers, setAnswers }: StepProps) {
+/** "When did you last see it?" — a card moves the wizard on (owner,
+ *  2026-10-22), as body type does; an exact time after the sheet's Confirm,
+ *  on the picker beat. Opening the picker cancels a preset's pending move-on
+ *  (code review: a quick "actually, the exact time" moved the step on under
+ *  the sheet). The listing's editor renders this without advanceSoon, so
+ *  there a tap only selects. */
+export function LastSeenWhenStep({
+  answers,
+  setAnswers,
+  advanceSoon,
+  cancelAdvanceSoon,
+}: StepProps) {
   return (
     <LastSeenTimeField
       value={answers.lastSeenAt ?? null}
       onChange={(lastSeenAt) => setAnswers({ lastSeenAt })}
+      onPresetPicked={() => advanceSoon?.()}
+      onExactPicked={afterPicker(advanceSoon)}
+      onPickerOpen={() => cancelAdvanceSoon?.()}
     />
   );
 }
