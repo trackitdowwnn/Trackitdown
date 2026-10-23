@@ -141,20 +141,24 @@ const makeStyles = (c: Palette) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
-      paddingLeft: spacing.md,
+      // In line with the row icons inside the card (1 border + xs + md).
+      paddingLeft: spacing.lg,
     },
     titleDanger: {
       color: c.danger,
       paddingHorizontal: 0,
+      // A Text in a row won't shrink by default; at large text sizes a longer
+      // title must wrap, not run off the screen.
+      flexShrink: 1,
     },
     // `danger` on `background`: 5.5:1 light, 6.1:1 dark (DESIGN_SYSTEM). The
-    // vertical padding keeps ListRow's pressed pill (radii.md) clear of the
-    // outline, so a press never paints over the border.
+    // padding keeps ListRow's pressed pill (radii.md) an even gap clear of the
+    // outline on all four sides, so a press never paints over the border.
     dangerCard: {
       borderWidth: 1,
       borderColor: c.danger,
       borderRadius: radii.lg,
-      paddingVertical: spacing.xs,
+      padding: spacing.xs,
     },
     divider: {
       height: StyleSheet.hairlineWidth,

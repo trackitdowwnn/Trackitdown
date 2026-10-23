@@ -4,10 +4,10 @@
  *        (avatar + trust badge + member-since, whole card → edit), a "Your
  *        spotter story" push row (stats + narrative), a "My cars" push row
  *        (moved off the tab bar 2026-07-23), settings groups with
- *        heading-scale titles and hairline dividers, then the Danger zone
- *        group — Log out, Log out of all devices, red Delete account (a push
- *        to its own confirm screen) — the app version, and a __DEV__-only
- *        tools section.
+ *        heading-scale titles and hairline dividers, then a plain Log out
+ *        row, then the red-outlined Danger zone card — Log out of all devices
+ *        and red Delete account (a push to its own confirm screen) — the app
+ *        version, and a __DEV__-only tools section.
  * WHY:   One calm hub for everything about "me"; the hero card is the one
  *        deliberately-elevated object on the page (docs/design-refs/profile/
  *        REFERENCE_SPEC.md). Guests browse freely (deferred auth), so

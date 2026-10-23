@@ -53,7 +53,9 @@ weight, and size rather than hue. Danger red appears only on destructive/error
 UI — never as decoration on "stolen" content. SANCTIONED EXCEPTION
 (2026-09-30): a `danger` outline and label on an EMERGENCY-CALL action
 (`Button variant="dangerOutline"`, the report safety sheet's "Call 999"): one
-per surface, never a fill. `success` green and `warning`
+per surface, never a fill. SANCTIONED EXCEPTION (2026-10-23): the Profile
+Danger zone's 1px `danger` outline and title (`ListRowGroup tone="danger"`,
+owner's call) — one in the app, outline never fill. `success` green and `warning`
 amber remain the semantic status hues (not brand colour), so pending/verified
 states stay legible. SANCTIONED EXCEPTION (2026-07-30): the sighting arc's
 nodes are sage (`success`) — a sighting is affirmative evidence on a hopeful

@@ -1,9 +1,9 @@
 /**
  * WHAT:  Wiring tests for ProfileScreen — signed-out state with the dev
  *        preview, the hero card (stats inside, degrade-by-omission, trust
- *        badge), the spotter-story push row, the Danger zone (log out and
- *        sign out everywhere through their confirms; delete account pushes to
- *        its own screen), dev-section gating, version caption, and the
+ *        badge), the spotter-story push row, Log out, and the Danger zone
+ *        (log out of all devices through its confirm; delete account pushes
+ *        to its own screen), dev-section gating, version caption, and the
  *        settings links.
  * WHY:   This screen is the door to the account-ending actions; a confirm that
  *        fires on dismiss, or a sign-out that silently goes everywhere (or

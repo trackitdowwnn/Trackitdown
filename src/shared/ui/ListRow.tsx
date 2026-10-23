@@ -6,7 +6,8 @@
  *        height, body-weight title, quiet caption metadata, surfaceSubtle
  *        press feedback — no borders or shadows, just breathing room.
  *        Destructive rows (sign out is NOT one; delete account is) render in
- *        the muted danger tone, never alarm-red decoration.
+ *        the muted danger tone, never alarm-red decoration of their own (the
+ *        one red frame in the app is ListRowGroup tone="danger" around them).
  *
  *        Passing `selected` turns the row into a CHOOSER row: the chevron
  *        becomes a check (or a spacer), and the role becomes radio. That is one
