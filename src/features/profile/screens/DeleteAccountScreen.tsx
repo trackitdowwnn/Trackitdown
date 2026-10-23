@@ -49,6 +49,7 @@ import {
 import {
   AccountDeletionError,
   fetchDeletionBlockers,
+  fetchLiveListingCount,
   requestAccountDeletion,
   type DeletionBlocker,
 } from '../api/profileApi';
@@ -72,6 +73,7 @@ export function DeleteAccountScreen() {
 
   const [status, setStatus] = useState<Status>('loading');
   const [blockers, setBlockers] = useState<DeletionBlocker[]>([]);
+  const [liveListings, setLiveListings] = useState(0);
   const [typed, setTyped] = useState('');
   const [deleting, setDeleting] = useState(false);
   // The re-entry guard, as a REF: two taps in one tick both read `deleting`
@@ -80,22 +82,25 @@ export function DeleteAccountScreen() {
 
   // Doesn't set 'loading' itself — `status` starts there, and a setState in an
   // effect's synchronous body is what react-hooks/set-state-in-effect forbids.
-  const load = useCallback(() => {
-    fetchDeletionBlockers()
-      .then((rows) => {
-        setBlockers(rows);
-        setStatus('ready');
-      })
-      .catch(() => setStatus('error'));
-  }, []);
-
   // Only for a signed-in user: a guest reaching this by deep link would get
   // NOT_AUTHENTICATED, shown as a connection error Retry can never fix.
   const session = useSession();
-  const signedIn = session.status === 'signedIn';
-  useEffect(() => {
-    if (signedIn) load();
-  }, [signedIn, load]);
+  const userId = session.status === 'signedIn' ? session.userId : null;
+
+  // Both, or neither: without the live-listing count the screen can't warn
+  // that deleting takes a listing down, so a failed count is an error, not 0.
+  const load = useCallback(() => {
+    if (!userId) return;
+    Promise.all([fetchDeletionBlockers(), fetchLiveListingCount(userId)])
+      .then(([rows, live]) => {
+        setBlockers(rows);
+        setLiveListings(live);
+        setStatus('ready');
+      })
+      .catch(() => setStatus('error'));
+  }, [userId]);
+
+  useEffect(load, [load]);
 
   const retry = useCallback(() => {
     setStatus('loading');
@@ -198,6 +203,16 @@ export function DeleteAccountScreen() {
             <Text style={styles.groupTitle} accessibilityRole="header">
               Deleted
             </Text>
+            {/* First, and in primary ink: a live listing comes down with the
+                account (20261023140000) — the one item they might not expect,
+                and the confirmation the owner asked for. */}
+            {liveListings > 0 ? (
+              <Text style={styles.reason} testID="delete-account-live-listings">
+                {liveListings === 1
+                  ? 'Your live listing — taken down now'
+                  : `Your ${liveListings} live listings — taken down now`}
+              </Text>
+            ) : null}
             {DELETED.map((item) => (
               <Text key={item} style={styles.line}>
                 {item}

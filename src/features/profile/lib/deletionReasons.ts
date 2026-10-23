@@ -16,10 +16,13 @@ import type { DeletionBlocker } from '../api/profileApi';
 
 export function deletionReason({ code, count }: DeletionBlocker): string {
   switch (code) {
+    // Since 20261023140000 only a listing holding reward money, or with a
+    // recovery claimed, blocks — a live one without either goes with the
+    // account. "Close" covers both exits (take it down / finish the recovery).
     case 'LIVE_LISTING':
       return count > 1
-        ? `You have ${count} live listings. Deactivate them first.`
-        : 'You have a live listing. Deactivate it first.';
+        ? `${count} listings have a reward or a recovery in progress. Close them first.`
+        : 'A listing has a reward or a recovery in progress. Close it first.';
     case 'MONEY_HELD':
       return 'Money from a listing is still being returned to you.';
     case 'REWARD_ON_ITS_WAY':

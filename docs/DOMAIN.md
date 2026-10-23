@@ -935,11 +935,16 @@ unpublished, unsearchable, and carries no money or lifecycle state.
   moving. ONE definition, `account_deletion_blockers_for`, read by the delete
   screen (`account_deletion_blockers()`), the Edge Function and
   `delete_account_data` under its lock:
-  - `LIVE_LISTING` — a listing `active`, `pending_verification` (retired, still
-    listed so a legacy row can't slip through) or `recovery_claimed`. Includes
-    a live **no-reward** listing, deliberately: a live listing for a stolen car
-    must not outlive its owner's account. They take it down first.
-  - `MONEY_HELD` — their payment `held`/`superseded`, or a refund hold whose
+  - `LIVE_LISTING` — a `recovery_claimed` listing (a spotter's credit and
+    payout hang on it), or an `active` / `pending_verification` one still
+    HOLDING reward money (`held`/`superseded` — it comes down through its
+    refund exit). **Changed 2026-10-23 (20261023140000):** a live listing with
+    NO money held — free, an abandoned "add a reward", a lapsed/refunded reward
+    — no longer blocks: deletion takes it down, and the delete screen says so
+    first ("Your live listing — taken down now"). Its abandoned intents are
+    proved dead at Stripe like any other stray.
+  - `MONEY_HELD` — their payment `held`/`superseded` on a listing that ISN'T
+    live (a live one's is named by LIVE_LISTING), or a refund hold whose
     window is open.
   - `REWARD_ON_ITS_WAY` — their sighting credited on a `recovery_claimed`
     listing (the payout hasn't happened).
