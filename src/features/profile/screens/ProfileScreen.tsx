@@ -34,12 +34,14 @@
 import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import {
   Banknote,
   Bell,
   Binoculars,
   Bug,
   Car,
+  Download,
   FileText,
   Info,
   LifeBuoy,
@@ -77,7 +79,7 @@ import { useHasSavedCar } from '@/features/garage';
 import { useMyAlerts } from '@/features/notifications';
 import { usePayoutsRelevant } from '@/features/payments';
 
-import { signOut } from '../api/profileApi';
+import { requestDataExport, signOut } from '../api/profileApi';
 import { DeleteAccountSheet } from '../components/DeleteAccountSheet';
 import { ProfileHeroCard } from '../components/ProfileHeroCard';
 import { legalHref } from '@/shared/lib';
@@ -261,6 +263,36 @@ function LoadedProfile({
     deleteSheetRef.current?.open();
   };
 
+  // "Download your data": a confirm, then the file opens in the browser (no
+  // native share sheet in this build). The ref guards a double tap — the
+  // server builds at most one file a day, but a second request mid-build
+  // would still do the work twice.
+  const exportRef = useRef<ConfirmDialogRef>(null);
+  const exporting = useRef(false);
+  const openDataExport = () => {
+    if (devPreview) {
+      toast.show('Sample data — download is disabled in preview.', 'error');
+      return;
+    }
+    exportRef.current?.open();
+  };
+  const downloadData = async () => {
+    if (exporting.current) return;
+    exporting.current = true;
+    toast.show('Putting your data together…');
+    try {
+      const { url } = await requestDataExport();
+      await WebBrowser.openBrowserAsync(url);
+    } catch (error) {
+      toast.show(
+        error instanceof Error ? error.message : 'We couldn’t put your data together.',
+        'error',
+      );
+    } finally {
+      exporting.current = false;
+    }
+  };
+
   const copyLogs = async () => {
     await Clipboard.setStringAsync(formatRecentLogs());
     toast.show('Recent logs copied');
@@ -417,6 +449,14 @@ function LoadedProfile({
             title="Privacy policy"
             onPress={() => router.push(legalHref('privacy'))}
           />
+          {/* Beside the privacy policy (owner, 2026-10-23): a calm right, not
+              a danger. UK GDPR Art. 15/20 — a copy of their data as a file. */}
+          <ListRow
+            icon={Download}
+            title="Download your data"
+            onPress={openDataExport}
+            testID="row-download-data"
+          />
           {/* Above Contact support deliberately: this one reaches a real
               table, and for now it is the ONLY support route shown at all. */}
           <ListRow
@@ -515,6 +555,13 @@ function LoadedProfile({
         onConfirm={() => void handleSignOut(true)}
       />
       <DeleteAccountSheet ref={deleteSheetRef} userId={profile.id} />
+      <ConfirmDialog
+        ref={exportRef}
+        title="Download your data?"
+        body="A copy of your account as a file. The link works for 15 minutes."
+        confirmLabel="Get my data"
+        onConfirm={() => void downloadData()}
+      />
     </SafeAreaView>
   );
 }

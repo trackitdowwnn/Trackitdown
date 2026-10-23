@@ -29,6 +29,15 @@ caller deleting, as `[{code, count}]`; `forget_my_push_tokens()`
 **Storage:** public `avatars` bucket, own-folder writes.
 **Edge Functions:** `delete-account` — called by `requestAccountDeletion`.
 
+## Download your data (2026-10-23)
+
+Support & legal → **Download your data** → a confirm → `requestDataExport()`
+(`export-my-data`) → the 15-minute link opens in the browser (no native
+share sheet in this build). One file a day; a second tap re-sends today's.
+What goes in — and what never does (other people's identities, card details,
+fraud signals) — is `supabase/functions/_shared/dataExport.ts`;
+RECORD_OF_PROCESSING §4.20.
+
 ## Danger zone and account deletion (2026-10-23)
 
 Owner's picks: delete **straight away**, but only when nothing is pending (no

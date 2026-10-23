@@ -125,10 +125,19 @@ jest.mock('../components/DeleteAccountSheet', () => {
     },
   };
 });
+const mockRequestExport = jest.fn();
 jest.mock('../api/profileApi', () => ({
   get signOut() {
     return mockSignOut;
   },
+  get requestDataExport() {
+    return mockRequestExport;
+  },
+}));
+
+const mockOpenBrowser = jest.fn();
+jest.mock('expo-web-browser', () => ({
+  openBrowserAsync: (...a: unknown[]) => mockOpenBrowser(...a),
 }));
 
 const mockRequireAuth = jest.fn();
@@ -504,6 +513,62 @@ describe('signed in', () => {
       fireEvent.press(getByText('Cancel'));
     });
     expect(mockSignOut).not.toHaveBeenCalled();
+  });
+
+  describe('download your data', () => {
+    beforeEach(() => {
+      mockRequestExport.mockResolvedValue({
+        url: 'https://files.example/export.json',
+        expiresAt: '2026-10-23T12:15:00Z',
+      });
+      mockOpenBrowser.mockResolvedValue(undefined);
+    });
+
+    it('confirming builds the file and opens it in the browser', async () => {
+      const { getByTestId, getByText } = await render(<ProfileScreen />);
+      await act(async () => {
+        fireEvent.press(getByTestId('row-download-data'));
+      });
+      expect(getByText('Download your data?')).toBeTruthy();
+      await act(async () => {
+        fireEvent.press(getByText('Get my data'));
+      });
+      await waitFor(() =>
+        expect(mockOpenBrowser).toHaveBeenCalledWith('https://files.example/export.json'),
+      );
+      expect(mockRequestExport).toHaveBeenCalledTimes(1);
+    });
+
+    it('a failure says so and opens nothing', async () => {
+      mockRequestExport.mockRejectedValueOnce(
+        new Error('We couldn’t put your data together. Please try again.'),
+      );
+      const { getByTestId, getByText } = await render(<ProfileScreen />);
+      await act(async () => {
+        fireEvent.press(getByTestId('row-download-data'));
+      });
+      await act(async () => {
+        fireEvent.press(getByText('Get my data'));
+      });
+      await waitFor(() =>
+        expect(mockShowToast).toHaveBeenCalledWith(
+          'We couldn’t put your data together. Please try again.',
+          'error',
+        ),
+      );
+      expect(mockOpenBrowser).not.toHaveBeenCalled();
+    });
+
+    it('cancelling asks for nothing', async () => {
+      const { getByTestId, getByText } = await render(<ProfileScreen />);
+      await act(async () => {
+        fireEvent.press(getByTestId('row-download-data'));
+      });
+      await act(async () => {
+        fireEvent.press(getByText('Cancel'));
+      });
+      expect(mockRequestExport).not.toHaveBeenCalled();
+    });
   });
 
   it('delete account opens its sheet — nothing is deleted from here', async () => {
