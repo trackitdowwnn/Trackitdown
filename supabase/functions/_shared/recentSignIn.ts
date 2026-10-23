@@ -20,6 +20,17 @@
  *  and press the button, short enough that an old session can't pass. */
 export const RECENT_SIGN_IN_SECONDS = 5 * 60;
 
+/**
+ * ⚠️ THE ONLY METHODS THAT COUNT AS PROOF: an email code (`otp`) or a
+ * Google/Apple sign-in (`oauth`). Each needs something the token alone can't
+ * give — the inbox, or the provider account. Anything else a stolen access
+ * token could mint for itself would otherwise pass (security review of #266):
+ * `updateUser({ password })` then a `password` sign-in, or enrolling a TOTP
+ * factor (a fresh `totp` claim on the SAME session). `token_refresh`,
+ * `recovery`, `email_change`, `anonymous`, `mfa/*` likewise don't count.
+ */
+const PROOF_METHODS: ReadonlySet<string> = new Set(['otp', 'oauth']);
+
 export function isRecentSignIn(
   jwt: string,
   nowSeconds: number,
@@ -30,7 +41,8 @@ export function isRecentSignIn(
   if (!Array.isArray(amr)) return false;
   let latest = -Infinity;
   for (const entry of amr) {
-    const timestamp = (entry as { timestamp?: unknown } | null)?.timestamp;
+    const { method, timestamp } = (entry ?? {}) as { method?: unknown; timestamp?: unknown };
+    if (typeof method !== 'string' || !PROOF_METHODS.has(method)) continue;
     if (typeof timestamp === 'number' && Number.isFinite(timestamp)) {
       latest = Math.max(latest, timestamp);
     }

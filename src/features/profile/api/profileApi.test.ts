@@ -156,6 +156,11 @@ describe('fetchIdentityCheck', () => {
     await expect(fetchIdentityCheck()).resolves.toEqual({ kind: 'code', email: 'jane@example.com' });
   });
 
+  it('an Apple account that shared its real address gets a code', async () => {
+    mockGetUser.mockResolvedValueOnce(user('jane@icloud.com', 'apple'));
+    await expect(fetchIdentityCheck()).resolves.toEqual({ kind: 'code', email: 'jane@icloud.com' });
+  });
+
   it('a Google account gets a code too (a real inbox)', async () => {
     mockGetUser.mockResolvedValueOnce(user('jane@gmail.com', 'google'));
     await expect(fetchIdentityCheck()).resolves.toEqual({ kind: 'code', email: 'jane@gmail.com' });
@@ -163,8 +168,7 @@ describe('fetchIdentityCheck', () => {
 
   // Apple's private relay doesn't forward our codes — they'd never arrive.
   it.each([
-    ['an Apple account', user('jane@icloud.com', 'apple')],
-    ['an Apple relay address', user('x1y2@privaterelay.appleid.com', 'email')],
+    ['an Apple relay address', user('x1y2@privaterelay.appleid.com', 'apple')],
     ['no email at all', user(null, 'email')],
   ])('%s confirms with Apple', async (_case, answer) => {
     mockGetUser.mockResolvedValueOnce(answer);

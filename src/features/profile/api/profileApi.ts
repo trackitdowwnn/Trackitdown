@@ -199,9 +199,11 @@ export async function fetchIdentityCheck(): Promise<IdentityCheck> {
     log.warn('identity lookup failed', { code: error?.code });
     throw error ?? new Error('NOT_AUTHENTICATED');
   }
-  const { email, app_metadata: meta } = data.user;
-  const appleOnly = meta?.provider === 'apple' || (email ?? '').endsWith('@privaterelay.appleid.com');
-  if (appleOnly || !email) return { kind: 'apple' };
+  const { email } = data.user;
+  // A code whenever there's a real inbox — an Apple account that shared its
+  // real address included. Only a private-relay address (Apple doesn't
+  // forward our codes) or no address at all confirms with Apple.
+  if (!email || email.endsWith('@privaterelay.appleid.com')) return { kind: 'apple' };
   return { kind: 'code', email };
 }
 

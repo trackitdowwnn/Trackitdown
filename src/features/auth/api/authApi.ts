@@ -141,17 +141,20 @@ export async function sendIdentityCode(email: string): Promise<void> {
 }
 
 /** Verify the identity code — the sign-in verify, so a wrong or expired code
- *  is the same calm INVALID_OTP. */
-export async function confirmIdentityWithCode(email: string, code: string): Promise<void> {
-  await verifyEmailOtp(email, code);
+ *  is the same calm INVALID_OTP. Returns the user id it proved, for the
+ *  caller to check is still the account it means to act on. */
+export async function confirmIdentityWithCode(email: string, code: string): Promise<string> {
+  return verifyEmailOtp(email, code);
 }
 
 /** For an Apple account (whose private-relay address can't receive our
- *  codes): re-sign-in with Apple. `true` when confirmed, `false` if they
- *  cancelled; a real failure throws. */
-export async function confirmIdentityWithApple(): Promise<boolean> {
+ *  codes): re-sign-in with Apple. The user id it proved, or null if they
+ *  cancelled; a real failure throws.
+ *  ⚠️ The device may hand back a DIFFERENT Apple ID — the caller must check
+ *  the id matches before doing anything irreversible. */
+export async function confirmIdentityWithApple(): Promise<string | null> {
   const result = await signInWithApple();
-  return !result.cancelled;
+  return result.cancelled ? null : result.userId;
 }
 
 // --- Social sign-in (native idToken → signInWithIdToken; no deep link) -------

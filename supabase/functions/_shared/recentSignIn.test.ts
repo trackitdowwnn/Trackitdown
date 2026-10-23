@@ -36,6 +36,21 @@ describe('isRecentSignIn', () => {
     expect(isRecentSignIn(token, NOW)).toBe(false);
   });
 
+  // ⚠️ A stolen token can mint these without the inbox or the provider
+  // account — they must never count as proof (security review of #266).
+  it.each(['password', 'totp', 'token_refresh', 'recovery', 'anonymous', 'mfa/phone'])(
+    'a fresh %s claim beside an old code does not count',
+    (method) => {
+      const token = jwt({
+        amr: [
+          { method: 'otp', timestamp: NOW - 86_400 },
+          { method, timestamp: NOW - 10 },
+        ],
+      });
+      expect(isRecentSignIn(token, NOW)).toBe(false);
+    },
+  );
+
   it('just past the window is not', () => {
     const token = jwt({ amr: [{ method: 'otp', timestamp: NOW - RECENT_SIGN_IN_SECONDS - 1 }] });
     expect(isRecentSignIn(token, NOW)).toBe(false);

@@ -87,8 +87,8 @@ beforeEach(() => {
   mockLiveCount.mockResolvedValue(0);
   mockIdentity.mockResolvedValue({ kind: 'code', email: 'ollie@example.com' });
   mockSendCode.mockResolvedValue(undefined);
-  mockConfirmCode.mockResolvedValue(undefined);
-  mockConfirmApple.mockResolvedValue(true);
+  mockConfirmCode.mockResolvedValue('u1');
+  mockConfirmApple.mockResolvedValue('u1');
   mockRequestDeletion.mockResolvedValue(undefined);
 });
 
@@ -205,6 +205,24 @@ describe('proving it’s them', () => {
     expect(mockRequestDeletion).not.toHaveBeenCalled();
   });
 
+  // ⚠️ The Apple sheet can hand back a different Apple ID: deleting THAT
+  // account and saying "yours is deleted" would be a silent erasure failure.
+  it('a proof for a DIFFERENT account deletes nothing', async () => {
+    mockIdentity.mockResolvedValue({ kind: 'apple' });
+    mockConfirmApple.mockResolvedValue('someone-else');
+    const screen = await render(<DeleteAccountScreen />);
+    await fireEvent.press(
+      await screen.findByRole('button', { name: 'Confirm with Apple and delete' }),
+    );
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith(
+        'That’s a different account. Sign in again with yours.',
+        'error',
+      ),
+    );
+    expect(mockRequestDeletion).not.toHaveBeenCalled();
+  });
+
   it('a send failure says why and keeps them on the first step', async () => {
     const { AuthActionError } = jest.requireMock('@/features/auth');
     mockSendCode.mockRejectedValue(
@@ -234,7 +252,7 @@ describe('proving it’s them', () => {
 
   it('a cancelled Apple sheet deletes nothing', async () => {
     mockIdentity.mockResolvedValue({ kind: 'apple' });
-    mockConfirmApple.mockResolvedValue(false);
+    mockConfirmApple.mockResolvedValue(null);
     const screen = await render(<DeleteAccountScreen />);
     await fireEvent.press(
       await screen.findByRole('button', { name: 'Confirm with Apple and delete' }),
@@ -287,6 +305,25 @@ describe('deleting', () => {
     );
     expect(mockFetchBlockers).toHaveBeenCalledTimes(2);
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  // A code works once: a retry straight after a refusal must not re-verify
+  // it (that would fail, and spend another email from the hourly budget).
+  it('a retry soon after a refusal doesn’t re-verify the used code', async () => {
+    const { AccountDeletionError } = jest.requireMock('../api/profileApi');
+    mockRequestDeletion
+      .mockRejectedValueOnce(
+        new AccountDeletionError('Try again in a moment.', 'INTENT_NOT_CANCELLED'),
+      )
+      .mockResolvedValueOnce(undefined);
+    const screen = await render(<DeleteAccountScreen />);
+    await enterCode(screen);
+    await fireEvent.press(deleteButton(screen));
+    await waitFor(() => expect(mockRequestDeletion).toHaveBeenCalledTimes(1));
+
+    await fireEvent.press(deleteButton(screen));
+    await waitFor(() => expect(mockRequestDeletion).toHaveBeenCalledTimes(2));
+    expect(mockConfirmCode).toHaveBeenCalledTimes(1);
   });
 
   it('REAUTH_REQUIRED sends them back to ask for a new code', async () => {

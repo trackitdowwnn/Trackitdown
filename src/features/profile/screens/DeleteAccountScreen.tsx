@@ -10,8 +10,9 @@
  *        an in-app path that actually completes.
  *
  *        The code replaced typing DELETE (danger-zone research, 2026-10-23:
- *        re-verify before an irreversible step; an unlocked phone must not be
- *        enough). It is ENFORCED at the server — delete-account refuses unless
+ *        re-verify before an irreversible step). It stops a stale or stolen
+ *        token and an unattended signed-in session — NOT someone holding the
+ *        unlocked phone with the mail app on it. It is ENFORCED at the server — delete-account refuses unless
  *        this session verified within 5 minutes (REAUTH_REQUIRED) — so this
  *        screen is the way through, not the guard. Typing the code is the
  *        deliberate step; it never auto-submits.
@@ -65,6 +66,9 @@ import { deletionReason } from '../lib/deletionReasons';
 
 const CODE_LENGTH = 6;
 
+/** Under the server's 5-minute window (_shared/recentSignIn), with a margin. */
+const REVERIFY_AFTER_MS = 4 * 60 * 1000;
+
 const DELETED = [
   'Your profile and photos',
   'Your listings and sightings',
@@ -98,6 +102,8 @@ export function DeleteAccountScreen() {
   // The re-entry guard, as a REF: two taps in one tick both read `deleting`
   // from the same render (BlockedAccountsScreen records the same lesson).
   const inFlight = useRef(false);
+  // When they last proved it's them (ms) — the server accepts 5 minutes.
+  const verifiedAt = useRef(0);
 
   // Only for a signed-in user: a guest reaching this by deep link would get
   // NOT_AUTHENTICATED, shown as a connection error Retry can never fix.
@@ -156,13 +162,28 @@ export function DeleteAccountScreen() {
     };
 
     // 1 — prove it's them. A wrong code or a cancelled Apple sheet stops here
-    // with the account untouched.
+    // with the account untouched. Skipped if they proved it in the last four
+    // minutes (a retry after a refusal): a code works once, so re-verifying it
+    // would fail and spend another email from the hourly budget.
     try {
-      if (identity.kind === 'code') {
-        await confirmIdentityWithCode(identity.email, code);
-      } else if (!(await confirmIdentityWithApple())) {
-        release();
-        return;
+      if (Date.now() - verifiedAt.current > REVERIFY_AFTER_MS) {
+        const proved =
+          identity.kind === 'code'
+            ? await confirmIdentityWithCode(identity.email, code)
+            : await confirmIdentityWithApple();
+        if (proved === null) {
+          release(); // cancelled the Apple sheet
+          return;
+        }
+        // ⚠️ The proof must be for THIS account. The Apple sheet can hand
+        // back a different Apple ID — deleting that account and saying "your
+        // account has been deleted" would be a silent erasure failure.
+        if (proved !== userId) {
+          toast.show('That’s a different account. Sign in again with yours.', 'error');
+          release();
+          return;
+        }
+        verifiedAt.current = Date.now();
       }
     } catch (error) {
       if (identity.kind === 'code') {
@@ -194,6 +215,7 @@ export function DeleteAccountScreen() {
       );
       // The server wants a fresher proof: back to the code step.
       if (error instanceof AccountDeletionError && error.code === 'REAUTH_REQUIRED') {
+        verifiedAt.current = 0;
         setCodeSent(false);
         setCode('');
       }
@@ -201,7 +223,7 @@ export function DeleteAccountScreen() {
       // Something may have changed since the list was read — show it now.
       load();
     }
-  }, [code, identity, load, ready, router, toast]);
+  }, [code, identity, load, ready, router, toast, userId]);
 
   const clear = status === 'ready' && blockers.length === 0 && identity !== null;
 
