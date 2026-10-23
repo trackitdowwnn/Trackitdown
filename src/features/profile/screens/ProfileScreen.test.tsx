@@ -1,17 +1,19 @@
 /**
  * WHAT:  Wiring tests for ProfileScreen — signed-out state with the dev
  *        preview, the hero card (stats inside, degrade-by-omission, trust
- *        badge), the spotter-story push row, log-out flow through the
- *        confirm, delete-account blocked vs allowed vs function-unavailable
- *        paths, dev-section gating, version caption, and the settings links.
- * WHY:   This screen holds the two account-destroying actions in the app; a
- *        confirm that fires on dismiss, or a deletion that skips the
- *        blocked-by-escrow check, is a Tier 1 failure. Hook and api are
- *        mocked at the module boundary so each state is exact.
+ *        badge), the spotter-story push row, the Danger zone (log out and
+ *        sign out everywhere through their confirms; delete account pushes to
+ *        its own screen), dev-section gating, version caption, and the
+ *        settings links.
+ * WHY:   This screen is the door to the account-ending actions; a confirm that
+ *        fires on dismiss, or a sign-out that silently goes everywhere (or
+ *        nowhere), is a Tier 1 failure. Deletion itself is tested in
+ *        DeleteAccountScreen.test.tsx. Hook and api are mocked at the module
+ *        boundary so each state is exact.
  * LINKS: src/features/profile/screens/ProfileScreen.tsx; docs/TESTING.md.
  */
 
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 
 import type { MyProfileState } from '../hooks/useMyProfile';
 import { ProfileScreen } from './ProfileScreen';
@@ -110,28 +112,9 @@ jest.mock('../hooks/useMyProfile', () => ({
 }));
 
 const mockSignOut = jest.fn();
-const mockCountBlocking = jest.fn();
-const mockRequestDeletion = jest.fn();
 jest.mock('../api/profileApi', () => ({
-  // A real class, not a stand-in object: the screen branches on `instanceof`,
-  // so omitting it does not merely skip the branch — it throws
-  // "Right-hand side of 'instanceof' is not an object" and swallows the toast.
-  AccountDeletionError: class AccountDeletionError extends Error {
-    code: string;
-    constructor(message: string, code: string) {
-      super(message);
-      this.name = 'AccountDeletionError';
-      this.code = code;
-    }
-  },
   get signOut() {
     return mockSignOut;
-  },
-  get countDeletionBlockingPosts() {
-    return mockCountBlocking;
-  },
-  get requestAccountDeletion() {
-    return mockRequestDeletion;
   },
 }));
 
@@ -175,8 +158,6 @@ beforeEach(() => {
   mockAlertsState = { status: 'ready', alerts: [], refresh: jest.fn() };
   mockPayoutsRelevant = true;
   mockSignOut.mockResolvedValue(undefined);
-  mockCountBlocking.mockResolvedValue(0);
-  mockRequestDeletion.mockResolvedValue(undefined);
 });
 
 describe('signed out', () => {
@@ -461,74 +442,57 @@ describe('signed in', () => {
     expect(mockSignOut).not.toHaveBeenCalled();
   });
 
-  it('delete: blocked by a post with escrowed money — no deletion offered', async () => {
-    mockCountBlocking.mockResolvedValue(1);
-    const { getByTestId, getByText, queryByText } = await render(<ProfileScreen />);
-    await act(async () => {
-      fireEvent.press(getByTestId('row-delete-account'));
-    });
-    expect(getByText(/reward still held/)).toBeTruthy();
-    expect(queryByText("Delete your account?")).toBeNull();
-    expect(mockRequestDeletion).not.toHaveBeenCalled();
+  it('danger zone: Log out, Sign out on all devices, then Delete account', async () => {
+    const { getByTestId, getByText } = await render(<ProfileScreen />);
+    expect(getByText('Danger zone')).toBeTruthy();
+    const zone = getByTestId('danger-zone');
+    const ids = ['row-sign-out', 'row-sign-out-everywhere', 'row-delete-account'];
+    for (const id of ids) {
+      expect(within(zone).getByTestId(id)).toBeTruthy();
+    }
   });
 
-  it('delete: clear account confirms with honest copy, then requests deletion', async () => {
-    const { getByTestId, getByText, getAllByText } = await render(<ProfileScreen />);
-    await act(async () => {
-      fireEvent.press(getByTestId('row-delete-account'));
-    });
-    expect(getByText(/deleted as described in our privacy policy/)).toBeTruthy();
-    await act(async () => {
-      fireEvent.press(getAllByText('Delete account').at(-1) as never);
-    });
-    await waitFor(() => expect(mockRequestDeletion).toHaveBeenCalled());
-    expect(mockReplace).not.toHaveBeenCalled(); // guest mode in place, no auth wall
-  });
-
-  it('delete: an unrecognised failure degrades to a calm error toast', async () => {
-    mockRequestDeletion.mockRejectedValue(new Error('network down'));
+  it('log out signs out THIS device only', async () => {
     const { getByTestId, getAllByText } = await render(<ProfileScreen />);
     await act(async () => {
-      fireEvent.press(getByTestId('row-delete-account'));
+      fireEvent.press(getByTestId('row-sign-out'));
     });
     await act(async () => {
-      fireEvent.press(getAllByText('Delete account').at(-1) as never);
+      fireEvent.press(getAllByText('Log out').at(-1) as never);
     });
-    await waitFor(() =>
-      expect(mockShowToast).toHaveBeenCalledWith(
-        "We couldn't delete your account. Please try again.",
-        'error',
-      ),
-    );
-    expect(mockReplace).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockSignOut).toHaveBeenCalledWith({ everywhere: false }));
   });
 
-  it('delete: a server refusal shows the SERVER’s reason, not "try again"', async () => {
-    // The escrow case. countDeletionBlockingPosts can be a beat stale — a draft
-    // can go active between the pre-check and the confirm tap — so a user can
-    // legitimately reach this dialog and still be refused. "Try again" would be
-    // a lie that never comes true; they must be told to cancel the listing.
-    const { AccountDeletionError } = jest.requireMock('../api/profileApi');
-    mockRequestDeletion.mockRejectedValue(
-      new AccountDeletionError(
-        'You have a live listing with a bounty in escrow. Cancel it first, then delete your account.',
-        'ACCOUNT_HAS_ESCROW',
-      ),
-    );
-    const { getByTestId, getAllByText } = await render(<ProfileScreen />);
+  it('sign out on all devices: confirming signs out everywhere and lands on Explore', async () => {
+    const { getByTestId, getByText } = await render(<ProfileScreen />);
+    await act(async () => {
+      fireEvent.press(getByTestId('row-sign-out-everywhere'));
+    });
+    expect(getByText('Sign out on all devices?')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(getByText('Sign out'));
+    });
+    await waitFor(() => expect(mockSignOut).toHaveBeenCalledWith({ everywhere: true }));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/(tabs)/explore'));
+  });
+
+  it('sign out on all devices: cancelling does nothing', async () => {
+    const { getByTestId, getByText } = await render(<ProfileScreen />);
+    await act(async () => {
+      fireEvent.press(getByTestId('row-sign-out-everywhere'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Cancel'));
+    });
+    expect(mockSignOut).not.toHaveBeenCalled();
+  });
+
+  it('delete account opens its own confirm screen — nothing is deleted from here', async () => {
+    const { getByTestId } = await render(<ProfileScreen />);
     await act(async () => {
       fireEvent.press(getByTestId('row-delete-account'));
     });
-    await act(async () => {
-      fireEvent.press(getAllByText('Delete account').at(-1) as never);
-    });
-    await waitFor(() =>
-      expect(mockShowToast).toHaveBeenCalledWith(
-        'You have a live listing with a bounty in escrow. Cancel it first, then delete your account.',
-        'error',
-      ),
-    );
-    expect(mockReplace).not.toHaveBeenCalled();
+    expect(mockPush).toHaveBeenCalledWith('/delete-account');
   });
 
   it('copy recent logs writes to the clipboard and confirms', async () => {

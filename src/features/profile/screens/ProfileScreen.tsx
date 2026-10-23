@@ -4,9 +4,10 @@
  *        (avatar + trust badge + member-since, whole card → edit), a "Your
  *        spotter story" push row (stats + narrative), a "My cars" push row
  *        (moved off the tab bar 2026-07-23), settings groups with
- *        heading-scale titles and hairline dividers, then a quiet ungrouped
- *        bottom cluster — underlined "Log out", muted "Delete account", app
- *        version — and a __DEV__-only tools section.
+ *        heading-scale titles and hairline dividers, then the Danger zone
+ *        group — Log out, Sign out on all devices, red Delete account (a push
+ *        to its own confirm screen) — the app version, and a __DEV__-only
+ *        tools section.
  * WHY:   One calm hub for everything about "me"; the hero card is the one
  *        deliberately-elevated object on the page (docs/design-refs/profile/
  *        REFERENCE_SPEC.md). Guests browse freely (deferred auth), so
@@ -16,12 +17,11 @@
  *        bounce to — but SIGN-OUT then switches to the Explore tab (owner
  *        call, 2026-08-05): staying here re-renders this very tab as "Log in
  *        to see your profile", which reads as a wall raised by the action the
- *        user just took. Deletion still lands in place. Deletion stays findable-but-quiet on
- *        this root (App Store rule) rather than buried a level deep like the
- *        reference: honest, never guilt-trippy, blocked with a clear reason
- *        while any post has money in escrow (advisory client check — the
- *        delete-account Edge Function re-checks server-side), degrading
- *        calmly while that function doesn't exist. The payouts row ships
+ *        user just took. Deletion stays findable-but-quiet on this root (App
+ *        Store rule) rather than buried a level deep like the reference:
+ *        honest, never guilt-trippy; its screen (DeleteAccountScreen) names
+ *        every reason it can't go yet and confirms by typing DELETE. The
+ *        payouts row ships
  *        dark behind PAYOUTS_ENABLED until Phase 3. The dev section closes
  *        the LOGGING.md loop and hosts the tab-bar badge toggles, kept in
  *        the old quiet-label style so it stays visually out of the way.
@@ -43,12 +43,15 @@ import {
   FileText,
   Info,
   LifeBuoy,
+  LogOut,
+  MonitorSmartphone,
   Shield,
   Sparkles,
   SlidersHorizontal,
+  Trash2,
 } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -73,12 +76,7 @@ import { useHasSavedCar } from '@/features/garage';
 import { useMyAlerts } from '@/features/notifications';
 import { usePayoutsRelevant } from '@/features/payments';
 
-import {
-  AccountDeletionError,
-  countDeletionBlockingPosts,
-  requestAccountDeletion,
-  signOut,
-} from '../api/profileApi';
+import { signOut } from '../api/profileApi';
 import { ProfileHeroCard } from '../components/ProfileHeroCard';
 import { legalHref } from '@/shared/lib';
 
@@ -230,16 +228,15 @@ function LoadedProfile({
   // The screen itself handles the guest deep-link case.
   const openAlertSettings = () => router.push('/alerts');
   const signOutRef = useRef<ConfirmDialogRef>(null);
-  const deleteConfirmRef = useRef<ConfirmDialogRef>(null);
-  const deleteBlockedRef = useRef<ConfirmDialogRef>(null);
+  const signOutEverywhereRef = useRef<ConfirmDialogRef>(null);
 
-  const handleSignOut = async () => {
+  const handleSignOut = async (everywhere: boolean) => {
     if (devPreview) {
       onExitPreview(); // sample data — nothing real to sign out of
       return;
     }
     try {
-      await signOut();
+      await signOut({ everywhere });
       // Guest mode — but land them on the feed, not here. The session flip
       // alone would leave them staring at this tab's "Log in to see your
       // profile" invitation, which reads as a wall thrown up by the very
@@ -252,37 +249,12 @@ function LoadedProfile({
     }
   };
 
-  const startDelete = async () => {
+  const openDelete = () => {
     if (devPreview) {
       toast.show('Sample data — deletion is disabled in preview.', 'error');
       return;
     }
-    try {
-      const blocking = await countDeletionBlockingPosts(profile.id);
-      if (blocking > 0) {
-        deleteBlockedRef.current?.open();
-      } else {
-        deleteConfirmRef.current?.open();
-      }
-    } catch {
-      toast.show("Couldn't check your account right now — try again.", 'error');
-    }
-  };
-
-  const confirmDelete = async () => {
-    try {
-      await requestAccountDeletion(); // also clears the local session
-      // The session flip lands the user in guest mode on this tab.
-    } catch (err) {
-      // The server's own words when it has better ones than "try again" — most
-      // importantly the escrow refusal, which the stale pre-check can miss.
-      toast.show(
-        err instanceof AccountDeletionError
-          ? err.message
-          : "We couldn't delete your account. Please try again.",
-        'error',
-      );
-    }
+    router.push('/delete-account');
   };
 
   const copyLogs = async () => {
@@ -474,35 +446,38 @@ function LoadedProfile({
           ) : null}
         </ListRowGroup>
 
-        {/* The quiet ungrouped bottom cluster (reference §1d): sign-out as
-            underlined text (underline = tappable), deletion beside it in the
-            muted danger tone — on the ROOT per our App-Store rule, unlike
-            the reference's one-level-deep burial — then the version line. */}
-        <View style={styles.accountCluster}>
-          <Pressable
+        {/* Danger zone (owner, 2026-10-23: "quiet section, red text"). The
+            same calm group as the rest of the page — a heading, not a red box
+            — with red only on the row that can't be undone (and on the final
+            button of its own screen). Deletion stays on the ROOT per our
+            App-Store rule, one push from its confirm screen. */}
+        <ListRowGroup title="Danger zone" testID="danger-zone">
+          <ListRow
+            icon={LogOut}
+            title="Log out"
             onPress={() => signOutRef.current?.open()}
-            accessibilityRole="button"
-            style={styles.textAction}
             testID="row-sign-out"
-          >
-            <Text style={styles.textActionLabel}>Log out</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => void startDelete()}
-            accessibilityRole="button"
-            style={styles.textAction}
+          />
+          <ListRow
+            icon={MonitorSmartphone}
+            title="Sign out on all devices"
+            onPress={() => signOutEverywhereRef.current?.open()}
+            testID="row-sign-out-everywhere"
+          />
+          <ListRow
+            icon={Trash2}
+            title="Delete account"
+            destructive
+            onPress={openDelete}
             testID="row-delete-account"
-          >
-            <Text style={[styles.textActionLabel, styles.textActionDestructive]}>
-              Delete account
-            </Text>
-          </Pressable>
-          {Constants.expoConfig?.version ? (
-            <Text style={styles.version} testID="app-version">
-              Version {Constants.expoConfig.version}
-            </Text>
-          ) : null}
-        </View>
+          />
+        </ListRowGroup>
+
+        {Constants.expoConfig?.version ? (
+          <Text style={styles.version} testID="app-version">
+            Version {Constants.expoConfig.version}
+          </Text>
+        ) : null}
 
         {__DEV__ ? (
           <ListRowGroup title="Developer" quiet testID="dev-section">
@@ -521,23 +496,14 @@ function LoadedProfile({
         title="Log out?"
         body="You can log back in any time."
         confirmLabel="Log out"
-        onConfirm={() => void handleSignOut()}
+        onConfirm={() => void handleSignOut(false)}
       />
       <ConfirmDialog
-        ref={deleteConfirmRef}
-        title="Delete your account?"
-        body="Your listings will be closed and your data deleted as described in our privacy policy. This can't be undone."
-        confirmLabel="Delete account"
-        destructive
-        onConfirm={() => void confirmDelete()}
-      />
-      <ConfirmDialog
-        ref={deleteBlockedRef}
-        title="Can't delete just yet"
-        body="You have a listing with a reward still held. Cancel it or complete its recovery first — then you can delete your account."
-        confirmLabel="Got it"
-        acknowledge
-        onConfirm={() => {}}
+        ref={signOutEverywhereRef}
+        title="Sign out on all devices?"
+        body="Every phone signed in to your account, including this one, will need to log in again."
+        confirmLabel="Sign out"
+        onConfirm={() => void handleSignOut(true)}
       />
     </SafeAreaView>
   );
@@ -555,24 +521,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   screenTitle: {
     ...typography.title,
     color: c.textPrimary,
-  },
-  accountCluster: {
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-  },
-  // Text actions, not icon rows (reference §1d) — but still full 44pt+
-  // touch targets via vertical padding.
-  textAction: {
-    alignSelf: 'flex-start',
-    paddingVertical: spacing.md,
-  },
-  textActionLabel: {
-    ...typography.body,
-    color: c.textPrimary,
-    textDecorationLine: 'underline', // underline = tappable (DESIGN_SYSTEM)
-  },
-  textActionDestructive: {
-    color: c.danger,
   },
   version: {
     ...typography.caption,
