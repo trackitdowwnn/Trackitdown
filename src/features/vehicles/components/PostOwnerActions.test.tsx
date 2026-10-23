@@ -266,22 +266,17 @@ describe('PostOwnerActions', () => {
       expect(mockToast).toHaveBeenCalledWith('Listing deactivated');
     });
 
-    // The confirm is the owner's last look before a destructive act; what it
-    // says about money must be true for the kind of null bounty it is.
-    it('a fee listing’s confirm says the listing fee isn’t refunded', async () => {
-      const { view } = await mount(post({ bountyPence: null }));
+    // Owner, 2026-10-23: the confirm is just the question, the same for every
+    // kind of listing — the money words live on the Manage sheet row and in
+    // the refund toast.
+    it.each([
+      ['a reward listing', {}],
+      ['a fee listing', { bountyPence: null }],
+      ['a lapsed-reward listing', { bountyPence: null, rewardEnded: true }],
+    ])('%s gets the simple confirm', async (_kind, over) => {
+      const { view } = await mount(post(over));
       const body = view.getByTestId('confirm-body:Deactivate this listing?');
-      expect(body).toHaveTextContent(/Your listing fee isn’t refunded/);
-    });
-
-    // ADR-0020: a lapsed reward already went back, and that listing may never
-    // have paid a fee — the confirm must not claim either way otherwise.
-    it('a lapsed-reward listing’s confirm says the reward was already refunded, never "listing fee"', async () => {
-      const { view } = await mount(post({ bountyPence: null, rewardEnded: true }));
-      const body = view.getByTestId('confirm-body:Deactivate this listing?');
-      expect(body).toHaveTextContent(/already went back to your card when it ended/);
-      expect(body).not.toHaveTextContent(/listing fee/);
-      expect(body).not.toHaveTextContent(/£/);
+      expect(body).toHaveTextContent('Are you sure? This can’t be undone.');
     });
 
     it('a lapsed-reward listing also skips the exit_check pre-flight (nothing escrowed)', async () => {
