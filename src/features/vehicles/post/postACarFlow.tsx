@@ -48,6 +48,7 @@ import {
   DEFAULT_BOUNTY_PENCE,
   PricingModeStep,
 } from './components/postSteps';
+import { LAST_SEEN_QUESTIONS } from './lib/lastSeenTime';
 import { buildVehicleSteps } from './lib/vehicleSteps';
 import type { PostACarAnswers } from './types';
 
@@ -116,7 +117,7 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
       steps: [
         {
           id: 'last-seen-when',
-          question: 'When did you last see it?',
+          question: LAST_SEEN_QUESTIONS.when,
           component: LastSeenWhenStep,
           schema: z.object({ lastSeenAt: z.string().min(1) }),
           reviewLabel: 'Last seen',
@@ -125,7 +126,7 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
         },
         {
           id: 'last-seen-where',
-          question: 'Where did you last see it?',
+          question: LAST_SEEN_QUESTIONS.where,
           // The map IS the step: it takes the height between the headline and
           // the footer instead of sitting in a fixed frame. See WizardStep.fills.
           fills: true,

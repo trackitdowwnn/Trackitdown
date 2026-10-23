@@ -196,17 +196,67 @@ describe('LastSeenTimeField', () => {
     announce.mockRestore();
   });
 
-  it('a chosen preset keeps showing the STORED time as the clock moves on', async () => {
+  it('a chosen preset shows the STORED time, then hands it to "Pick a date and time" once stale', async () => {
     const view = await render(<Harness onChange={jest.fn()} />);
     await fireEvent.press(view.getByRole('radio', { name: /^Just now/ }));
     const stored = new Date(2026, 8, 28, 14, 37);
 
-    // 23 minutes later it's 15:00 — "Just now" must not drift to 15:00.
+    // Ten minutes on, still lit — with the time it stored, not 14:47.
     await act(async () => {
-      jest.advanceTimersByTime(23 * 60_000);
+      jest.advanceTimersByTime(10 * 60_000);
     });
-
     expect(isChecked(view.getByRole('radio', { name: `Just now. ${line(stored)}` }))).toBe(true);
+
+    // Past a quarter of an hour "Just now" would lie: the stored time moves
+    // to the card that states it plainly.
+    await act(async () => {
+      jest.advanceTimersByTime(10 * 60_000);
+    });
+    expect(isChecked(view.getByRole('radio', { name: /^Just now/ }))).toBe(false);
+    expect(isChecked(view.getByRole('radio', { name: `Pick a date and time. ${line(stored)}` }))).toBe(
+      true,
+    );
+  });
+
+  it('keeps the lit preset when the picker is opened and cancelled', async () => {
+    const onChange = jest.fn();
+    const view = await render(<Harness onChange={onChange} />);
+    await fireEvent.press(view.getByRole('radio', { name: /^Last night/ }));
+    onChange.mockClear();
+
+    await fireEvent.press(view.getByRole('radio', { name: PICK }));
+    await fireEvent.press(view.getByRole('button', { name: 'Cancel' }));
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(isChecked(view.getByRole('radio', { name: /^Last night/ }))).toBe(true);
+  });
+
+  it('opening the picker calls onPickerOpen first (a pending move-on is cancelled)', async () => {
+    const onPickerOpen = jest.fn();
+    const view = await render(
+      <LastSeenTimeField value={null} onChange={jest.fn()} onPickerOpen={onPickerOpen} />,
+    );
+    const pick = view.getByRole('radio', { name: PICK });
+    // A radio that opens a dialog says so.
+    expect(pick.props.accessibilityHint).toBe('Opens a calendar');
+    await fireEvent.press(pick);
+    expect(onPickerOpen).toHaveBeenCalledTimes(1);
+    expect(sheetStage(view)).toBe('date');
+  });
+
+  it('hands a chosen "Earlier today" to "Pick a date and time" when midnight hides it', async () => {
+    jest.setSystemTime(new Date(2026, 8, 28, 23, 50));
+    const view = await render(<Harness onChange={jest.fn()} />);
+    await fireEvent.press(view.getByRole('radio', { name: /^Earlier today/ }));
+    const stored = new Date(2026, 8, 28, 20, 50);
+
+    await act(async () => {
+      jest.advanceTimersByTime(12 * 60_000); // 00:02 — "Earlier today" is gone
+    });
+    expect(view.queryByRole('radio', { name: /^Earlier today/ })).toBeNull();
+    expect(isChecked(view.getByRole('radio', { name: `Pick a date and time. ${line(stored)}` }))).toBe(
+      true,
+    );
   });
 
   it('after Back, Edit or a restored draft, lights "Pick a date and time" with the stored time — never a preset', async () => {
@@ -217,6 +267,13 @@ describe('LastSeenTimeField', () => {
       true,
     );
     expect(isChecked(view.getByRole('radio', { name: /^Last night/ }))).toBe(false);
+  });
+
+  it('hides "Yesterday" late in the evening, where it would sit on top of "Last night"', async () => {
+    jest.setSystemTime(new Date(2026, 8, 28, 22, 30));
+    const view = await render(<Harness onChange={jest.fn()} />);
+    expect(view.queryByRole('radio', { name: /^Yesterday/ })).toBeNull();
+    expect(view.getByRole('radio', { name: /^Last night/ })).toBeTruthy();
   });
 
   it('hides "Earlier today" before 04:00', async () => {

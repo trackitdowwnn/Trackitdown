@@ -664,8 +664,12 @@ Airbnb-style calendar, inside a `BottomSheet`. Maths and labels live in
 2026-10-22) is `CardSelect` cards like every one-question step: each preset
 card shows the exact time it means ("Last night" / "Yesterday, 22:00"), and
 the last, "Pick a date and time", opens the calendar sheet and then shows the
-time picked. A card moves the wizard on; in an editor sheet it only selects.
-The lit card never claims a time that isn't stored.
+time picked. A card moves the wizard on; in the listing's full-screen
+editor (under a `heading` "When did you last see it?") it only selects.
+The lit card never claims a time that isn't stored: a preset stays lit only
+while still offered, still the stored value and under 15 minutes old, else
+"Pick a date and time" is lit with it. "Yesterday" hides from 20:00, where it
+would sit on "Last night".
 
 **`CalendarMonth` (one month at a time)**
 - **Header:** the month title, left-aligned, in `cardTitle` (a step below the

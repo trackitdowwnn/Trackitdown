@@ -28,6 +28,13 @@ import { addDays, atTime, clampDay, clampTime, toDayId, type DayId } from '@/sha
 /** How far back the exact picker reaches, counting today as day 1. */
 export const LAST_SEEN_WINDOW_DAYS = 30;
 
+/** The two last-seen questions, one wording everywhere: the wizard's titles,
+ *  the cards' group label, and the listing editor's headings. */
+export const LAST_SEEN_QUESTIONS = {
+  when: 'When did you last see it?',
+  where: 'Where did you last see it?',
+} as const;
+
 const HOUR_MS = 60 * 60_000;
 
 /** Midnight at the start of `date`, local time. */
@@ -67,6 +74,10 @@ export interface LastSeenPreset {
 const EARLIER_TODAY_FROM_HOUR = 4;
 /** "Last night" is yesterday at this local hour. */
 const LAST_NIGHT_HOUR = 22;
+/** From this hour "Yesterday" (same time yesterday) is within two hours of
+ *  "Last night" — "Yesterday, 22:05" under "Yesterday, 22:00", and later than
+ *  it — so it hides (UI review, 2026-10-22: the cards show the times). */
+const YESTERDAY_UNTIL_HOUR = LAST_NIGHT_HOUR - 2;
 
 /** The step's one-tap answers, newest first. Evaluate at tap time. */
 export function lastSeenPresets(now: Date): LastSeenPreset[] {
@@ -85,16 +96,16 @@ export function lastSeenPresets(now: Date): LastSeenPreset[] {
     });
   }
   const yesterday = startOfLocalDay(addLocalDays(now, -1));
-  presets.push(
-    {
-      key: 'last-night',
-      label: 'Last night',
-      value: new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), LAST_NIGHT_HOUR),
-    },
+  presets.push({
+    key: 'last-night',
+    label: 'Last night',
+    value: new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), LAST_NIGHT_HOUR),
+  });
+  if (now.getHours() < YESTERDAY_UNTIL_HOUR) {
     // Same clock time yesterday. Calendar arithmetic, so a DST change doesn't
     // shift it by an hour.
-    { key: 'yesterday', label: 'Yesterday', value: addLocalDays(now, -1) },
-  );
+    presets.push({ key: 'yesterday', label: 'Yesterday', value: addLocalDays(now, -1) });
+  }
   return presets;
 }
 

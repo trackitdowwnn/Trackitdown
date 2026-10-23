@@ -64,6 +64,14 @@ describe('lastSeenPresets', () => {
     );
   });
 
+  it('drops "Yesterday" from 20:00, where it would sit on (or after) "Last night"', () => {
+    const at = (hour: number) =>
+      lastSeenPresets(new Date(2026, 8, 28, hour, 30)).map((preset) => preset.key);
+    expect(at(19)).toContain('yesterday');
+    expect(at(20)).not.toContain('yesterday');
+    expect(at(23)).toEqual(['just-now', 'hour-ago', 'earlier-today', 'last-night']);
+  });
+
   it('keeps "Last night" on the previous evening, even just after midnight', () => {
     expect(presetValue(new Date(2026, 8, 28, 0, 30), 'last-night')).toEqual(
       new Date(2026, 8, 27, 22, 0),
@@ -75,10 +83,12 @@ describe('lastSeenPresets', () => {
   // local clock times a person means, not "24 hours ago" — which is an hour
   // out across a change. Asserted as local wall time, so it holds in any time
   // zone and catches the 24-hour mistake when run on UK time.
+  // Both are days a plain "minus 24 hours" gets wrong (code review): 11:00
+  // yesterday on the 25 Oct, 09:00 yesterday on 29 Mar. Jest runs on UK time
+  // (jest/globalSetup.js), so these do cross the change.
   it.each([
-    ['the day after the clocks go back', new Date(2026, 9, 26, 10, 0)],
     ['the day the clocks go back', new Date(2026, 9, 25, 10, 0)],
-    ['the day after the clocks go forward', new Date(2026, 2, 30, 10, 0)],
+    ['the day the clocks go forward', new Date(2026, 2, 29, 10, 0)],
   ])('keeps "Yesterday" and "Last night" on the local clock on %s', (_, now) => {
     const yesterday = presetValue(now, 'yesterday') as Date;
     expect([yesterday.getDate(), yesterday.getHours(), yesterday.getMinutes()]).toEqual([

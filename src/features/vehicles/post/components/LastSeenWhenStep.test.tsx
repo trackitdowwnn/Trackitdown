@@ -21,6 +21,7 @@ type FieldProps = {
   onChange: (iso: string) => void;
   onPresetPicked?: () => void;
   onExactPicked?: () => void;
+  onPickerOpen?: () => void;
 };
 let mockField: FieldProps | null = null;
 jest.mock('./LastSeenTimeField', () => ({
@@ -63,11 +64,31 @@ describe('LastSeenWhenStep', () => {
     expect(advanceSoon).toHaveBeenLastCalledWith(motion.autoAdvanceAfterPicker);
   });
 
-  it('never moves without advanceSoon (the listing’s Last seen editor)', async () => {
-    await render(<LastSeenWhenStep answers={answers} setAnswers={jest.fn()} />);
+  it('⚠️ opening the picker cancels a preset’s pending move-on', async () => {
+    // A quick "actually, the exact time" moved the step on under the sheet.
+    const cancelAdvanceSoon = jest.fn();
+    await render(
+      <LastSeenWhenStep
+        answers={answers}
+        setAnswers={jest.fn()}
+        advanceSoon={jest.fn()}
+        cancelAdvanceSoon={cancelAdvanceSoon}
+      />,
+    );
+    mockField?.onPickerOpen?.();
+    expect(cancelAdvanceSoon).toHaveBeenCalledTimes(1);
+  });
+
+  it('never moves without advanceSoon (the listing’s Last seen editor) — but still saves', async () => {
+    const setAnswers = jest.fn();
+    await render(<LastSeenWhenStep answers={answers} setAnswers={setAnswers} />);
+    expect(mockField).not.toBeNull();
     expect(() => {
       mockField?.onPresetPicked?.();
       mockField?.onExactPicked?.();
+      mockField?.onPickerOpen?.();
     }).not.toThrow();
+    mockField?.onChange('2026-10-22T13:00:00.000Z');
+    expect(setAnswers).toHaveBeenCalledWith({ lastSeenAt: '2026-10-22T13:00:00.000Z' });
   });
 });

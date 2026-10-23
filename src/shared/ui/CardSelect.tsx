@@ -40,6 +40,10 @@ export interface CardSelectOption<V extends string = string> {
    *  which way it went"). It REPLACES the description, and must contain the
    *  visible label (WCAG 2.5.3) so voice control still finds the card. */
   accessibilityLabel?: string;
+  /** What tapping it does when that isn't just "select" — e.g. "Opens a
+   *  calendar" on a card that opens a picker (last-seen's "Pick a date and
+   *  time"), so a screen reader isn't surprised by a dialog. */
+  accessibilityHint?: string;
 }
 
 export interface CardSelectProps<V extends string = string> {
@@ -96,7 +100,9 @@ export function CardSelect<V extends string = string>({
               option.accessibilityLabel ??
               (option.description ? `${option.label}. ${option.description}` : option.label)
             }
-            accessibilityHint={clearable && selected ? 'Double tap to clear' : undefined}
+            accessibilityHint={
+              option.accessibilityHint ?? (clearable && selected ? 'Double tap to clear' : undefined)
+            }
             accessibilityState={{ checked: selected }}
             onPress={() => onSelect(option.value)}
             style={({ pressed }) => [
