@@ -317,6 +317,24 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
   minimum thresholds.
 - **Basis:** *proposed:* contract. **Retention:** with the post.
 
+### 4.20 Data exports ("Download your data", 2026-10-23)
+- **Subjects:** the user asking for their own data (Art. 15 access, Art. 20
+  portability).
+- **Data:** one JSON file per request in the private `data-exports` bucket —
+  their account, listings, garage, own sightings, chats (the other person
+  shown as "other person"), anonymised sightings on their listings, watchlist,
+  alert areas, notifications, payments, payout status, holds/disputes, reports
+  and blocks they made, bug reports, devices. **Never** other people's
+  personal data, card details, internal fraud signals or push token values
+  (`supabase/functions/_shared/dataExport.ts` picks every field by name).
+  `data_export_requests` logs each file (ids, path, size, times — no payload).
+- **How:** Profile → Support & legal → Download your data → a 15-minute
+  download link. One file a day (a second request re-sends the same file).
+- **Retention:** the file 24 hours (removed by the hourly sweep), and with the
+  account if it is deleted first; the request row with the account.
+- **Security:** service-role only (no storage policy, RLS on the log); never
+  logged (URL, payload, email).
+
 ## 5. Known gaps — where the code, the policy and this record disagree
 
 Each is a decision for the owner (and, for 1–3, the solicitor). Recorded here
