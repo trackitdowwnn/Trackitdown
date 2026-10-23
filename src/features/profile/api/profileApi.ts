@@ -223,6 +223,16 @@ const DELETION_MESSAGES: Record<string, string> = {
   ACCOUNT_HAS_ESCROW:
     'You have a live listing with a reward held in escrow. Cancel it first, then delete your account.',
   NOT_AUTHENTICATED: 'Please log in again, then try deleting your account.',
+  // The server's reasons it can't go yet (account_deletion_blockers_for,
+  // 20261023120000) — each says what to do, never "try again".
+  LIVE_LISTING: 'You have a live listing. Deactivate it first, then delete your account.',
+  MONEY_HELD: "Money from one of your listings is still being returned. Try again once it's back.",
+  // Usually they haven't set up payouts, and nothing pays it until they do.
+  REWARD_ON_ITS_WAY: 'A reward is waiting for you. Set up payouts to receive it first.',
+  PAYOUT_ON_ITS_WAY: "A payout is still on its way to your bank. Try again once it's arrived.",
+  DISPUTE_OPEN: "A dispute is still being decided. Try again once it's settled.",
+  REVIEW_OPEN: "A payment is still being reviewed. Try again once it's done.",
+  INTENT_NOT_CANCELLED: 'A payment is still being processed. Try again in a moment.',
 };
 const DELETION_FALLBACK = "We couldn't delete your account. Please try again.";
 

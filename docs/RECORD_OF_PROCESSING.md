@@ -211,7 +211,8 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
 ### 4.11 Payments — listing fee, bounty, refunds, reward term
 - **Subjects:** owners (payers); spotters (payees).
 - **Data:** `payments` — Stripe ids, amounts, fees, status and dates,
-  `post_snapshot`; `stripe_webhook_events` ids. **No card details.**
+  `post_snapshot`, `payee_snapshot` (the payee's Stripe account id once their
+  account is deleted); `stripe_webhook_events` ids. **No card details.**
 - **Purpose:** take the fee or hold the bounty; refund; pay the spotter.
 - **Basis:** contract; legal obligation (financial records); Art. 17(3)(b)/(e)
   for the snapshot kept after a post is deleted.
@@ -237,8 +238,10 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
 - **Purpose:** know-your-customer checks and paying out 95% of the bounty.
 - **Basis:** contract; Stripe acts as a controller for the identity checks.
 - **Retention:** with the profile. The Stripe account id is copied to the
-  deletion audit (4.17); closing the account at Stripe is out-of-band — **no
-  process documented**.
+  deletion audit (4.17) and kept on payments made to them (`payee_snapshot`,
+  for reconciliation). On deletion `delete-account` closes the account at
+  Stripe (since 2026-10-23); whether it worked is recorded in 4.17, and a
+  failure emails the operator to close it by hand.
 
 ### 4.13 Fraud controls (collusion check)
 - **Subjects:** owners and spotters.
@@ -250,8 +253,10 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
 - **Basis:** legitimate interests (fraud prevention).
 - **Recipients:** operator only.
 - **Retention:** `device_links` **indefinitely, surviving account deletion**
-  (fraud evidence); `payout_reviews` blocks deletion of the people in it
-  (ON DELETE RESTRICT) and is archived into the snapshot.
+  (fraud evidence). `payout_reviews`: an unresolved one blocks deletion of the
+  people in it; a resolved one is archived into the snapshot with the owner's
+  listing, or kept anonymised (spotter cleared) when the spotter deletes
+  (2026-10-23).
 
 ### 4.14 Refund holds and disputes
 - **Subjects:** owners and spotters.
@@ -262,9 +267,11 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
 - **Basis:** *proposed:* legitimate interests (fair outcomes; fraud).
 - **Recipients:** operator; each party sees their own.
 - **Retention:** kept past the 90-day sighting-notes rule on purpose — it is
-  evidence in a money decision (the privacy policy says so). ON DELETE
-  RESTRICT on the people; archived into the payments
-  snapshot (statement included) indefinitely.
+  evidence in a money decision (the privacy policy says so). An open dispute
+  blocks deletion of either person. Once settled: archived into the payments
+  snapshot (statement included) indefinitely when the owner deletes; kept
+  anonymised — spotter, sighting and **statement cleared** — when the spotter
+  deletes (2026-10-23).
 
 ### 4.15 Moderation reports
 - **Subjects:** reporters and the people reported.
@@ -288,7 +295,8 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
 
 ### 4.17 Account deletion audit
 - **Data:** `account_deletions` — the deleted user id, Stripe account id,
-  objects removed, time. No name, email or content.
+  whether that account was closed at Stripe (`stripe_account_closed`, since
+  2026-10-23), objects removed, time. No name, email or content.
 - **Purpose / basis:** accountability (Art. 5(2)); financial records.
 - **Retention:** indefinite.
 

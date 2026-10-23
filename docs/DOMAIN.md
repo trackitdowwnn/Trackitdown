@@ -927,17 +927,42 @@ unpublished, unsearchable, and carries no money or lifecycle state.
 
 - Users can delete their account in-app (App Store requirement). Deletion
   is server-side (Edge Function) per SECURITY_AND_TRUST.md retention rules.
-- Deletion is BLOCKED while any of the user's posts has money in escrow —
-  status `active`, `pending_verification` (a retired state, still listed so a
-  legacy row cannot slip through), or `recovery_claimed`. The user must cancel
-  the post or complete its recovery first. The client may pre-check to explain
-  this kindly; the server check is the enforcement.
-- **Known over-reach since 2026-08-20 (ADR-0014), left deliberately:** the block
-  is written as "money in escrow" but tests STATUS, so a live **no-reward**
-  listing blocks deletion too — and it holds no escrow at all. Left as-is
-  because the conservative direction is the safe one (a live listing for a
-  stolen car outliving its owner's account is worse than an extra step), and
-  because the owner can always take it down first. Narrow it only deliberately.
+- **Rewritten 2026-10-23 (20261023120000).** Until then deletion FAILED with
+  "try again" for anyone with money history: `payments.post_id` and the
+  hold/dispute/review FKs are RESTRICT, so an owner who had ever paid even the
+  £5 fee could not be deleted.
+- Deletion is REFUSED, with a reason the app names, while anything is still
+  moving. ONE definition, `account_deletion_blockers_for`, read by the delete
+  screen (`account_deletion_blockers()`), the Edge Function and
+  `delete_account_data` under its lock:
+  - `LIVE_LISTING` — a listing `active`, `pending_verification` (retired, still
+    listed so a legacy row can't slip through) or `recovery_claimed`. Includes
+    a live **no-reward** listing, deliberately: a live listing for a stolen car
+    must not outlive its owner's account. They take it down first.
+  - `MONEY_HELD` — their payment `held`/`superseded`, or a refund hold whose
+    window is open.
+  - `REWARD_ON_ITS_WAY` — their sighting credited on a `recovery_claimed`
+    listing (the payout hasn't happened).
+  - `DISPUTE_OPEN` — an **`open`** dispute, either side. `upheld` is final
+    and does not block (it used to, for ever).
+  - `REVIEW_OPEN` — an unresolved payout review, either side.
+  - `PAYOUT_ON_ITS_WAY` — a balance on their payout account, read at Stripe by
+    the Edge Function (the DB can't see it).
+- Otherwise it happens **straight away** — no grace period (owner,
+  2026-10-23). Money records are KEPT, the person is detached:
+  - every listing goes through the post afterlife (`delete_post_for_account`
+    = `delete_old_closed_post` for any non-live status): ledger rows detached
+    with a `post_snapshot`, never deleted. The snapshot keeps `owner_id` — a
+    recorded decision (SECURITY_AND_TRUST §3);
+  - payments paid TO them lose `payee_account_id` and keep `payee_snapshot`
+    (the Stripe account id, for reconciliation);
+  - settled reviews/disputes on others' listings stay, anonymised (spotter,
+    sighting and statement cleared);
+  - their sightings are deleted in the same transaction, with the listings
+    they sit on locked, so an owner can't credit one mid-deletion;
+  - their payout account is closed at Stripe afterwards (best effort,
+    recorded in `account_deletions.stripe_account_closed`, operator emailed on
+    failure).
 - ~~⚠️ **Known trap (2026-08-03):** "complete its recovery" is currently
   impossible for the credited-spotter branch.~~ **Closed 2026-08-03**, later
   the same day: `release-payout` is called when a spotter is credited, and

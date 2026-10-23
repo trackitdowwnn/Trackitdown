@@ -397,6 +397,28 @@ commenting standards.
     `device_links` and `account_deletions`). This is deliberately MORE than
     the bare ledger needs; if minimisation is later preferred, trim the
     snapshot in `delete_cancelled_post`, not the detach.
+  - **CLOSED 2026-10-23 — account deletion failed for anyone with money
+    history** (`20261023120000`). The RESTRICT FKs on `payments`,
+    `refund_holds`, `refund_disputes` and `payout_reviews` refused the cascade,
+    and the user saw "try again". Now `delete_account_data` runs BEFORE the
+    auth row goes, in one transaction:
+    - every listing they own goes through the same afterlife (ledger detached
+      with `post_snapshot`). **Recorded decision:** the snapshot keeps the
+      deleted owner's id — an opaque uuid that matches nothing once the
+      account is gone, kept so the ledger row still says whose money it was
+      (same Art. 17(3)(b)/(e) basis as above);
+    - payments paid TO them keep `payee_snapshot` (the Stripe account id) with
+      no link to a person;
+    - settled reviews/disputes on others' listings keep the record, anonymised
+      — spotter, sighting and the dispute **statement** (their own words)
+      cleared;
+    - their sightings are deleted in the same transaction, the listings they
+      sit on locked `FOR UPDATE` first, so `claim_recovery` can't credit one
+      between the checks and the delete.
+    It refuses with a named reason (DOMAIN.md, "Account deletion") while
+    anything still moves. Afterwards the Edge Function closes their payout
+    account at Stripe (v2 close, else v1 delete) and emails the operator if
+    that fails. Tested by `supabase/tests/account_deletion_verification.sql`.
 - Auth is passwordless (email OTP + Apple/Google — DOMAIN.md). Session tokens
   (access + refresh) are stored in the OS keychain via expo-secure-store,
   encrypted at rest — never in plaintext AsyncStorage. Emails are personal data:

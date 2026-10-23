@@ -17,7 +17,9 @@
  *        docs/SECURITY_AND_TRUST.md §3 (tokens are device credentials).
  */
 
-import { requestAccountDeletion, signOut } from './profileApi';
+import { FunctionsHttpError } from '@supabase/supabase-js';
+
+import { AccountDeletionError, requestAccountDeletion, signOut } from './profileApi';
 
 const calls: string[] = [];
 
@@ -104,5 +106,25 @@ describe('requestAccountDeletion', () => {
     mockInvoke.mockResolvedValueOnce({ error: new Error('refused') } as never);
     await expect(requestAccountDeletion()).rejects.toBeTruthy();
     expect(mockClearDraft).not.toHaveBeenCalled();
+  });
+
+  // The server's reasons it can't go yet (20261023120000): each one says what
+  // to do — "try again" would never come true while the reason stands.
+  it.each([
+    ['LIVE_LISTING', 'Deactivate it first'],
+    ['MONEY_HELD', 'still being returned'],
+    ['REWARD_ON_ITS_WAY', 'Set up payouts'],
+    ['PAYOUT_ON_ITS_WAY', 'A payout is still on its way'],
+    ['DISPUTE_OPEN', 'A dispute is still being decided'],
+    ['REVIEW_OPEN', 'still being reviewed'],
+  ])('names why it was refused: %s', async (code, words) => {
+    const refusal = new FunctionsHttpError({
+      json: async () => ({ code, message: 'You can’t delete your account just yet.' }),
+    });
+    mockInvoke.mockResolvedValueOnce({ error: refusal } as never);
+    const error = await requestAccountDeletion().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(AccountDeletionError);
+    expect((error as AccountDeletionError).code).toBe(code);
+    expect((error as AccountDeletionError).message).toContain(words);
   });
 });
