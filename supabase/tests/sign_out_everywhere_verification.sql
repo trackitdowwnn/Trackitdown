@@ -5,7 +5,8 @@
 --        too — and must never touch anyone else's.
 --
 -- CHECKS: 1 ⚠️ the caller's tokens go, on every device; another user's stay ·
--- 2 no session: a silent no-op · 3 who may call it.
+-- 2 no session: a silent no-op · 3 who may call it · 4 ⚠️ register_push_token
+-- refuses a revoked session's JWT, accepts a live one.
 -- HOW:   Self-asserting, RAISE on failure (CI's db job), inside begin/rollback.
 --        Uses seed.sql's two users. Called as authenticated with the JWT claim
 --        set, then read back as postgres.
@@ -36,7 +37,9 @@ begin
   end if;
 end $$;
 
--- 2 — no session: nothing happens, no error.
+-- 2 — no session: nothing happens, no error — A's tokens (put back) survive too.
+insert into public.push_tokens (token, user_id, platform) values
+  ('ExponentPushToken[everywhere-a1]', '11111111-1111-1111-1111-111111111111', 'android');
 select set_config('request.jwt.claims', '', true);
 set local role authenticated;
 select public.forget_my_push_tokens();
@@ -44,8 +47,40 @@ reset role;
 
 do $$
 begin
-  if not exists (select 1 from public.push_tokens where token = 'ExponentPushToken[everywhere-b1]') then
+  if (select count(*) from public.push_tokens
+       where token in ('ExponentPushToken[everywhere-a1]', 'ExponentPushToken[everywhere-b1]')) <> 2 then
     raise exception 'CHECK 2 FAILED: a call with no session deleted a token';
+  end if;
+end $$;
+rollback;
+
+-- 4 — ⚠️ a phone whose session was revoked by "everywhere" can't register its
+-- token again with the access token it still holds; a live session can.
+begin;
+insert into auth.sessions (id, user_id, created_at, updated_at)
+values ('5e550000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', now(), now());
+
+select set_config('request.jwt.claims', json_build_object(
+  'sub', '11111111-1111-1111-1111-111111111111', 'role', 'authenticated',
+  'session_id', '5e550000-0000-0000-0000-0000000000ff')::text, true);  -- revoked: no such row
+set local role authenticated;
+select public.register_push_token('ExponentPushToken[everywhere-lost]', 'android');
+reset role;
+
+select set_config('request.jwt.claims', json_build_object(
+  'sub', '11111111-1111-1111-1111-111111111111', 'role', 'authenticated',
+  'session_id', '5e550000-0000-0000-0000-000000000001')::text, true);  -- live
+set local role authenticated;
+select public.register_push_token('ExponentPushToken[everywhere-live]', 'android');
+reset role;
+
+do $$
+begin
+  if exists (select 1 from public.push_tokens where token = 'ExponentPushToken[everywhere-lost]') then
+    raise exception 'CHECK 4 FAILED: a revoked session registered its push token again';
+  end if;
+  if not exists (select 1 from public.push_tokens where token = 'ExponentPushToken[everywhere-live]') then
+    raise exception 'CHECK 4 FAILED: a live session could not register its push token';
   end if;
 end $$;
 rollback;

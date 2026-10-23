@@ -24,7 +24,9 @@
 import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+
+import { useSession } from '@/features/auth';
 
 import {
   spacing,
@@ -34,7 +36,15 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import { Button, ErrorState, Screen, StickyActionBar, TextField, useToast } from '@/shared/ui';
+import {
+  Button,
+  EmptyState,
+  ErrorState,
+  Screen,
+  StickyActionBar,
+  TextField,
+  useToast,
+} from '@/shared/ui';
 
 import {
   AccountDeletionError,
@@ -79,7 +89,13 @@ export function DeleteAccountScreen() {
       .catch(() => setStatus('error'));
   }, []);
 
-  useEffect(load, [load]);
+  // Only for a signed-in user: a guest reaching this by deep link would get
+  // NOT_AUTHENTICATED, shown as a connection error Retry can never fix.
+  const session = useSession();
+  const signedIn = session.status === 'signedIn';
+  useEffect(() => {
+    if (signedIn) load();
+  }, [signedIn, load]);
 
   const retry = useCallback(() => {
     setStatus('loading');
@@ -94,22 +110,23 @@ export function DeleteAccountScreen() {
     setDeleting(true);
     try {
       await requestAccountDeletion(); // also clears the local session
-      toast.show('Your account has been deleted');
+      toast.show('Your account has been deleted', 'success');
       // Guest mode now; the feed is the one surface that works with no
-      // account (the same landing as Log out).
+      // account (the same landing as Log out). The guard and spinner stay
+      // SET: until this screen unmounts, a second tap would send a request
+      // with no session and toast a false "couldn't delete".
       router.navigate('/(tabs)/explore');
     } catch (error) {
       toast.show(
         error instanceof AccountDeletionError
           ? error.message
-          : "We couldn't delete your account. Please try again.",
+          : 'We couldn’t delete your account. Please try again.',
         'error',
       );
-      // Something changed since the list was read — show what it is now.
-      load();
-    } finally {
       inFlight.current = false;
       setDeleting(false);
+      // Something changed since the list was read — show what it is now.
+      load();
     }
   }, [confirmed, load, router, toast]);
 
@@ -127,6 +144,8 @@ export function DeleteAccountScreen() {
               variant="danger"
               disabled={!confirmed}
               loading={deleting}
+              // Heard, not seen — why the button is dimmed.
+              accessibilityHint={confirmed ? undefined : `Type ${CONFIRM_WORD} above first`}
               onPress={() => void remove()}
             />
           </StickyActionBar>
@@ -148,17 +167,27 @@ export function DeleteAccountScreen() {
         </Text>
       </View>
 
-      {status === 'error' ? (
+      {session.status === 'signedOut' ? (
+        <EmptyState title="You’re logged out" />
+      ) : status === 'error' ? (
         <ErrorState
           title="We couldn’t check your account"
           body="Check your connection and try again."
           onRetry={retry}
         />
-      ) : status === 'loading' ? null : blockers.length > 0 ? (
+      ) : status === 'loading' ? (
+        <ActivityIndicator
+          color={palette.textSecondary}
+          style={styles.loading}
+          accessibilityLabel="Checking your account"
+          testID="delete-account-loading"
+        />
+      ) : blockers.length > 0 ? (
         <View style={styles.body} testID="delete-account-blocked">
           <Text style={styles.lead}>You can’t delete your account yet.</Text>
+          {/* The main content here, so primary ink — each line says what to do. */}
           {blockers.map((blocker) => (
-            <Text key={blocker.code} style={styles.line}>
+            <Text key={blocker.code} style={styles.reason}>
               {deletionReason(blocker)}
             </Text>
           ))}
@@ -223,16 +252,25 @@ const makeStyles = (c: Palette) =>
       color: c.textPrimary,
     },
     body: {
-      gap: spacing.lg,
+      gap: spacing.xl,
       paddingHorizontal: spacing.xl,
       paddingTop: spacing.md,
+      // Clear of the sticky bar's edge when scrolled to the end.
+      paddingBottom: spacing.xl,
+    },
+    loading: {
+      paddingTop: spacing.xxl,
     },
     lead: {
       ...typography.heading,
       color: c.textPrimary,
     },
+    reason: {
+      ...typography.body,
+      color: c.textPrimary,
+    },
     group: {
-      gap: spacing.xs,
+      gap: spacing.sm,
     },
     groupTitle: {
       ...typography.heading,

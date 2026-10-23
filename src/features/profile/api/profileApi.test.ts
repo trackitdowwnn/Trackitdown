@@ -62,8 +62,12 @@ jest.mock('@/shared/lib/location/locationMemory', () => ({
 const mockUnregister = jest.fn(async () => {
   calls.push('unregisterPushToken');
 });
+const mockForgetAll = jest.fn(async () => {
+  calls.push('forgetAllPushTokens');
+});
 jest.mock('@/features/notifications', () => ({
   unregisterCurrentPushToken: () => mockUnregister(),
+  forgetAllPushTokens: () => mockForgetAll(),
   // Sign-out zeroes the Inbox badge halves; the real module is pure, the
   // mock just needs the name to exist.
   resetInboxBadge: jest.fn(),
@@ -105,9 +109,12 @@ describe('signOut', () => {
     await expect(signOut()).rejects.toBeTruthy();
   });
 
-  it('signs out of THIS session only by default', async () => {
+  // ⚠️ supabase-js defaults a bare signOut() to 'global' — every Log out was
+  // signing out every device. The scope must be explicit.
+  it('Log out signs out of THIS session only', async () => {
     await signOut();
-    expect(mockAuthSignOut).toHaveBeenCalledWith(undefined);
+    expect(mockAuthSignOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(mockForgetAll).not.toHaveBeenCalled();
   });
 
   // SAFETY: the lost-phone case. A global sign-out that left the other phones'
@@ -115,7 +122,7 @@ describe('signOut', () => {
   it('everywhere: forgets EVERY device’s push token first, then revokes all sessions', async () => {
     await signOut({ everywhere: true });
     expect(calls).toEqual([
-      'rpc:forget_my_push_tokens',
+      'forgetAllPushTokens',
       'clearPostDraft',
       'forgetLocationMemory',
       'auth.signOut',
@@ -125,7 +132,7 @@ describe('signOut', () => {
   });
 
   it('everywhere: still signs out if forgetting the tokens fails', async () => {
-    mockRpc.mockResolvedValueOnce({ data: null, error: { code: '500' } });
+    mockForgetAll.mockRejectedValueOnce(new Error('offline'));
     await expect(signOut({ everywhere: true })).resolves.toBeUndefined();
     expect(mockAuthSignOut).toHaveBeenCalledWith({ scope: 'global' });
   });

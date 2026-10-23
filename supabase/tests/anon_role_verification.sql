@@ -479,8 +479,9 @@ begin
   end loop;
 
   -- ...and the columns the app genuinely needs are still readable, or this
-  -- "fix" would just be an outage. profileApi.countDeletionBlockingPosts reads
-  -- id filtered on owner_id + status.
+  -- "fix" would just be an outage. A client read of id filtered on owner_id +
+  -- status (profileApi.countDeletionBlockingPosts did this until 2026-10-23;
+  -- the shape is still worth proving readable).
   perform set_config('request.jwt.claims', null, true);
   set local role anon;
   perform id from public.posts where owner_id is not null and status = 'active' limit 1;

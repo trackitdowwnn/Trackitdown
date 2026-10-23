@@ -69,3 +69,29 @@ export async function unregisterCurrentPushToken(): Promise<void> {
     clearPushTokenCache();
   }
 }
+
+/**
+ * Drop the signed-in user's push token on EVERY device ("Log out of all
+ * devices", forget_my_push_tokens, 20261023130000) — the lost-phone case.
+ * Same contract as unregisterCurrentPushToken: call while the session is live;
+ * never throws.
+ *
+ * ⚠️ Clears this device's cache too, even on failure. Without that, signing
+ * straight back in as the same user would find "already registered" in the
+ * cache and skip registering — leaving this phone with no token row and no
+ * pushes until the app restarted (code review of #261).
+ */
+export async function forgetAllPushTokens(): Promise<void> {
+  try {
+    const { error } = await supabase.rpc('forget_my_push_tokens');
+    if (error) {
+      // Not fatal — the other phones still lose their session — but they may
+      // keep getting pushes until someone signs in there.
+      log.warn('push_token_forget_all_failed', { code: error.code });
+    }
+  } catch {
+    log.warn('push_token_forget_all_failed', { code: 'THREW' });
+  } finally {
+    clearPushTokenCache();
+  }
+}

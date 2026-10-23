@@ -5,7 +5,7 @@
  *        spotter story" push row (stats + narrative), a "My cars" push row
  *        (moved off the tab bar 2026-07-23), settings groups with
  *        heading-scale titles and hairline dividers, then the Danger zone
- *        group — Log out, Sign out on all devices, red Delete account (a push
+ *        group — Log out, Log out of all devices, red Delete account (a push
  *        to its own confirm screen) — the app version, and a __DEV__-only
  *        tools section.
  * WHY:   One calm hub for everything about "me"; the hero card is the one
@@ -460,7 +460,7 @@ function LoadedProfile({
           />
           <ListRow
             icon={MonitorSmartphone}
-            title="Sign out on all devices"
+            title="Log out of all devices"
             onPress={() => signOutEverywhereRef.current?.open()}
             testID="row-sign-out-everywhere"
           />
@@ -500,9 +500,9 @@ function LoadedProfile({
       />
       <ConfirmDialog
         ref={signOutEverywhereRef}
-        title="Sign out on all devices?"
+        title="Log out of all devices?"
         body="Every phone signed in to your account, including this one, will need to log in again."
-        confirmLabel="Sign out"
+        confirmLabel="Log out"
         onConfirm={() => void handleSignOut(true)}
       />
     </SafeAreaView>
@@ -525,6 +525,8 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   version: {
     ...typography.caption,
     color: c.textSecondary,
+    // The rows' own inset (ListRow/ListRowGroup), so it lines up under them.
+    paddingHorizontal: spacing.md,
   },
   devPreviewRow: {
     alignItems: 'center',

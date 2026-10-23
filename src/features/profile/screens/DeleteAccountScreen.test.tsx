@@ -36,6 +36,9 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({ back: mockBack, navigate: mockNavigate, push: jest.fn() }),
 }));
 
+let mockSession: { status: string; userId: string | null } = { status: 'signedIn', userId: 'u1' };
+jest.mock('@/features/auth', () => ({ useSession: () => mockSession }));
+
 const mockToast = jest.fn();
 jest.mock('@/shared/ui', () => {
   const actual = jest.requireActual('@/shared/ui');
@@ -51,6 +54,7 @@ jest.mock(
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockSession = { status: 'signedIn', userId: 'u1' };
   mockFetchBlockers.mockResolvedValue([]);
   mockRequestDeletion.mockResolvedValue(undefined);
 });
@@ -114,13 +118,19 @@ describe('clear to delete', () => {
     const screen = await render(<DeleteAccountScreen />);
     await fireEvent.changeText(await screen.findByTestId('delete-account-input'), 'delete');
 
+    // Sequential taps: the second meets the loading button. (Same-tick taps —
+    // the ref guard's real job — can't be driven here: two overlapping async
+    // fireEvents corrupt the renderer for every later test.)
     await fireEvent.press(deleteButton(screen));
     await fireEvent.press(deleteButton(screen));
     expect(mockRequestDeletion).toHaveBeenCalledTimes(1);
 
     finish();
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/(tabs)/explore'));
-    expect(mockToast).toHaveBeenCalledWith('Your account has been deleted');
+    expect(mockToast).toHaveBeenCalledWith('Your account has been deleted', 'success');
+    // Still busy until the screen unmounts — a late tap must not send again.
+    await fireEvent.press(deleteButton(screen));
+    expect(mockRequestDeletion).toHaveBeenCalledTimes(1);
   });
 
   it('a refusal shows the server’s reason and re-reads the list', async () => {
@@ -153,11 +163,20 @@ describe('clear to delete', () => {
 
     await waitFor(() =>
       expect(mockToast).toHaveBeenCalledWith(
-        "We couldn't delete your account. Please try again.",
+        'We couldn’t delete your account. Please try again.',
         'error',
       ),
     );
   });
+});
+
+it('a guest (deep link) is told they are logged out — not a connection error', async () => {
+  mockSession = { status: 'signedOut', userId: null };
+  const screen = await render(<DeleteAccountScreen />);
+
+  expect(await screen.findByText('You’re logged out')).toBeTruthy();
+  expect(mockFetchBlockers).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: 'Delete account' })).toBeNull();
 });
 
 it('back leaves without deleting', async () => {

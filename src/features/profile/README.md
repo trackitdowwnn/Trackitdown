@@ -9,7 +9,7 @@ edit), a "Your spotter story" row pushing the narrative reputation card
 (highlights, badges at 1/5/25, next-goal bar — social proof only, never
 payout-affecting), settings groups with heading-scale titles and hairline
 dividers, support/legal links, and a **Danger zone** group (2026-10-23: Log
-out, Sign out on all devices, red Delete account), then the app version. Also exports
+out, Log out of all devices, red Delete account), then the app version. Also exports
 `PublicProfileSheet` — the passport owners see for a spotter, a `// SAFETY`
 privacy boundary showing ONLY first name, avatar, reputation, and
 member-since; earned trust only (no goal/progress UI publicly).
@@ -24,7 +24,7 @@ narrative ReputationCard), `DeleteAccountScreen` (`/delete-account`, below).
 (payout status, read-only).
 **RPCs:** `account_deletion_blockers()` (20261023120000) — what stops the
 caller deleting, as `[{code, count}]`; `forget_my_push_tokens()`
-(20261023130000) — every device's push token, for "Sign out on all devices".
+(20261023130000) — every device's push token, for "Log out of all devices".
 **Storage:** public `avatars` bucket, own-folder writes.
 **Edge Functions:** `delete-account` — called by `requestAccountDeletion`.
 
@@ -37,16 +37,22 @@ with red only on Delete account. No "Download my data".
 - **Log out** — this device: its push token, then the local teardown
   (`forgetThisDevice`: badge, unfinished report, location caches), then the
   session.
-- **Sign out on all devices** — `forget_my_push_tokens` (every device stops
-  getting pushes — the lost-phone case), the same teardown, then
-  `signOut({ scope: 'global' })`. Other phones' access tokens live until they
-  expire (≤ 1 hour); they just can't refresh.
+- **Log out of all devices** — `forgetAllPushTokens` (`forget_my_push_tokens`:
+  every device stops getting pushes — the lost-phone case — and this one's
+  cache is cleared so it re-registers on the next sign-in), the same teardown,
+  then `signOut({ scope: 'global' })`. Other phones' access tokens live until
+  they expire (≤ 1 hour) but can't refresh, and `register_push_token` refuses
+  a revoked session, so they can't put their token back meanwhile.
+- ⚠️ **The scope is always explicit.** supabase-js defaults a bare
+  `signOut()` to `'global'` — until 2026-10-23 every Log out signed out every
+  device. Log out passes `'local'`.
 - **Delete account** → `DeleteAccountScreen`: reads
   `account_deletion_blockers()`. Blocked → one line per reason
   (`lib/deletionReasons.ts`), no button. Clear → Deleted / Kept, type DELETE,
   red button. A server refusal (stale list, or a payout still on its way —
   only the server can see that balance) shows its reason and re-reads the
   list. What the server does is in docs/DOMAIN.md "Account deletion".
+
 **Config:** `config.ts` — `PAYOUTS_ENABLED=true`, legal URLs (TODO
 placeholders), support email (`support@trackitdown.example` — a reserved TLD,
 so it still goes nowhere).

@@ -19,7 +19,11 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { z } from 'zod';
 
-import { resetInboxBadge, unregisterCurrentPushToken } from '@/features/notifications';
+import {
+  forgetAllPushTokens,
+  resetInboxBadge,
+  unregisterCurrentPushToken,
+} from '@/features/notifications';
 import { clearPostDraft } from '@/features/vehicles';
 import { supabase } from '@/shared/api';
 import { avatarUrlFromPath } from '@/shared/lib/avatarUrl';
@@ -214,21 +218,15 @@ export async function signOut({ everywhere = false }: { everywhere?: boolean } =
   // and a stale row keeps delivering this user's sighting and message pushes
   // to whoever holds the handset. Everywhere: every device's token
   // (20261023130000); otherwise just this one. Never blocks the sign-out.
-  if (everywhere) {
-    const { error } = await supabase.rpc('forget_my_push_tokens');
-    if (error) {
-      // Not fatal — the other phones still lose their session — but worth
-      // knowing: they may keep getting pushes until someone signs in there.
-      log.warn('forget_my_push_tokens failed', { code: error.code });
-    }
-  } else {
-    // .catch is belt to pushTokenApi's braces: that helper swallows its own
-    // errors by contract, but nothing should be able to trap someone in a
-    // session because a token release failed.
-    await unregisterCurrentPushToken().catch(() => {});
-  }
+  // .catch is belt to pushTokenApi's braces: both helpers swallow their own
+  // errors by contract, but nothing should be able to trap someone in a
+  // session because a token release failed.
+  await (everywhere ? forgetAllPushTokens() : unregisterCurrentPushToken()).catch(() => {});
   await forgetThisDevice();
-  const { error } = await supabase.auth.signOut(everywhere ? { scope: 'global' } : undefined);
+  // ⚠️ The scope is ALWAYS explicit: supabase-js defaults signOut() to
+  // 'global', so a bare call made every Log out sign out every device too (code
+  // review of #261). 'local' still revokes this device's own refresh token.
+  const { error } = await supabase.auth.signOut({ scope: everywhere ? 'global' : 'local' });
   if (error) {
     throw error;
   }
@@ -303,7 +301,8 @@ export async function requestAccountDeletion(): Promise<void> {
   // profile, and there is no session left to release them with anyway.
   await forgetThisDevice();
   // The server deleted auth.users; drop the now-orphaned local tokens too.
-  await supabase.auth.signOut().catch(() => {
+  // 'local': there is nothing left to revoke anywhere else.
+  await supabase.auth.signOut({ scope: 'local' }).catch(() => {
     // Tokens are dead either way; failing to clear them locally is harmless.
   });
   log.info('Account deletion completed');

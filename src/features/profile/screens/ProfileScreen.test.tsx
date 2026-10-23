@@ -268,7 +268,7 @@ describe('signed in', () => {
     expect(mockPush).toHaveBeenCalledWith('/spotter-story');
   });
 
-  it('shows the app version caption in the account cluster', async () => {
+  it('shows the app version caption below the Danger zone', async () => {
     const { getByText } = await render(<ProfileScreen />);
     expect(getByText('Version 1.2.3')).toBeTruthy();
   });
@@ -442,7 +442,7 @@ describe('signed in', () => {
     expect(mockSignOut).not.toHaveBeenCalled();
   });
 
-  it('danger zone: Log out, Sign out on all devices, then Delete account', async () => {
+  it('danger zone: Log out, Log out of all devices, then Delete account', async () => {
     const { getByTestId, getByText } = await render(<ProfileScreen />);
     expect(getByText('Danger zone')).toBeTruthy();
     const zone = getByTestId('danger-zone');
@@ -463,20 +463,20 @@ describe('signed in', () => {
     await waitFor(() => expect(mockSignOut).toHaveBeenCalledWith({ everywhere: false }));
   });
 
-  it('sign out on all devices: confirming signs out everywhere and lands on Explore', async () => {
-    const { getByTestId, getByText } = await render(<ProfileScreen />);
+  it('log out of all devices: confirming signs out everywhere and lands on Explore', async () => {
+    const { getByTestId, getByText, getAllByText } = await render(<ProfileScreen />);
     await act(async () => {
       fireEvent.press(getByTestId('row-sign-out-everywhere'));
     });
-    expect(getByText('Sign out on all devices?')).toBeTruthy();
+    expect(getByText('Log out of all devices?')).toBeTruthy();
     await act(async () => {
-      fireEvent.press(getByText('Sign out'));
+      fireEvent.press(getAllByText('Log out').at(-1) as never);
     });
     await waitFor(() => expect(mockSignOut).toHaveBeenCalledWith({ everywhere: true }));
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/(tabs)/explore'));
   });
 
-  it('sign out on all devices: cancelling does nothing', async () => {
+  it('log out of all devices: cancelling does nothing', async () => {
     const { getByTestId, getByText } = await render(<ProfileScreen />);
     await act(async () => {
       fireEvent.press(getByTestId('row-sign-out-everywhere'));
