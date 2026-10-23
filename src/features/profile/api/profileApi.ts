@@ -185,6 +185,28 @@ export async function fetchDeletionBlockers(): Promise<DeletionBlocker[]> {
   return blockersSchema.parse(data).filter((blocker) => blocker.count > 0);
 }
 
+/** How the delete screen asks them to prove it's them. */
+export type IdentityCheck = { kind: 'code'; email: string } | { kind: 'apple' };
+
+/**
+ * Which proof to ask for before deleting (2026-10-23): an email code to their
+ * own address — or, for an Apple account, an Apple re-sign-in, because Apple's
+ * private-relay addresses don't receive our codes.
+ */
+export async function fetchIdentityCheck(): Promise<IdentityCheck> {
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) {
+    log.warn('identity lookup failed', { code: error?.code });
+    throw error ?? new Error('NOT_AUTHENTICATED');
+  }
+  const { email } = data.user;
+  // A code whenever there's a real inbox — an Apple account that shared its
+  // real address included. Only a private-relay address (Apple doesn't
+  // forward our codes) or no address at all confirms with Apple.
+  if (!email || email.endsWith('@privaterelay.appleid.com')) return { kind: 'apple' };
+  return { kind: 'code', email };
+}
+
 /**
  * The caller's live listings — active or being checked. When nothing blocks,
  * these are listings with no reward money held, and deleting the account
@@ -290,6 +312,8 @@ const DELETION_MESSAGES: Record<string, string> = {
   DISPUTE_OPEN: "A dispute is still being decided. Try again once it's settled.",
   REVIEW_OPEN: "A payment is still being reviewed. Try again once it's done.",
   INTENT_NOT_CANCELLED: 'A payment is still being processed. Try again in a moment.',
+  // The server wants a fresh code (verified over 5 minutes ago, or skipped).
+  REAUTH_REQUIRED: 'Please confirm it’s you first.',
 };
 const DELETION_FALLBACK = "We couldn't delete your account. Please try again.";
 

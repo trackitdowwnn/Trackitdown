@@ -8,6 +8,15 @@
 // The root layout needs AuthGate + AuthSheet; gated actions everywhere need
 // useRequireAuth; other features read useSession. Storage helpers, the intent
 // store internals, and slide data stay internal.
+// Proving it's them right before an irreversible step (account deletion) —
+// the only auth calls another feature may make.
+export {
+  AuthActionError,
+  confirmIdentityWithApple,
+  confirmIdentityWithCode,
+  sendIdentityCode,
+} from './api/authApi';
+export { OtpInput } from './components/OtpInput';
 export { AuthGate } from './components/AuthGate';
 export { AuthSheet } from './components/AuthSheet';
 export { type GateContext } from './gate/gateIntent';

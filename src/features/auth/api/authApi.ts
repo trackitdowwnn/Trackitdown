@@ -113,6 +113,50 @@ export async function verifyEmailOtp(email: string, token: string): Promise<stri
   return data.user.id;
 }
 
+// --- Confirming it's them, before an irreversible step ----------------------
+
+/**
+ * Email a code to the SIGNED-IN user's own address so they can prove it's
+ * really them right before something that can't be undone (account deletion,
+ * 2026-10-23). `shouldCreateUser: false` — this can never create an account.
+ * Same errors as sign-in (rate limit / send failed). Verifying the code
+ * (confirmIdentityWithCode) mints a fresh session, which is what the server
+ * checks for (supabase/functions/_shared/recentSignIn.ts).
+ */
+export async function sendIdentityCode(email: string): Promise<void> {
+  const address = email.trim();
+  log.info('identity_code_requested', { email: redactEmail(address) });
+  const { error } = await supabase.auth.signInWithOtp({
+    email: address,
+    options: { shouldCreateUser: false },
+  });
+  if (error) {
+    if (isRateLimited(error)) {
+      log.warn('identity_code_rate_limited', { email: redactEmail(address) });
+      throw new AuthActionError(RATE_LIMIT, 'OTP_RATE_LIMIT');
+    }
+    log.error('identity_code_send_failed', { code: error.code });
+    throw new AuthActionError(SEND_FAILED, 'OTP_SEND_FAILED');
+  }
+}
+
+/** Verify the identity code — the sign-in verify, so a wrong or expired code
+ *  is the same calm INVALID_OTP. Returns the user id it proved, for the
+ *  caller to check is still the account it means to act on. */
+export async function confirmIdentityWithCode(email: string, code: string): Promise<string> {
+  return verifyEmailOtp(email, code);
+}
+
+/** For an Apple account (whose private-relay address can't receive our
+ *  codes): re-sign-in with Apple. The user id it proved, or null if they
+ *  cancelled; a real failure throws.
+ *  ⚠️ The device may hand back a DIFFERENT Apple ID — the caller must check
+ *  the id matches before doing anything irreversible. */
+export async function confirmIdentityWithApple(): Promise<string | null> {
+  const result = await signInWithApple();
+  return result.cancelled ? null : result.userId;
+}
+
 // --- Social sign-in (native idToken → signInWithIdToken; no deep link) -------
 
 /** Success returns the user id; a user-cancel returns `{ cancelled: true }`

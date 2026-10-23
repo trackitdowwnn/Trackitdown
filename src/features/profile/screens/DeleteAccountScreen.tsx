@@ -2,23 +2,31 @@
  * WHAT:  DeleteAccountScreen — one push from Profile's Danger zone. Reads what
  *        still stops the deletion; if anything does, lists it (one line each,
  *        saying what to do) and offers no button. Otherwise says what goes and
- *        what's kept, and deletes once they type DELETE.
+ *        what's kept, then asks them to PROVE IT'S THEM — a 6-digit code to
+ *        their own email (or, for an Apple account, an Apple re-sign-in) — and
+ *        deletes.
  * WHY:   Owner's picks (2026-10-23): delete STRAIGHT AWAY, no grace period,
- *        but only when nothing is pending; confirm on a full screen by typing
- *        DELETE, not a one-tap dialog. Apple 5.1.1(v) and Google Play want an
- *        in-app path that actually completes — before 20261023120000 anyone
- *        with money history got "try again" for ever.
+ *        but only when nothing is pending. Apple 5.1.1(v) and Google Play want
+ *        an in-app path that actually completes.
+ *
+ *        The code replaced typing DELETE (danger-zone research, 2026-10-23:
+ *        re-verify before an irreversible step). It stops a stale or stolen
+ *        token and an unattended signed-in session — NOT someone holding the
+ *        unlocked phone with the mail app on it. It is ENFORCED at the server — delete-account refuses unless
+ *        this session verified within 5 minutes (REAUTH_REQUIRED) — so this
+ *        screen is the way through, not the guard. Typing the code is the
+ *        deliberate step; it never auto-submits.
  *
  *        The blockers read is ADVISORY (it can be a beat stale, and the payout
  *        balance is only checked at the server). A refusal from the server
- *        shows its own reason and re-reads the list, so the screen catches up
- *        with what stopped it.
+ *        shows its own reason and re-reads the list.
  *
  *        No "Stripe" anywhere (owner: say "payouts"). Minimal words. The back
  *        arrow is the way out — no second Cancel beside the button.
  * LINKS: src/features/profile/api/profileApi.ts (fetchDeletionBlockers,
- *        requestAccountDeletion); ../lib/deletionReasons.ts;
- *        supabase/functions/delete-account/index.ts; src/app/delete-account.tsx.
+ *        fetchIdentityCheck, requestAccountDeletion); ../lib/deletionReasons.ts;
+ *        src/features/auth (sendIdentityCode, confirmIdentityWith*, OtpInput);
+ *        supabase/functions/delete-account/index.ts (+ _shared/recentSignIn).
  */
 
 import { useRouter } from 'expo-router';
@@ -26,7 +34,14 @@ import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { useSession } from '@/features/auth';
+import {
+  AuthActionError,
+  confirmIdentityWithApple,
+  confirmIdentityWithCode,
+  OtpInput,
+  sendIdentityCode,
+  useSession,
+} from '@/features/auth';
 
 import {
   spacing,
@@ -36,26 +51,23 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import {
-  Button,
-  EmptyState,
-  ErrorState,
-  Screen,
-  StickyActionBar,
-  TextField,
-  useToast,
-} from '@/shared/ui';
+import { Button, EmptyState, ErrorState, Screen, StickyActionBar, useToast } from '@/shared/ui';
 
 import {
   AccountDeletionError,
   fetchDeletionBlockers,
+  fetchIdentityCheck,
   fetchLiveListingCount,
   requestAccountDeletion,
   type DeletionBlocker,
+  type IdentityCheck,
 } from '../api/profileApi';
 import { deletionReason } from '../lib/deletionReasons';
 
-const CONFIRM_WORD = 'DELETE';
+const CODE_LENGTH = 6;
+
+/** Under the server's 5-minute window (_shared/recentSignIn), with a margin. */
+const REVERIFY_AFTER_MS = 4 * 60 * 1000;
 
 const DELETED = [
   'Your profile and photos',
@@ -64,6 +76,12 @@ const DELETED = [
 ];
 
 type Status = 'loading' | 'ready' | 'error';
+
+/** o•••@gmail.com — enough to recognise, not the whole address on screen. */
+function maskEmail(email: string): string {
+  const [local = '', domain = ''] = email.split('@');
+  return `${local.slice(0, 1)}•••@${domain}`;
+}
 
 export function DeleteAccountScreen() {
   const styles = useThemedStyles(makeStyles);
@@ -74,27 +92,34 @@ export function DeleteAccountScreen() {
   const [status, setStatus] = useState<Status>('loading');
   const [blockers, setBlockers] = useState<DeletionBlocker[]>([]);
   const [liveListings, setLiveListings] = useState(0);
-  const [typed, setTyped] = useState('');
+  const [identity, setIdentity] = useState<IdentityCheck | null>(null);
+  const [codeSent, setCodeSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [code, setCode] = useState('');
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [errorNonce, setErrorNonce] = useState(0);
   const [deleting, setDeleting] = useState(false);
   // The re-entry guard, as a REF: two taps in one tick both read `deleting`
   // from the same render (BlockedAccountsScreen records the same lesson).
   const inFlight = useRef(false);
+  // When they last proved it's them (ms) — the server accepts 5 minutes.
+  const verifiedAt = useRef(0);
 
-  // Doesn't set 'loading' itself — `status` starts there, and a setState in an
-  // effect's synchronous body is what react-hooks/set-state-in-effect forbids.
   // Only for a signed-in user: a guest reaching this by deep link would get
   // NOT_AUTHENTICATED, shown as a connection error Retry can never fix.
   const session = useSession();
   const userId = session.status === 'signedIn' ? session.userId : null;
 
-  // Both, or neither: without the live-listing count the screen can't warn
-  // that deleting takes a listing down, so a failed count is an error, not 0.
+  // All three, or none: without the live-listing count the screen can't warn
+  // that deleting takes a listing down, and without the identity it can't
+  // offer the way through — so a failed read is an error, never a guess.
   const load = useCallback(() => {
     if (!userId) return;
-    Promise.all([fetchDeletionBlockers(), fetchLiveListingCount(userId)])
-      .then(([rows, live]) => {
+    Promise.all([fetchDeletionBlockers(), fetchLiveListingCount(userId), fetchIdentityCheck()])
+      .then(([rows, live, check]) => {
         setBlockers(rows);
         setLiveListings(live);
+        setIdentity(check);
         setStatus('ready');
       })
       .catch(() => setStatus('error'));
@@ -107,12 +132,72 @@ export function DeleteAccountScreen() {
     load();
   }, [load]);
 
-  const confirmed = typed.trim().toUpperCase() === CONFIRM_WORD;
+  const sendCode = useCallback(async () => {
+    if (identity?.kind !== 'code' || sending) return;
+    setSending(true);
+    try {
+      await sendIdentityCode(identity.email);
+      setCodeSent(true);
+      setCode('');
+      setCodeError(null);
+    } catch (error) {
+      toast.show(
+        error instanceof AuthActionError ? error.message : 'We couldn’t send the code.',
+        'error',
+      );
+    } finally {
+      setSending(false);
+    }
+  }, [identity, sending, toast]);
+
+  const ready = identity?.kind === 'apple' || (codeSent && code.length === CODE_LENGTH);
 
   const remove = useCallback(async () => {
-    if (inFlight.current || !confirmed) return;
+    if (inFlight.current || !identity || !ready) return;
     inFlight.current = true;
     setDeleting(true);
+    const release = () => {
+      inFlight.current = false;
+      setDeleting(false);
+    };
+
+    // 1 — prove it's them. A wrong code or a cancelled Apple sheet stops here
+    // with the account untouched. Skipped if they proved it in the last four
+    // minutes (a retry after a refusal): a code works once, so re-verifying it
+    // would fail and spend another email from the hourly budget.
+    try {
+      if (Date.now() - verifiedAt.current > REVERIFY_AFTER_MS) {
+        const proved =
+          identity.kind === 'code'
+            ? await confirmIdentityWithCode(identity.email, code)
+            : await confirmIdentityWithApple();
+        if (proved === null) {
+          release(); // cancelled the Apple sheet
+          return;
+        }
+        // ⚠️ The proof must be for THIS account. The Apple sheet can hand
+        // back a different Apple ID — deleting that account and saying "your
+        // account has been deleted" would be a silent erasure failure.
+        if (proved !== userId) {
+          toast.show('That’s a different account. Sign in again with yours.', 'error');
+          release();
+          return;
+        }
+        verifiedAt.current = Date.now();
+      }
+    } catch (error) {
+      if (identity.kind === 'code') {
+        setCodeError(error instanceof AuthActionError ? error.message : 'That code didn’t work.');
+        setCode('');
+        setErrorNonce((n) => n + 1);
+      } else {
+        toast.show('Apple sign-in didn’t complete. Please try again.', 'error');
+      }
+      release();
+      return;
+    }
+
+    // 2 — delete.
     try {
       await requestAccountDeletion(); // also clears the local session
       toast.show('Your account has been deleted', 'success');
@@ -128,35 +213,40 @@ export function DeleteAccountScreen() {
           : 'We couldn’t delete your account. Please try again.',
         'error',
       );
-      inFlight.current = false;
-      setDeleting(false);
-      // Something changed since the list was read — show what it is now.
+      // The server wants a fresher proof: back to the code step.
+      if (error instanceof AccountDeletionError && error.code === 'REAUTH_REQUIRED') {
+        verifiedAt.current = 0;
+        setCodeSent(false);
+        setCode('');
+      }
+      release();
+      // Something may have changed since the list was read — show it now.
       load();
     }
-  }, [confirmed, load, router, toast]);
+  }, [code, identity, load, ready, router, toast, userId]);
 
-  const clear = status === 'ready' && blockers.length === 0;
+  const clear = status === 'ready' && blockers.length === 0 && identity !== null;
+
+  const footer = !clear ? undefined : identity.kind === 'code' && !codeSent ? (
+    <StickyActionBar>
+      <Button label="Email me a code" loading={sending} onPress={() => void sendCode()} />
+    </StickyActionBar>
+  ) : (
+    <StickyActionBar>
+      <Button
+        label={identity.kind === 'apple' ? 'Confirm with Apple and delete' : 'Delete account'}
+        variant="danger"
+        disabled={!ready}
+        loading={deleting}
+        // Heard, not seen — why the button is dimmed.
+        accessibilityHint={ready ? undefined : 'Enter the code from the email first'}
+        onPress={() => void remove()}
+      />
+    </StickyActionBar>
+  );
 
   return (
-    <Screen
-      scroll
-      keyboardAware
-      footer={
-        clear ? (
-          <StickyActionBar>
-            <Button
-              label="Delete account"
-              variant="danger"
-              disabled={!confirmed}
-              loading={deleting}
-              // Heard, not seen — why the button is dimmed.
-              accessibilityHint={confirmed ? undefined : `Type ${CONFIRM_WORD} above first`}
-              onPress={() => void remove()}
-            />
-          </StickyActionBar>
-        ) : undefined
-      }
-    >
+    <Screen scroll keyboardAware footer={footer}>
       <View style={styles.headerRow}>
         <Pressable
           onPress={() => router.back()}
@@ -230,17 +320,48 @@ export function DeleteAccountScreen() {
             <Text style={styles.line}>Payment records, for 6 years as the law requires</Text>
           </View>
           <Text style={styles.warning}>This can’t be undone.</Text>
-          <TextField
-            label={`Type ${CONFIRM_WORD} to confirm`}
-            labelPlacement="above"
-            value={typed}
-            onChangeText={setTyped}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            autoComplete="off"
-            disabled={deleting}
-            testID="delete-account-input"
-          />
+
+          {identity?.kind === 'code' ? (
+            <View style={styles.group} testID="delete-account-identity">
+              <Text style={styles.groupTitle} accessibilityRole="header">
+                Confirm it’s you
+              </Text>
+              {codeSent ? (
+                <>
+                  <Text style={styles.line}>
+                    Enter the code we sent to {maskEmail(identity.email)}.
+                  </Text>
+                  {/* Never auto-submits: pressing the red button is the
+                      deliberate step. */}
+                  <OtpInput
+                    value={code}
+                    onChangeText={(next) => {
+                      setCode(next);
+                      setCodeError(null);
+                    }}
+                    onComplete={() => {}}
+                    submitting={deleting}
+                    errorNonce={errorNonce}
+                    autoFocus
+                  />
+                  {codeError ? (
+                    <Text style={styles.error} accessibilityRole="alert">
+                      {codeError}
+                    </Text>
+                  ) : null}
+                  <Button
+                    label="Send a new code"
+                    variant="ghost"
+                    fullWidth={false}
+                    disabled={sending || deleting}
+                    onPress={() => void sendCode()}
+                  />
+                </>
+              ) : (
+                <Text style={styles.line}>We’ll email a code to {maskEmail(identity.email)}.</Text>
+              )}
+            </View>
+          ) : null}
         </View>
       )}
     </Screen>
@@ -298,5 +419,9 @@ const makeStyles = (c: Palette) =>
     warning: {
       ...typography.body,
       color: c.textPrimary,
+    },
+    error: {
+      ...typography.caption,
+      color: c.danger,
     },
   });

@@ -49,8 +49,11 @@ with red only on Delete account. No "Download my data".
   device. Log out passes `'local'`.
 - **Delete account** → `DeleteAccountScreen`: reads
   `account_deletion_blockers()`. Blocked → one line per reason
-  (`lib/deletionReasons.ts`), no button. Clear → Deleted / Kept, type DELETE,
-  red button. A server refusal (stale list, or a payout still on its way —
+  (`lib/deletionReasons.ts`), no button. Clear → Deleted / Kept, then
+  **Confirm it's you**: "Email me a code" → the 6-digit code (auth's
+  `OtpInput`) → red "Delete account" (an Apple account confirms with Apple).
+  The server requires a sign-in within 5 minutes (REAUTH_REQUIRED) — the code
+  replaced typing DELETE (2026-10-23). A server refusal (stale list, or a payout still on its way —
   only the server can see that balance) shows its reason and re-reads the
   list. What the server does is in docs/DOMAIN.md "Account deletion".
 
