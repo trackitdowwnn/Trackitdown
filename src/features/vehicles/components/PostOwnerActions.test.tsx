@@ -235,9 +235,9 @@ describe('PostOwnerActions', () => {
       await fireEvent.press(view.getByTestId('manage-deactivate'));
       await flush();
       expect(mockExitCheck).toHaveBeenCalledWith('p1');
-      expect(mockDialogOpen).toHaveBeenCalledWith('Deactivate this listing?');
+      expect(mockDialogOpen).toHaveBeenCalledWith('Deactivate AB12 CDE?');
 
-      await fireEvent.press(view.getByTestId('confirm:Deactivate this listing?'));
+      await fireEvent.press(view.getByTestId('confirm:Deactivate AB12 CDE?'));
       await flush();
       expect(mockDeactivate).toHaveBeenCalledWith('p1');
       expect(mockToast).toHaveBeenCalledWith('Listing deactivated — £240 refunded');
@@ -253,30 +253,35 @@ describe('PostOwnerActions', () => {
       await flush();
 
       expect(mockExitCheck).not.toHaveBeenCalled();
-      expect(mockDialogOpen).toHaveBeenCalledWith('Deactivate this listing?');
+      expect(mockDialogOpen).toHaveBeenCalledWith('Deactivate AB12 CDE?');
     });
 
     it('a zero refund says "deactivated", never "£0 refunded"', async () => {
       mockDeactivate.mockResolvedValue({ outcome: 'done', result: { refundedPence: 0 } });
       const { view } = await mount(post({ bountyPence: null }));
 
-      await fireEvent.press(view.getByTestId('confirm:Deactivate this listing?'));
+      await fireEvent.press(view.getByTestId('confirm:Deactivate AB12 CDE?'));
       await flush();
 
       expect(mockToast).toHaveBeenCalledWith('Listing deactivated');
     });
 
-    // Owner, 2026-10-23: the confirm is just the question, the same for every
-    // kind of listing — the money words live on the Manage sheet row and in
-    // the refund toast.
+    // Owner, 2026-10-23 (danger-zone research): short but specific — the
+    // title names the car, the body the one consequence, the same for every
+    // kind of listing (the money words live on the Manage row and the toast).
     it.each([
       ['a reward listing', {}],
       ['a fee listing', { bountyPence: null }],
       ['a lapsed-reward listing', { bountyPence: null, rewardEnded: true }],
-    ])('%s gets the simple confirm', async (_kind, over) => {
+    ])('%s gets a confirm naming the car', async (_kind, over) => {
       const { view } = await mount(post(over));
-      const body = view.getByTestId('confirm-body:Deactivate this listing?');
-      expect(body).toHaveTextContent('Are you sure? This can’t be undone.');
+      const body = view.getByTestId('confirm-body:Deactivate AB12 CDE?');
+      expect(body).toHaveTextContent('It comes off the map for everyone. This can’t be undone.');
+    });
+
+    it('a plate-less listing is named by make and model', async () => {
+      const { view } = await mount(post({ plate: null }));
+      expect(view.getByTestId('confirm-body:Deactivate your Ford Fiesta?')).toBeTruthy();
     });
 
     it('a lapsed-reward listing also skips the exit_check pre-flight (nothing escrowed)', async () => {
@@ -286,14 +291,14 @@ describe('PostOwnerActions', () => {
       await flush();
 
       expect(mockExitCheck).not.toHaveBeenCalled();
-      expect(mockDialogOpen).toHaveBeenCalledWith('Deactivate this listing?');
+      expect(mockDialogOpen).toHaveBeenCalledWith('Deactivate AB12 CDE?');
     });
 
     it('a held refund names the date and refreshes', async () => {
       mockDeactivate.mockResolvedValue({ outcome: 'held', refundAfter: '2026-09-27T10:00:00Z' });
       const { view, refresh } = await mount(post());
 
-      await fireEvent.press(view.getByTestId('confirm:Deactivate this listing?'));
+      await fireEvent.press(view.getByTestId('confirm:Deactivate AB12 CDE?'));
       await flush();
 
       expect(mockToast).toHaveBeenCalledWith(expect.stringMatching(/^Listing deactivated\. Your refund is sent after /));
@@ -345,7 +350,7 @@ describe('PostOwnerActions', () => {
       mockDeactivate.mockResolvedValue({ outcome: 'done', result: { refundedPence: 24000 } });
       const { view, refresh, onDeleted } = await mount(post());
 
-      await fireEvent.press(view.getByTestId('confirm:Deactivate this listing?'));
+      await fireEvent.press(view.getByTestId('confirm:Deactivate AB12 CDE?'));
       await flush();
       await view.rerender(
         <PostOwnerActions postId="p1" post={post({ status: 'cancelled' })} refresh={refresh} onDeleted={onDeleted} />,

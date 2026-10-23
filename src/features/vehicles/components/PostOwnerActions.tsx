@@ -444,17 +444,22 @@ export function PostOwnerActions({
         onUnarchive={archive?.archived ? archive.toggle : undefined}
       />
 
-      {/* The ONE deactivate confirm — just the question (owner, 2026-10-23:
-          "something simple"). The money still gets its words: the Manage
-          sheet's row says what happens to the reward or fee before this
-          opens (deactivateKind), and the toast names the exact refund the
-          server sent (ADR-0021). */}
+      {/* The ONE deactivate confirm — short, but specific (owner, 2026-10-23,
+          after the danger-zone research): the title NAMES the car, the body
+          says the one consequence, the button names the action. "Are you
+          sure?" alone is what people tap through without reading. The money
+          gets its words on the Manage sheet row (deactivateKind) and in the
+          toast's exact refund (ADR-0021). */}
       {canDeactivate(owned) ? (
         <ConfirmDialog
           ref={deactivateRef}
-          title="Deactivate this listing?"
-          body="Are you sure? This can’t be undone."
-          confirmLabel="Yes, deactivate"
+          title={
+            owned.plate
+              ? `Deactivate ${owned.plate}?`
+              : `Deactivate your ${owned.make} ${owned.model}?`
+          }
+          body="It comes off the map for everyone. This can’t be undone."
+          confirmLabel="Deactivate listing"
           destructive
           onConfirm={onDeactivate}
         />

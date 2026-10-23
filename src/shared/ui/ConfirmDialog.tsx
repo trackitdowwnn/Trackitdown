@@ -22,10 +22,11 @@
  *   dialogRef.current?.open();
  */
 
+import { TriangleAlert } from 'lucide-react-native';
 import { type Ref, useImperativeHandle, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { spacing, typography, useThemedStyles, type Palette } from '../theme';
+import { sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '../theme';
 import { BottomSheet, type BottomSheetRef } from './BottomSheet';
 import { Button } from './Button';
 
@@ -41,7 +42,9 @@ export interface ConfirmDialogProps {
   body: string;
   confirmLabel: string;
   cancelLabel?: string;
-  /** Danger styling for irreversible actions (delete, not sign-out). */
+  /** Danger styling for irreversible actions (delete, not sign-out): a red
+   *  confirm and a warning icon by the title. The title should name the
+   *  thing ("Deactivate AB12 CDE?") and the button the action. */
   destructive?: boolean;
   /** Informational mode: a single acknowledge button, no cancel — for
    *  "here's why you can't" messages where two exits would be confusing. */
@@ -63,6 +66,7 @@ export function ConfirmDialog({
   onDismiss,
 }: ConfirmDialogProps) {
   const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const sheetRef = useRef<BottomSheetRef>(null);
   // Distinguish a confirm-close from a plain dismissal for onDismiss.
   const confirmed = useRef(false);
@@ -79,6 +83,18 @@ export function ConfirmDialog({
     <BottomSheet
       ref={sheetRef}
       title={title}
+      // Research (Primer, Smashing 2024): a destructive confirm carries a
+      // warning icon so the danger isn't signalled by the red button alone.
+      titleIcon={
+        destructive ? (
+          <TriangleAlert
+            size={sizes.iconSm}
+            color={palette.danger}
+            accessible={false}
+            importantForAccessibility="no"
+          />
+        ) : undefined
+      }
       onDismiss={() => {
         if (!confirmed.current) {
           onDismiss?.();

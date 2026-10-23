@@ -174,6 +174,12 @@ export interface BottomSheetProps {
   ref?: Ref<BottomSheetRef>;
   /** Optional heading row, announced as a header to screen readers. */
   title?: string;
+  /**
+   * Decorative mark before the title (ConfirmDialog's warning triangle on a
+   * destructive confirm). The caller hides it from assistive tech; the title
+   * carries the meaning.
+   */
+  titleIcon?: ReactNode;
   /** Sheet body. Scrolls inside the sheet when taller than the height cap. */
   children: ReactNode;
   /** Fires after the sheet closes — swipe, scrim tap, the X, or close(). */
@@ -185,7 +191,14 @@ export interface BottomSheetProps {
   hideClose?: boolean;
 }
 
-export function BottomSheet({ ref, title, children, onDismiss, hideClose = false }: BottomSheetProps) {
+export function BottomSheet({
+  ref,
+  title,
+  titleIcon,
+  children,
+  onDismiss,
+  hideClose = false,
+}: BottomSheetProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const modalRef = useRef<BottomSheetModal>(null);
@@ -392,6 +405,11 @@ export function BottomSheet({ ref, title, children, onDismiss, hideClose = false
               every sheet gets an X, on the same close path as the rest. */}
           {title || !hideClose ? (
             <View style={styles.headerRow}>
+              {title && titleIcon ? (
+                <View style={styles.titleIcon} testID="sheet-title-icon">
+                  {titleIcon}
+                </View>
+              ) : null}
               {title ? (
                 <Text accessibilityRole="header" style={styles.title}>
                   {title}
@@ -465,6 +483,10 @@ const makeStyles = (c: Palette) =>
     },
     titleSpacer: {
       flex: 1,
+    },
+    // Centred on the title's first line, like the title on the X.
+    titleIcon: {
+      paddingTop: (sizes.touchTarget - sizes.iconSm) / 2,
     },
     close: {
       width: sizes.touchTarget,
