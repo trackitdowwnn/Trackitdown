@@ -16,10 +16,11 @@ export {
   MAX_ALERTS_PER_USER,
 } from './types';
 
-// Sign-out must release this device before the session drops (features/profile
-// calls it from signOut). Exported as the ONE token-lifecycle action other
-// features may take — registration is owned by NotificationsHost.
-export { unregisterCurrentPushToken } from './api/pushTokenApi';
+// Sign-out must release this device — or, logging out everywhere, every device
+// — before the session drops (features/profile calls these from signOut). The
+// only token-lifecycle actions other features may take — registration is owned
+// by NotificationsHost.
+export { forgetAllPushTokens, unregisterCurrentPushToken } from './api/pushTokenApi';
 
 // The ONE way another feature causes a push. All fire-and-forget and never
 // throw — a notification must not be able to fail the action that caused it.

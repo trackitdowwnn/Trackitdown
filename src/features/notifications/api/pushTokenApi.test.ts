@@ -13,8 +13,17 @@
  *        supabase/migrations/20260802100000_push_infrastructure.sql.
  */
 
-import { clearPushTokenCache, getCurrentPushToken, rememberPushToken } from '../lib/pushTokenCache';
-import { registerPushToken, unregisterCurrentPushToken } from './pushTokenApi';
+import {
+  clearPushTokenCache,
+  getCurrentPushToken,
+  isPushTokenRegistered,
+  rememberPushToken,
+} from '../lib/pushTokenCache';
+import {
+  forgetAllPushTokens,
+  registerPushToken,
+  unregisterCurrentPushToken,
+} from './pushTokenApi';
 
 const mockRpc = jest.fn();
 jest.mock('@/shared/api', () => ({
@@ -72,5 +81,35 @@ describe('unregisterCurrentPushToken', () => {
     // Still cleared: a token we could not release must not be retried forever,
     // and the next sign-in MOVES it anyway (push_tokens is keyed on the token).
     expect(getCurrentPushToken()).toBeNull();
+  });
+});
+
+describe('forgetAllPushTokens', () => {
+  it('asks the server to drop every device’s token, and says it worked', async () => {
+    await expect(forgetAllPushTokens()).resolves.toBe(true);
+    expect(mockRpc).toHaveBeenCalledWith('forget_my_push_tokens');
+  });
+
+  it('tries once more before saying it failed', async () => {
+    mockRpc
+      .mockResolvedValueOnce({ error: { message: 'blip', code: '503' } })
+      .mockResolvedValueOnce({ error: null });
+    await expect(forgetAllPushTokens()).resolves.toBe(true);
+    expect(mockRpc).toHaveBeenCalledTimes(2);
+  });
+
+  // ⚠️ Without this, signing straight back in as the same user finds "already
+  // registered" in the cache and never re-registers — this phone goes silent.
+  it('clears this device’s cache so the next sign-in registers again', async () => {
+    rememberPushToken('user-1', TOKEN);
+    await forgetAllPushTokens();
+    expect(isPushTokenRegistered('user-1', TOKEN)).toBe(false);
+  });
+
+  it('never throws, and still clears the cache, when the server fails', async () => {
+    rememberPushToken('user-1', TOKEN);
+    mockRpc.mockRejectedValue(new Error('offline'));
+    await expect(forgetAllPushTokens()).resolves.toBe(false);
+    expect(isPushTokenRegistered('user-1', TOKEN)).toBe(false);
   });
 });

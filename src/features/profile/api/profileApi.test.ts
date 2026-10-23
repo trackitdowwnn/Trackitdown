@@ -19,21 +19,31 @@
 
 import { FunctionsHttpError } from '@supabase/supabase-js';
 
-import { AccountDeletionError, requestAccountDeletion, signOut } from './profileApi';
+import {
+  AccountDeletionError,
+  fetchDeletionBlockers,
+  requestAccountDeletion,
+  signOut,
+} from './profileApi';
 
 const calls: string[] = [];
 
-const mockAuthSignOut = jest.fn(async () => {
+const mockAuthSignOut = jest.fn(async (_options?: unknown) => {
   calls.push('auth.signOut');
   return { error: null };
 });
 const mockInvoke = jest.fn(async () => ({ error: null }));
+const mockRpc = jest.fn(async (name: string): Promise<{ data: unknown; error: unknown }> => {
+  calls.push(`rpc:${name}`);
+  return { data: null, error: null };
+});
 jest.mock('@/shared/api', () => ({
   supabase: {
     auth: {
-      signOut: () => mockAuthSignOut(),
+      signOut: (options?: unknown) => mockAuthSignOut(options),
     },
     functions: { invoke: () => mockInvoke() },
+    rpc: (name: string) => mockRpc(name),
   },
 }));
 
@@ -52,8 +62,13 @@ jest.mock('@/shared/lib/location/locationMemory', () => ({
 const mockUnregister = jest.fn(async () => {
   calls.push('unregisterPushToken');
 });
+const mockForgetAll = jest.fn(async (): Promise<boolean> => {
+  calls.push('forgetAllPushTokens');
+  return true;
+});
 jest.mock('@/features/notifications', () => ({
   unregisterCurrentPushToken: () => mockUnregister(),
+  forgetAllPushTokens: () => mockForgetAll(),
   // Sign-out zeroes the Inbox badge halves; the real module is pure, the
   // mock just needs the name to exist.
   resetInboxBadge: jest.fn(),
@@ -93,6 +108,55 @@ describe('signOut', () => {
   it('propagates a real sign-out failure', async () => {
     mockAuthSignOut.mockResolvedValueOnce({ error: { message: 'nope' } as never });
     await expect(signOut()).rejects.toBeTruthy();
+  });
+
+  // ⚠️ supabase-js defaults a bare signOut() to 'global' — every Log out was
+  // signing out every device. The scope must be explicit.
+  it('Log out signs out of THIS session only', async () => {
+    await signOut();
+    expect(mockAuthSignOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(mockForgetAll).not.toHaveBeenCalled();
+  });
+
+  // SAFETY: the lost-phone case. A global sign-out that left the other phones'
+  // push tokens alive would keep sending them this person's sightings.
+  it('everywhere: forgets EVERY device’s push token first, then revokes all sessions', async () => {
+    await signOut({ everywhere: true });
+    expect(calls).toEqual([
+      'forgetAllPushTokens',
+      'clearPostDraft',
+      'forgetLocationMemory',
+      'auth.signOut',
+    ]);
+    expect(mockAuthSignOut).toHaveBeenCalledWith({ scope: 'global' });
+    expect(mockUnregister).not.toHaveBeenCalled();
+  });
+
+  // ⚠️ Half-working would be worse than failing: the other phones signed out
+  // but still getting this person's pushes, and the screen saying it worked.
+  it('everywhere: REFUSES, signed in everywhere still, when the tokens could not be forgotten', async () => {
+    mockForgetAll.mockResolvedValueOnce(false);
+    await expect(signOut({ everywhere: true })).rejects.toThrow('PUSH_TOKENS_NOT_FORGOTTEN');
+    expect(mockAuthSignOut).not.toHaveBeenCalled();
+    expect(mockClearDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe('fetchDeletionBlockers', () => {
+  it('returns the reasons with something to count', async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: [
+        { code: 'LIVE_LISTING', count: 1 },
+        { code: 'MONEY_HELD', count: 0 },
+      ],
+      error: null,
+    });
+    await expect(fetchDeletionBlockers()).resolves.toEqual([{ code: 'LIVE_LISTING', count: 1 }]);
+  });
+
+  it('throws on a malformed answer rather than reading it as "nothing blocks"', async () => {
+    mockRpc.mockResolvedValueOnce({ data: { blockers: 'nope' }, error: null });
+    await expect(fetchDeletionBlockers()).rejects.toBeTruthy();
   });
 });
 

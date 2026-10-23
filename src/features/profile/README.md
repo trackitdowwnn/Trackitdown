@@ -8,8 +8,8 @@ Reputation v1 counters as a passport-style stat column — whole card taps to
 edit), a "Your spotter story" row pushing the narrative reputation card
 (highlights, badges at 1/5/25, next-goal bar — social proof only, never
 payout-affecting), settings groups with heading-scale titles and hairline
-dividers, support/legal links, and a quiet ungrouped bottom cluster
-(underlined "Log out", muted "Delete account", app version). Also exports
+dividers, support/legal links, and a **Danger zone** group (2026-10-23: Log
+out, Log out of all devices, red Delete account), then the app version. Also exports
 `PublicProfileSheet` — the passport owners see for a spotter, a `// SAFETY`
 privacy boundary showing ONLY first name, avatar, reputation, and
 member-since; earned trust only (no goal/progress UI publicly).
@@ -18,21 +18,41 @@ member-since; earned trust only (no goal/progress UI publicly).
 auth lands, `__DEV__` sample-data preview), `EditProfileScreen`
 (`/edit-profile`; names + avatar via expo-image-picker — camera chip ON the
 photo, plain state + zod), `SpotterStoryScreen` (`/spotter-story`; the full
-narrative ReputationCard).
+narrative ReputationCard), `DeleteAccountScreen` (`/delete-account`, below).
 **Tables:** `profiles` (fields + counters via
-`20260710120000_profile_fields_and_avatars.sql`), `posts` (read-only
-deletion pre-check), `stripe_connected_accounts` (payout status, read-only).
+`20260710120000_profile_fields_and_avatars.sql`), `stripe_connected_accounts`
+(payout status, read-only).
+**RPCs:** `account_deletion_blockers()` (20261023120000) — what stops the
+caller deleting, as `[{code, count}]`; `forget_my_push_tokens()`
+(20261023130000) — every device's push token, for "Log out of all devices".
 **Storage:** public `avatars` bucket, own-folder writes.
-**Edge Functions:** `delete-account` — **BUILT** (2026-08-01, 247 lines),
-invoked at `api/profileApi.ts:228`. This line said "NOT built yet" until
-2026-08-03. It sweeps storage as well as rows; `sighting-photos` is
-deliberately excluded (SECURITY_AND_TRUST §5 records that as a judgement
-call, not a certainty). The client still pre-checks for posts with escrowed
-money (active / pending_verification / recovery_claimed) and blocks with
-honest copy; the server re-check is now the real enforcement.
-⚠️ **Known trap:** crediting a spotter moves a post to `recovery_claimed`,
-and nothing can currently move it out of that state — so an owner who
-credits someone can never delete their account. See the payout gap below.
+**Edge Functions:** `delete-account` — called by `requestAccountDeletion`.
+
+## Danger zone and account deletion (2026-10-23)
+
+Owner's picks: delete **straight away**, but only when nothing is pending (no
+grace period); a full screen confirmed by **typing DELETE**; a quiet group
+with red only on Delete account. No "Download my data".
+
+- **Log out** — this device: its push token, then the local teardown
+  (`forgetThisDevice`: badge, unfinished report, location caches), then the
+  session.
+- **Log out of all devices** — `forgetAllPushTokens` (`forget_my_push_tokens`:
+  every device stops getting pushes — the lost-phone case — and this one's
+  cache is cleared so it re-registers on the next sign-in), the same teardown,
+  then `signOut({ scope: 'global' })`. Other phones' access tokens live until
+  they expire (≤ 1 hour) but can't refresh, and `register_push_token` refuses
+  a revoked session, so they can't put their token back meanwhile.
+- ⚠️ **The scope is always explicit.** supabase-js defaults a bare
+  `signOut()` to `'global'` — until 2026-10-23 every Log out signed out every
+  device. Log out passes `'local'`.
+- **Delete account** → `DeleteAccountScreen`: reads
+  `account_deletion_blockers()`. Blocked → one line per reason
+  (`lib/deletionReasons.ts`), no button. Clear → Deleted / Kept, type DELETE,
+  red button. A server refusal (stale list, or a payout still on its way —
+  only the server can see that balance) shows its reason and re-reads the
+  list. What the server does is in docs/DOMAIN.md "Account deletion".
+
 **Config:** `config.ts` — `PAYOUTS_ENABLED=true`, legal URLs (TODO
 placeholders), support email (`support@trackitdown.example` — a reserved TLD,
 so it still goes nowhere).
