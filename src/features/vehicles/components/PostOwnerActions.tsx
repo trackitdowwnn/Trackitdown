@@ -474,7 +474,7 @@ export function PostOwnerActions({
           ref={deleteDraftRef}
           title="Delete this draft?"
           body="This deletes it for good. Nobody has seen it and nothing has been charged. This can’t be undone."
-          confirmLabel="Yes, delete"
+          confirmLabel="Delete draft"
           destructive
           onConfirm={onDeleteDraft}
         />
@@ -488,7 +488,7 @@ export function PostOwnerActions({
           ref={deletePostRef}
           title="Delete this listing?"
           body="This deletes the listing and its sighting history for good. If you keep it, it stays in My listings and is deleted automatically after 30 days. This can’t be undone."
-          confirmLabel="Yes, delete"
+          confirmLabel="Delete listing"
           cancelLabel="Keep it"
           destructive
           onConfirm={onDeletePost}
