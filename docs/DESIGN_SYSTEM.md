@@ -310,7 +310,7 @@ are build output.
   (Satoshi's font box is padded asymmetrically, throwing inline chips off
   optical centre) — see PlateChip and the detail page's title cluster.
 - Sentence case everywhere. No ALL CAPS except the literal word a person must
-  type to confirm (DeleteAccountScreen's "Type DELETE to confirm", 2026-10-23)
+  type to confirm (DeleteAccountSheet's "Type DELETE to confirm", 2026-10-23)
   and number plates, which render
   in a plate-style chip (Black weight, `surfaceSubtle` background; no letter
   spacing since 2026-07-23 — Satoshi's tracking already reads plate-like).

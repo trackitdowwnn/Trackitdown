@@ -19,7 +19,7 @@
  *        to see your profile", which reads as a wall raised by the action the
  *        user just took. Deletion stays findable-but-quiet on this root (App
  *        Store rule) rather than buried a level deep like the reference:
- *        honest, never guilt-trippy; its screen (DeleteAccountScreen) names
+ *        honest, never guilt-trippy; its sheet (DeleteAccountSheet) names
  *        every reason it can't go yet and confirms by typing DELETE. The
  *        payouts row ships
  *        dark behind PAYOUTS_ENABLED until Phase 3. The dev section closes
@@ -62,6 +62,7 @@ import {
 } from '@/shared/theme';
 import {
   Button,
+  type BottomSheetRef,
   ConfirmDialog,
   type ConfirmDialogRef,
   EmptyState,
@@ -77,6 +78,7 @@ import { useMyAlerts } from '@/features/notifications';
 import { usePayoutsRelevant } from '@/features/payments';
 
 import { signOut } from '../api/profileApi';
+import { DeleteAccountSheet } from '../components/DeleteAccountSheet';
 import { ProfileHeroCard } from '../components/ProfileHeroCard';
 import { legalHref } from '@/shared/lib';
 
@@ -229,6 +231,8 @@ function LoadedProfile({
   const openAlertSettings = () => router.push('/alerts');
   const signOutRef = useRef<ConfirmDialogRef>(null);
   const signOutEverywhereRef = useRef<ConfirmDialogRef>(null);
+  // Owner, 2026-10-23: a sheet, not a pushed page.
+  const deleteSheetRef = useRef<BottomSheetRef>(null);
 
   const handleSignOut = async (everywhere: boolean) => {
     if (devPreview) {
@@ -254,7 +258,7 @@ function LoadedProfile({
       toast.show('Sample data — deletion is disabled in preview.', 'error');
       return;
     }
-    router.push('/delete-account');
+    deleteSheetRef.current?.open();
   };
 
   const copyLogs = async () => {
@@ -510,6 +514,7 @@ function LoadedProfile({
         confirmLabel="Log out everywhere"
         onConfirm={() => void handleSignOut(true)}
       />
+      <DeleteAccountSheet ref={deleteSheetRef} userId={profile.id} />
     </SafeAreaView>
   );
 }

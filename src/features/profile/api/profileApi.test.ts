@@ -22,7 +22,6 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 import {
   AccountDeletionError,
   fetchDeletionBlockers,
-  fetchIdentityCheck,
   requestAccountDeletion,
   signOut,
 } from './profileApi';
@@ -34,7 +33,6 @@ const mockAuthSignOut = jest.fn(async (_options?: unknown) => {
   return { error: null };
 });
 const mockInvoke = jest.fn(async () => ({ error: null }));
-const mockGetUser = jest.fn();
 const mockRpc = jest.fn(async (name: string): Promise<{ data: unknown; error: unknown }> => {
   calls.push(`rpc:${name}`);
   return { data: null, error: null };
@@ -43,7 +41,6 @@ jest.mock('@/shared/api', () => ({
   supabase: {
     auth: {
       signOut: (options?: unknown) => mockAuthSignOut(options),
-      getUser: () => mockGetUser(),
     },
     functions: { invoke: () => mockInvoke() },
     rpc: (name: string) => mockRpc(name),
@@ -142,37 +139,6 @@ describe('signOut', () => {
     await expect(signOut({ everywhere: true })).rejects.toThrow('PUSH_TOKENS_NOT_FORGOTTEN');
     expect(mockAuthSignOut).not.toHaveBeenCalled();
     expect(mockClearDraft).not.toHaveBeenCalled();
-  });
-});
-
-describe('fetchIdentityCheck', () => {
-  const user = (email: string | null, provider: string) => ({
-    data: { user: { email, app_metadata: { provider } } },
-    error: null,
-  });
-
-  it('an email account gets a code to its own address', async () => {
-    mockGetUser.mockResolvedValueOnce(user('jane@example.com', 'email'));
-    await expect(fetchIdentityCheck()).resolves.toEqual({ kind: 'code', email: 'jane@example.com' });
-  });
-
-  it('an Apple account that shared its real address gets a code', async () => {
-    mockGetUser.mockResolvedValueOnce(user('jane@icloud.com', 'apple'));
-    await expect(fetchIdentityCheck()).resolves.toEqual({ kind: 'code', email: 'jane@icloud.com' });
-  });
-
-  it('a Google account gets a code too (a real inbox)', async () => {
-    mockGetUser.mockResolvedValueOnce(user('jane@gmail.com', 'google'));
-    await expect(fetchIdentityCheck()).resolves.toEqual({ kind: 'code', email: 'jane@gmail.com' });
-  });
-
-  // Apple's private relay doesn't forward our codes — they'd never arrive.
-  it.each([
-    ['an Apple relay address', user('x1y2@privaterelay.appleid.com', 'apple')],
-    ['no email at all', user(null, 'email')],
-  ])('%s confirms with Apple', async (_case, answer) => {
-    mockGetUser.mockResolvedValueOnce(answer);
-    await expect(fetchIdentityCheck()).resolves.toEqual({ kind: 'apple' });
   });
 });
 

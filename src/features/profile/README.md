@@ -19,7 +19,7 @@ member-since; earned trust only (no goal/progress UI publicly).
 auth lands, `__DEV__` sample-data preview), `EditProfileScreen`
 (`/edit-profile`; names + avatar via expo-image-picker — camera chip ON the
 photo, plain state + zod), `SpotterStoryScreen` (`/spotter-story`; the full
-narrative ReputationCard), `DeleteAccountScreen` (`/delete-account`, below).
+narrative ReputationCard). Delete account is a sheet (`DeleteAccountSheet`, below).
 **Tables:** `profiles` (fields + counters via
 `20260710120000_profile_fields_and_avatars.sql`), `stripe_connected_accounts`
 (payout status, read-only).
@@ -47,13 +47,12 @@ with red only on Delete account. No "Download my data".
 - ⚠️ **The scope is always explicit.** supabase-js defaults a bare
   `signOut()` to `'global'` — until 2026-10-23 every Log out signed out every
   device. Log out passes `'local'`.
-- **Delete account** → `DeleteAccountScreen`: reads
-  `account_deletion_blockers()`. Blocked → one line per reason
-  (`lib/deletionReasons.ts`), no button. Clear → Deleted / Kept, then
-  **Confirm it's you**: "Email me a code" → the 6-digit code (auth's
-  `OtpInput`) → red "Delete account" (an Apple account confirms with Apple).
-  The server requires a sign-in within 5 minutes (REAUTH_REQUIRED) — the code
-  replaced typing DELETE (2026-10-23). A server refusal (stale list, or a payout still on its way —
+- **Delete account** → `components/DeleteAccountSheet`, a bottom sheet (owner,
+  2026-10-23 — not a page): reads `account_deletion_blockers()` on every
+  open. Blocked → one line per reason (`lib/deletionReasons.ts`), no button.
+  Clear → Deleted / Kept, "Type DELETE to confirm", red "Delete account". (An
+  emailed code briefly replaced typing DELETE — #266 — and was taken out the
+  same day at the owner's call; SECURITY_AND_TRUST §3.) A server refusal (stale list, or a payout still on its way —
   only the server can see that balance) shows its reason and re-reads the
   list. What the server does is in docs/DOMAIN.md "Account deletion".
 
