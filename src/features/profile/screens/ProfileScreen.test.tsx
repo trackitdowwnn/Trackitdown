@@ -453,6 +453,9 @@ describe('signed in', () => {
     expect(within(zone).queryByTestId('row-sign-out')).toBeNull();
     expect(getByTestId('row-sign-out')).toBeTruthy();
     expect(within(zone).getByTestId('list-row-group-danger-card')).toBeTruthy();
+    // Each danger action says what it does (danger-zone research, 2026-10-23).
+    expect(within(zone).getByText('Every phone signs out')).toBeTruthy();
+    expect(within(zone).getByText('Removes your account and listings')).toBeTruthy();
   });
 
   it('log out signs out THIS device only', async () => {
@@ -467,13 +470,13 @@ describe('signed in', () => {
   });
 
   it('log out of all devices: confirming signs out everywhere and lands on Explore', async () => {
-    const { getByTestId, getByText, getAllByText } = await render(<ProfileScreen />);
+    const { getByTestId, getByText } = await render(<ProfileScreen />);
     await act(async () => {
       fireEvent.press(getByTestId('row-sign-out-everywhere'));
     });
     expect(getByText('Log out of all devices?')).toBeTruthy();
     await act(async () => {
-      fireEvent.press(getAllByText('Log out').at(-1) as never);
+      fireEvent.press(getByText('Log out everywhere'));
     });
     await waitFor(() => expect(mockSignOut).toHaveBeenCalledWith({ everywhere: true }));
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/(tabs)/explore'));

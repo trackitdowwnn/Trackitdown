@@ -464,12 +464,14 @@ function LoadedProfile({
           <ListRow
             icon={MonitorSmartphone}
             title="Log out of all devices"
+            subtitle="Every phone signs out"
             onPress={() => signOutEverywhereRef.current?.open()}
             testID="row-sign-out-everywhere"
           />
           <ListRow
             icon={Trash2}
             title="Delete account"
+            subtitle="Removes your account and listings"
             destructive
             onPress={openDelete}
             testID="row-delete-account"
@@ -505,7 +507,7 @@ function LoadedProfile({
         ref={signOutEverywhereRef}
         title="Log out of all devices?"
         body="Every phone signed in to your account, including this one, will need to log in again."
-        confirmLabel="Log out"
+        confirmLabel="Log out everywhere"
         onConfirm={() => void handleSignOut(true)}
       />
     </SafeAreaView>

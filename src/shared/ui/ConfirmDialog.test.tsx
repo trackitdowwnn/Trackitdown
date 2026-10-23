@@ -77,6 +77,20 @@ describe('ConfirmDialog', () => {
     expect(getByText('Cancel')).toBeTruthy();
   });
 
+  // The danger isn't carried by the red button alone: a destructive confirm
+  // shows a warning icon by its title; an ordinary one doesn't.
+  it.each([
+    [true, 1],
+    [false, 0],
+  ])('destructive=%s shows %i warning icon(s) by the title', async (destructive, count) => {
+    const { ref, view } = setup(destructive);
+    const { queryAllByTestId } = await view;
+    await act(async () => {
+      ref.current?.open();
+    });
+    expect(queryAllByTestId('sheet-title-icon')).toHaveLength(count);
+  });
+
   it('confirm fires onConfirm, closes, and does NOT fire onDismiss', async () => {
     const { ref, onConfirm, onDismiss, view } = setup();
     const { getByText, queryByText } = await view;

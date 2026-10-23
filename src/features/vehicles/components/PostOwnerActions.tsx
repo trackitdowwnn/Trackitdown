@@ -444,17 +444,22 @@ export function PostOwnerActions({
         onUnarchive={archive?.archived ? archive.toggle : undefined}
       />
 
-      {/* The ONE deactivate confirm — just the question (owner, 2026-10-23:
-          "something simple"). The money still gets its words: the Manage
-          sheet's row says what happens to the reward or fee before this
-          opens (deactivateKind), and the toast names the exact refund the
-          server sent (ADR-0021). */}
+      {/* The ONE deactivate confirm — short, but specific (owner, 2026-10-23,
+          after the danger-zone research): the title NAMES the car, the body
+          says the one consequence, the button names the action. "Are you
+          sure?" alone is what people tap through without reading. The money
+          gets its words on the Manage sheet row (deactivateKind) and in the
+          toast's exact refund (ADR-0021). */}
       {canDeactivate(owned) ? (
         <ConfirmDialog
           ref={deactivateRef}
-          title="Deactivate this listing?"
-          body="Are you sure? This can’t be undone."
-          confirmLabel="Yes, deactivate"
+          title={
+            owned.plate
+              ? `Deactivate ${owned.plate}?`
+              : `Deactivate your ${owned.make} ${owned.model}?`
+          }
+          body="It comes off the map for everyone. This can’t be undone."
+          confirmLabel="Deactivate listing"
           destructive
           onConfirm={onDeactivate}
         />
@@ -469,7 +474,7 @@ export function PostOwnerActions({
           ref={deleteDraftRef}
           title="Delete this draft?"
           body="This deletes it for good. Nobody has seen it and nothing has been charged. This can’t be undone."
-          confirmLabel="Yes, delete"
+          confirmLabel="Delete draft"
           destructive
           onConfirm={onDeleteDraft}
         />
@@ -483,7 +488,7 @@ export function PostOwnerActions({
           ref={deletePostRef}
           title="Delete this listing?"
           body="This deletes the listing and its sighting history for good. If you keep it, it stays in My listings and is deleted automatically after 30 days. This can’t be undone."
-          confirmLabel="Yes, delete"
+          confirmLabel="Delete listing"
           cancelLabel="Keep it"
           destructive
           onConfirm={onDeletePost}

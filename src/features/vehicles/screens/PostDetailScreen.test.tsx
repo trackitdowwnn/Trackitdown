@@ -438,7 +438,7 @@ describe('PostDetailScreen', () => {
         fireEvent.press(getAllByText('Deactivate & refund')[0]);
       });
       await act(async () => {
-        fireEvent.press(getByText('Yes, deactivate'));
+        fireEvent.press(getAllByText('Deactivate listing').at(-1) as never);
       });
       expect(mockDeactivate).toHaveBeenCalledWith('p1');
       // The toast shows the SERVER's exact refunded amount (£492.30), not the estimate.
