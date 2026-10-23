@@ -419,6 +419,17 @@ commenting standards.
     anything still moves. Afterwards the Edge Function closes their payout
     account at Stripe (v2 close, else v1 delete) and emails the operator if
     that fails. Tested by `supabase/tests/account_deletion_verification.sql`.
+    - **Recorded decision (2026-10-23, 20261023140000):** an owner's deletion
+      now also takes down a LIVE listing that holds no reward money (free, an
+      abandoned "add a reward", a lapsed reward), after the delete screen
+      names it. Its spotters' sightings and photos go with it, as for any
+      deleted listing — on a car that may still be missing. Reward money held
+      or a claimed recovery still blocks.
+    - Residuals: a refund that FAILS after the owner is gone leaves the ops
+      alert with nobody to contact; the screen's "taken down now" count is
+      read once, so a listing gone live on another device meanwhile is
+      deleted unwarned; a deletion can now wait on (or deadlock with) live
+      listing activity — it fails safe with "try again".
 - Auth is passwordless (email OTP + Apple/Google — DOMAIN.md). Session tokens
   (access + refresh) are stored in the OS keychain via expo-secure-store,
   encrypted at rest — never in plaintext AsyncStorage. Emails are personal data:

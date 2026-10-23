@@ -15,6 +15,7 @@ import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { DeleteAccountScreen } from './DeleteAccountScreen';
 
 const mockFetchBlockers = jest.fn();
+const mockLiveCount = jest.fn();
 const mockRequestDeletion = jest.fn();
 jest.mock('../api/profileApi', () => ({
   // A real class: the screen branches on `instanceof`.
@@ -27,6 +28,7 @@ jest.mock('../api/profileApi', () => ({
     }
   },
   fetchDeletionBlockers: (...a: unknown[]) => mockFetchBlockers(...a),
+  fetchLiveListingCount: (...a: unknown[]) => mockLiveCount(...a),
   requestAccountDeletion: (...a: unknown[]) => mockRequestDeletion(...a),
 }));
 
@@ -56,6 +58,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockSession = { status: 'signedIn', userId: 'u1' };
   mockFetchBlockers.mockResolvedValue([]);
+  mockLiveCount.mockResolvedValue(0);
   mockRequestDeletion.mockResolvedValue(undefined);
 });
 
@@ -71,7 +74,9 @@ describe('blocked', () => {
     const screen = await render(<DeleteAccountScreen />);
 
     expect(await screen.findByText('You can’t delete your account yet.')).toBeTruthy();
-    expect(screen.getByText('You have 2 live listings. Deactivate them first.')).toBeTruthy();
+    expect(
+      screen.getByText('2 listings have a reward or a recovery in progress. Close them first.'),
+    ).toBeTruthy();
     expect(
       screen.getByText('A reward is waiting for you. Set up payouts to receive it.'),
     ).toBeTruthy();
@@ -95,6 +100,30 @@ describe('clear to delete', () => {
     expect(await screen.findByText('Deleted')).toBeTruthy();
     expect(screen.getByText('Kept')).toBeTruthy();
     expect(screen.getByText('Payment records, for 6 years as the law requires')).toBeTruthy();
+  });
+
+  // ⚠️ 20261023140000: a live listing with no reward money goes WITH the
+  // account — the owner must be told before the button, not surprised after.
+  it('names a live listing it will take down, first under Deleted', async () => {
+    mockLiveCount.mockResolvedValue(1);
+    const screen = await render(<DeleteAccountScreen />);
+
+    expect(await screen.findByText('Your live listing — taken down now')).toBeTruthy();
+    expect(mockLiveCount).toHaveBeenCalledWith('u1');
+  });
+
+  it('says nothing about listings when there are none', async () => {
+    const screen = await render(<DeleteAccountScreen />);
+    await screen.findByText('Deleted');
+    expect(screen.queryByTestId('delete-account-live-listings')).toBeNull();
+  });
+
+  it('won’t offer the button if the listing count can’t be read', async () => {
+    mockLiveCount.mockRejectedValueOnce(new Error('offline'));
+    const screen = await render(<DeleteAccountScreen />);
+
+    expect(await screen.findByText('We couldn’t check your account')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Delete account' })).toBeNull();
   });
 
   it('⚠️ stays disabled until DELETE is typed', async () => {

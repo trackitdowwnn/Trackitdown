@@ -16,13 +16,17 @@
 -- 3 each blocker — LIVE_LISTING, MONEY_HELD, REWARD_ON_ITS_WAY, DISPUTE_OPEN,
 -- REVIEW_OPEN — named by account_deletion_blockers() for the caller and
 -- refused by delete_account_data; 3f ⚠️ an UPHELD (settled) dispute blocks
--- neither side · 4 an unproven stray intent refuses
+-- neither side; 3a LIVE_LISTING = a live listing HOLDING reward money (not also
+-- MONEY_HELD) or a claimed recovery · 6 ⚠️ a live listing with NO money held —
+-- free, abandoned reward attempts, a lapsed reward — goes with the account once
+-- the attempts are proved dead (20261023140000) · 4 an unproven stray intent refuses
 -- (INTENT_NOT_CANCELLED) · 5 who may call what.
 -- HOW:   Self-asserting, RAISE on failure (CI's db job). Each check seeds its
 --        own users and rows inside begin…rollback; nothing persists. The auth
 --        row is deleted the way delete-account's admin call does (a row
 --        delete), so the cascade is proven too.
--- LINKS: supabase/migrations/20261023120000_an_account_can_be_deleted.sql.
+-- LINKS: supabase/migrations/20261023120000_an_account_can_be_deleted.sql;
+--        supabase/migrations/20261023140000_a_listing_without_money_goes_with_its_account.sql.
 -- =============================================================================
 
 -- A throwaway user (auth row + profile), as seed.sql makes them.
@@ -241,12 +245,32 @@ begin
   end;
 end $$;
 
--- 3a LIVE_LISTING
+-- 3a LIVE_LISTING — a live listing HOLDING reward money (20261023140000: a
+-- live listing with none goes with the account — CHECK 6).
 begin;
 select pg_temp.make_user('ad000000-0000-0000-0000-0000000000d1');
-insert into public.posts (owner_id, status, bounty_amount_pence, plate)
-values ('ad000000-0000-0000-0000-0000000000d1', 'active', 25000, 'AD3A LIV');
+insert into public.posts (id, owner_id, status, bounty_amount_pence, plate)
+values ('ad000001-0000-0000-0000-0000000000d1', 'ad000000-0000-0000-0000-0000000000d1', 'active', 25000, 'AD3A LIV');
+insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, kind)
+values ('ad000001-0000-0000-0000-0000000000d1', 'pi_acctdel_d1', 'held', 25000, 'bounty_escrow');
 select pg_temp.expect_blocked('ad000000-0000-0000-0000-0000000000d1', 'LIVE_LISTING');
+-- One listing, one reason: its held money isn't ALSO named MONEY_HELD.
+do $$
+begin
+  if exists (select 1 from jsonb_array_elements(
+               public.account_deletion_blockers_for('ad000000-0000-0000-0000-0000000000d1')) b
+              where b ->> 'code' = 'MONEY_HELD') then
+    raise exception 'CHECK 3a FAILED: a live listing''s held money was named twice';
+  end if;
+end $$;
+rollback;
+
+-- 3a' LIVE_LISTING — a claimed recovery blocks even with no money on it.
+begin;
+select pg_temp.make_user('ad000000-0000-0000-0000-0000000000d6');
+insert into public.posts (owner_id, status, bounty_amount_pence, plate)
+values ('ad000000-0000-0000-0000-0000000000d6', 'recovery_claimed', null, 'AD3A RCL');
+select pg_temp.expect_blocked('ad000000-0000-0000-0000-0000000000d6', 'LIVE_LISTING');
 rollback;
 
 -- 3b MONEY_HELD (a cancelled listing whose money is still held)
@@ -359,6 +383,127 @@ begin
         raise exception 'CHECK 4 FAILED: refused for the wrong reason: %', sqlerrm;
       end if;
   end;
+end $$;
+rollback;
+
+-- -----------------------------------------------------------------------------
+-- CHECK 6 — ⚠️ a LIVE listing with no money held goes with the account
+-- (20261023140000). The prod case: a free listing (fee paid) carrying two
+-- abandoned "add a reward" attempts — one failed, one never paid.
+-- -----------------------------------------------------------------------------
+begin;
+select pg_temp.make_user('ad000000-0000-0000-0000-0000000000f6');
+select pg_temp.make_user('ad000000-0000-0000-0000-0000000000f7'); -- a spotter
+insert into public.posts (id, owner_id, status, bounty_amount_pence, plate) values
+  ('ad000001-0000-0000-0000-0000000000f6', 'ad000000-0000-0000-0000-0000000000f6', 'active', null,  'AD06 FRE'),
+  -- A lapsed reward: set once, refunded since — no money left on it.
+  ('ad000001-0000-0000-0000-0000000000f7', 'ad000000-0000-0000-0000-0000000000f6', 'active', 25000, 'AD06 LPS');
+insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, kind) values
+  ('ad000001-0000-0000-0000-0000000000f6', 'pi_acctdel_f6_fee',  'collected',        500,   'listing_fee'),
+  ('ad000001-0000-0000-0000-0000000000f6', 'pi_acctdel_f6_bad',  'failed',           25000, 'bounty_escrow'),
+  ('ad000001-0000-0000-0000-0000000000f6', 'pi_acctdel_f6_open', 'requires_payment', 25000, 'bounty_escrow'),
+  ('ad000001-0000-0000-0000-0000000000f7', 'pi_acctdel_f7_ref',  'refunded',         25000, 'bounty_escrow');
+-- As in prod, the lapsed reward left its (expired) reward_end hold behind —
+-- a RESTRICT row the delete must clear.
+insert into public.refund_holds (post_id, owner_id, payment_id, exit_path, system_initiated, sighting_ids, expires_at)
+select 'ad000001-0000-0000-0000-0000000000f7', 'ad000000-0000-0000-0000-0000000000f6', id,
+       'reward_end', true, '{}'::uuid[], now() - interval '1 day'
+  from public.payments where stripe_payment_intent_id = 'pi_acctdel_f7_ref';
+-- Someone helped: a sighting on the live listing.
+insert into public.sightings (post_id, spotter_id, status, area_label, location_unavailable)
+values ('ad000001-0000-0000-0000-0000000000f6', 'ad000000-0000-0000-0000-0000000000f7', 'unverified', 'Ancoats', true);
+
+do $$
+declare
+  v_summary jsonb;
+begin
+  -- 6a — nothing blocks.
+  if jsonb_array_length(public.account_deletion_blockers_for('ad000000-0000-0000-0000-0000000000f6')) <> 0 then
+    raise exception 'CHECK 6a FAILED: a live listing with no money held still blocks: %',
+      public.account_deletion_blockers_for('ad000000-0000-0000-0000-0000000000f6');
+  end if;
+
+  -- 6b — the never-paid attempt NOT proved dead: refused, nothing deleted.
+  begin
+    perform public.delete_account_data('ad000000-0000-0000-0000-0000000000f6', array['pi_acctdel_f6_bad']);
+    raise exception 'CHECK 6b FAILED: deleted with an unproven reward attempt';
+  exception
+    when raise_exception then
+      if sqlerrm <> 'INTENT_NOT_CANCELLED' then
+        raise exception 'CHECK 6b FAILED: refused for the wrong reason: %', sqlerrm;
+      end if;
+  end;
+
+  -- 6c — both proved dead (as delete-account proves them at Stripe): gone.
+  v_summary := public.delete_account_data('ad000000-0000-0000-0000-0000000000f6',
+                                          array['pi_acctdel_f6_bad', 'pi_acctdel_f6_open']);
+  if (v_summary ->> 'posts_deleted')::int <> 2 then
+    raise exception 'CHECK 6c FAILED: expected both live listings deleted: %', v_summary;
+  end if;
+  if exists (select 1 from public.posts where owner_id = 'ad000000-0000-0000-0000-0000000000f6')
+     or exists (select 1 from public.sightings where post_id = 'ad000001-0000-0000-0000-0000000000f6') then
+    raise exception 'CHECK 6c FAILED: a listing or its sighting survived';
+  end if;
+  -- The fee and the refunded reward: kept, detached, remembered as live.
+  if (select count(*) from public.payments
+       where stripe_payment_intent_id in ('pi_acctdel_f6_fee', 'pi_acctdel_f7_ref')
+         and post_id is null
+         and post_snapshot ->> 'post_status' = 'active') <> 2 then
+    raise exception 'CHECK 6c FAILED: a moved-money row was lost or not detached';
+  end if;
+  -- The abandoned attempts: gone.
+  if exists (select 1 from public.payments
+              where stripe_payment_intent_id in ('pi_acctdel_f6_bad', 'pi_acctdel_f6_open')) then
+    raise exception 'CHECK 6c FAILED: an abandoned reward attempt survived';
+  end if;
+end $$;
+rollback;
+
+-- -----------------------------------------------------------------------------
+-- CHECK 7 — ⚠️ the per-listing guard ITSELF refuses a live listing holding
+-- money. It's the backstop for a listing that went live with money after
+-- delete_account_data read the blockers, so it's called directly here — the
+-- blocker check would otherwise refuse first and the guard would never run.
+-- -----------------------------------------------------------------------------
+begin;
+select pg_temp.make_user('ad000000-0000-0000-0000-0000000000a7');
+insert into public.posts (id, owner_id, status, bounty_amount_pence, plate) values
+  ('ad000001-0000-0000-0000-0000000000a1', 'ad000000-0000-0000-0000-0000000000a7', 'active',               25000, 'AD07 HLD'),
+  ('ad000001-0000-0000-0000-0000000000a2', 'ad000000-0000-0000-0000-0000000000a7', 'active',               null,  'AD07 SUP'),
+  ('ad000001-0000-0000-0000-0000000000a3', 'ad000000-0000-0000-0000-0000000000a7', 'pending_verification', 25000, 'AD07 PVH');
+insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, kind, superseded_at) values
+  ('ad000001-0000-0000-0000-0000000000a1', 'pi_acctdel_a1', 'held',       25000, 'bounty_escrow', null),
+  -- A stray capture on a fee listing, owed back: superseded money only.
+  ('ad000001-0000-0000-0000-0000000000a2', 'pi_acctdel_a2', 'superseded', 25000, 'bounty_escrow', now()),
+  ('ad000001-0000-0000-0000-0000000000a3', 'pi_acctdel_a3', 'held',       25000, 'bounty_escrow', null);
+
+do $$
+declare
+  v_post uuid;
+begin
+  foreach v_post in array array[
+    'ad000001-0000-0000-0000-0000000000a1',
+    'ad000001-0000-0000-0000-0000000000a2',
+    'ad000001-0000-0000-0000-0000000000a3']::uuid[]
+  loop
+    begin
+      perform public.delete_post_for_account(v_post, 'ad000000-0000-0000-0000-0000000000a7', '{}');
+      raise exception 'CHECK 7 FAILED: a live listing holding money (%) was deleted', v_post;
+    exception
+      when raise_exception then
+        if sqlerrm <> 'LIVE_LISTING' then
+          raise exception 'CHECK 7 FAILED: % refused for the wrong reason: %', v_post, sqlerrm;
+        end if;
+    end;
+  end loop;
+
+  -- And the screen's list agrees: three listings, one reason, no MONEY_HELD.
+  if (select (b ->> 'count')::int from jsonb_array_elements(
+        public.account_deletion_blockers_for('ad000000-0000-0000-0000-0000000000a7')) b
+       where b ->> 'code' = 'LIVE_LISTING') is distinct from 3 then
+    raise exception 'CHECK 7 FAILED: blockers disagree with the guard: %',
+      public.account_deletion_blockers_for('ad000000-0000-0000-0000-0000000000a7');
+  end if;
 end $$;
 rollback;
 

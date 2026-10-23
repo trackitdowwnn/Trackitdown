@@ -175,7 +175,7 @@ describe('requestAccountDeletion', () => {
   // The server's reasons it can't go yet (20261023120000): each one says what
   // to do — "try again" would never come true while the reason stands.
   it.each([
-    ['LIVE_LISTING', 'Deactivate it first'],
+    ['LIVE_LISTING', 'Close it first'],
     ['MONEY_HELD', 'still being returned'],
     ['REWARD_ON_ITS_WAY', 'Set up payouts'],
     ['PAYOUT_ON_ITS_WAY', 'A payout is still on its way'],

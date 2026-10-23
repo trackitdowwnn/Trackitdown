@@ -186,6 +186,25 @@ export async function fetchDeletionBlockers(): Promise<DeletionBlocker[]> {
 }
 
 /**
+ * The caller's live listings — active or being checked. When nothing blocks,
+ * these are listings with no reward money held, and deleting the account
+ * TAKES THEM DOWN (20261023140000), so the delete screen names them before
+ * the button. Their own rows, read under the owner's RLS.
+ */
+export async function fetchLiveListingCount(userId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('posts')
+    .select('id', { count: 'exact', head: true })
+    .eq('owner_id', userId)
+    .in('status', ['active', 'pending_verification']);
+  if (error) {
+    log.warn('live listing count failed', { code: error.code });
+    throw error;
+  }
+  return count ?? 0;
+}
+
+/**
  * What leaving an account clears on THIS device, whichever way they leave —
  * log out, sign out everywhere, or delete. One list, so a new piece of local
  * state can't be forgotten on one of the three paths (deletion used to skip
@@ -263,7 +282,7 @@ const DELETION_MESSAGES: Record<string, string> = {
   NOT_AUTHENTICATED: 'Please log in again, then try deleting your account.',
   // The server's reasons it can't go yet (account_deletion_blockers_for,
   // 20261023120000) — each says what to do, never "try again".
-  LIVE_LISTING: 'You have a live listing. Deactivate it first, then delete your account.',
+  LIVE_LISTING: 'A listing has a reward or a recovery in progress. Close it first.',
   MONEY_HELD: "Money from one of your listings is still being returned. Try again once it's back.",
   // Usually they haven't set up payouts, and nothing pays it until they do.
   REWARD_ON_ITS_WAY: 'A reward is waiting for you. Set up payouts to receive it first.',
