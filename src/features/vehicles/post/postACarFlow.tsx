@@ -118,6 +118,8 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
         {
           id: 'last-seen-when',
           question: LAST_SEEN_QUESTIONS.when,
+          // One line, shrunk just enough (owner, 2026-10-22).
+          fitTitle: true,
           component: LastSeenWhenStep,
           schema: z.object({ lastSeenAt: z.string().min(1) }),
           reviewLabel: 'Last seen',

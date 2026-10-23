@@ -661,8 +661,11 @@ Airbnb-style calendar, inside a `BottomSheet`. Maths and labels live in
 `new Date('YYYY-MM-DD')`, and day arithmetic in UTC so DST can't move it.
 
 **A time asked as a question** ("When did you last see it?", owner
-2026-10-22) is `CardSelect` cards like every one-question step: each preset
-card shows the exact time it means ("Last night" / "Yesterday, 22:00"), and
+2026-10-22) is `CardSelect` cards like every one-question step, made
+COMPACT (`layout="inline"`: one line per card, the name left and the time
+right, `spacing.sm` between, a 48pt card), under a title fitted to one line
+(the step's `fitTitle`; at large text it wraps at full size). Each preset
+card shows the exact time it means ("Last night … Yesterday, 22:00"), and
 the last, "Pick a date and time", opens the calendar sheet and then shows the
 time picked. A card moves the wizard on; in the listing's full-screen
 editor (under a `heading` "When did you last see it?") it only selects.

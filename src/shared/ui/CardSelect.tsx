@@ -67,6 +67,13 @@ export interface CardSelectProps<V extends string = string> {
    * otherwise assumed to stay chosen.
    */
   clearable?: boolean;
+  /**
+   * 'inline': a COMPACT card — the label left, the description right on the
+   * same line, less padding and tighter gaps (owner, 2026-10-22: last-seen's
+   * time cards, "Last night · Yesterday, 22:00"). For short labels with a
+   * short value; at large text the row wraps rather than clips.
+   */
+  layout?: 'stacked' | 'inline';
   /** On the group. */
   testID?: string;
 }
@@ -77,14 +84,16 @@ export function CardSelect<V extends string = string>({
   onSelect,
   accessibilityLabel,
   clearable = false,
+  layout = 'stacked',
   testID,
 }: CardSelectProps<V>) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
+  const inline = layout === 'inline';
 
   return (
     <View
-      style={styles.group}
+      style={[styles.group, inline && styles.groupCompact]}
       accessibilityRole="radiogroup"
       accessibilityLabel={accessibilityLabel}
       testID={testID}
@@ -107,6 +116,7 @@ export function CardSelect<V extends string = string>({
             onPress={() => onSelect(option.value)}
             style={({ pressed }) => [
               styles.card,
+              inline && styles.cardCompact,
               selected && styles.cardSelected,
               pressed && styles.cardPressed,
             ]}
@@ -117,10 +127,12 @@ export function CardSelect<V extends string = string>({
                 color={selected ? palette.textPrimary : palette.textSecondary}
               />
             ) : null}
-            <View style={styles.text}>
-              <Text style={styles.label}>{option.label}</Text>
+            <View style={[styles.text, inline && styles.textInline]}>
+              <Text style={[styles.label, inline && styles.labelInline]}>{option.label}</Text>
               {option.description ? (
-                <Text style={styles.description}>{option.description}</Text>
+                <Text style={[styles.description, inline && styles.descriptionInline]}>
+                  {option.description}
+                </Text>
               ) : null}
             </View>
           </Pressable>

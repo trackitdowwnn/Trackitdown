@@ -1002,6 +1002,51 @@ describe('step-launched edit spurs', () => {
     ).toBeTruthy();
     expect(view.getAllByText('Only the owner sees this.')).toHaveLength(1);
   });
+
+  // fitTitle (owner, 2026-10-22: "When did you last see it?" wrapped): one
+  // line, shrunk just enough — never at large text, and only where asked.
+  const fitFlow: WizardFlow<Answers> = {
+    ...speedFlow,
+    phases: [
+      {
+        ...speedFlow.phases[0],
+        steps: [{ ...speedFlow.phases[0].steps[0], fitTitle: true }, speedFlow.phases[0].steps[1]],
+      },
+    ],
+  };
+
+  it('fits a fitTitle question on one line at ordinary text — and only that step', async () => {
+    jest
+      .spyOn(Dimensions, 'get')
+      .mockReturnValue({ width: 390, height: 844, scale: 2, fontScale: 1 });
+    const view = await render(
+      <WizardScreen flow={fitFlow} onExit={jest.fn()} onComplete={jest.fn()} />,
+    );
+    const title = view.getByRole('header', { name: "What's your name?" });
+    expect(title.props.numberOfLines).toBe(1);
+    expect(title.props.adjustsFontSizeToFit).toBe(true);
+    expect(title.props.minimumFontScale).toBeGreaterThan(0.5);
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId('fill-name'));
+    });
+    await press(view, 'Continue');
+    const next = view.getByRole('header', { name: 'Check and send' });
+    expect(next.props.numberOfLines).toBeUndefined();
+    expect(next.props.adjustsFontSizeToFit).toBeUndefined();
+  });
+
+  it('lets a fitTitle question wrap at full size at large text', async () => {
+    jest
+      .spyOn(Dimensions, 'get')
+      .mockReturnValue({ width: 390, height: 844, scale: 2, fontScale: 1.6 });
+    const view = await render(
+      <WizardScreen flow={fitFlow} onExit={jest.fn()} onComplete={jest.fn()} />,
+    );
+    const title = view.getByRole('header', { name: "What's your name?" });
+    expect(title.props.numberOfLines).toBeUndefined();
+    expect(title.props.adjustsFontSizeToFit).toBeUndefined();
+  });
 });
 
 // A step can claim Next (2026-10-12) — the wiring the controller suite can't
