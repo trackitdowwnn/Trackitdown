@@ -85,9 +85,17 @@ describe('unregisterCurrentPushToken', () => {
 });
 
 describe('forgetAllPushTokens', () => {
-  it('asks the server to drop every device’s token', async () => {
-    await forgetAllPushTokens();
+  it('asks the server to drop every device’s token, and says it worked', async () => {
+    await expect(forgetAllPushTokens()).resolves.toBe(true);
     expect(mockRpc).toHaveBeenCalledWith('forget_my_push_tokens');
+  });
+
+  it('tries once more before saying it failed', async () => {
+    mockRpc
+      .mockResolvedValueOnce({ error: { message: 'blip', code: '503' } })
+      .mockResolvedValueOnce({ error: null });
+    await expect(forgetAllPushTokens()).resolves.toBe(true);
+    expect(mockRpc).toHaveBeenCalledTimes(2);
   });
 
   // ⚠️ Without this, signing straight back in as the same user finds "already
@@ -101,7 +109,7 @@ describe('forgetAllPushTokens', () => {
   it('never throws, and still clears the cache, when the server fails', async () => {
     rememberPushToken('user-1', TOKEN);
     mockRpc.mockRejectedValue(new Error('offline'));
-    await expect(forgetAllPushTokens()).resolves.toBeUndefined();
+    await expect(forgetAllPushTokens()).resolves.toBe(false);
     expect(isPushTokenRegistered('user-1', TOKEN)).toBe(false);
   });
 });

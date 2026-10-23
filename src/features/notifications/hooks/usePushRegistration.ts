@@ -22,7 +22,11 @@ import { createLogger } from '@/shared/lib/logger';
 
 import { registerPushToken } from '../api/pushTokenApi';
 import { expoPushDevice, pushPlatform, type PushDevice } from '../lib/pushDevice';
-import { isPushTokenRegistered, rememberPushToken } from '../lib/pushTokenCache';
+import {
+  clearPushTokenCache,
+  isPushTokenRegistered,
+  rememberPushToken,
+} from '../lib/pushTokenCache';
 
 const log = createLogger('notifications');
 
@@ -31,7 +35,16 @@ const log = createLogger('notifications');
  *   registration never competes with first paint.
  */
 export function usePushRegistration(enabled: boolean, device: PushDevice = expoPushDevice): void {
-  const { userId } = useSession();
+  const { userId, status } = useSession();
+
+  // ⚠️ However the session ended — a deliberate log out, or ANOTHER device
+  // logging out of all devices, which deletes this phone's token row and then
+  // fails its refresh — the "already registered" memory goes with it. Kept,
+  // it would make the next sign-in as the same user skip registering, and the
+  // phone would get no pushes until a cold start (security review of #261).
+  useEffect(() => {
+    if (status === 'signedOut') clearPushTokenCache();
+  }, [status]);
 
   useEffect(() => {
     if (!enabled || !userId) return;

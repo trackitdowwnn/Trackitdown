@@ -67,6 +67,22 @@ describe('usePushRegistration', () => {
     expect(mockRegister).not.toHaveBeenCalled();
   });
 
+  // ⚠️ Another device's "log out of all devices" deletes this phone's token
+  // row and ends its session. Signing back in as the SAME user must register
+  // again — a remembered "already sent" would leave it with no pushes.
+  it('registers again after the session ends and the same user signs back in', async () => {
+    const device = makeDevice();
+    const hook = await renderHook(() => usePushRegistration(true, device));
+    await waitFor(() => expect(mockRegister).toHaveBeenCalledTimes(1));
+
+    mockUseSession.mockReturnValue({ status: 'signedOut', userId: null });
+    await hook.rerender({});
+    mockUseSession.mockReturnValue({ status: 'signedIn', userId: 'user-1' });
+    await hook.rerender({});
+
+    await waitFor(() => expect(mockRegister).toHaveBeenCalledTimes(2));
+  });
+
   it('does nothing until enabled', async () => {
     const device = makeDevice();
     const hook = await renderHook(

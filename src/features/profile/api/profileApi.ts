@@ -218,10 +218,21 @@ export async function signOut({ everywhere = false }: { everywhere?: boolean } =
   // and a stale row keeps delivering this user's sighting and message pushes
   // to whoever holds the handset. Everywhere: every device's token
   // (20261023130000); otherwise just this one. Never blocks the sign-out.
-  // .catch is belt to pushTokenApi's braces: both helpers swallow their own
-  // errors by contract, but nothing should be able to trap someone in a
-  // session because a token release failed.
-  await (everywhere ? forgetAllPushTokens() : unregisterCurrentPushToken()).catch(() => {});
+  if (everywhere) {
+    // ⚠️ Refuse rather than half-work: signing the other phones out while
+    // their push tokens survive would leave a lost phone getting this
+    // person's sightings, with the screen saying it worked. The caller shows
+    // "couldn't log out — try again".
+    const forgotten = await forgetAllPushTokens().catch(() => false);
+    if (!forgotten) {
+      throw new Error('PUSH_TOKENS_NOT_FORGOTTEN');
+    }
+  } else {
+    // .catch is belt to pushTokenApi's braces: the helper swallows its own
+    // errors by contract, but nothing should be able to trap someone in a
+    // session because a token release failed.
+    await unregisterCurrentPushToken().catch(() => {});
+  }
   await forgetThisDevice();
   // ⚠️ The scope is ALWAYS explicit: supabase-js defaults signOut() to
   // 'global', so a bare call made every Log out sign out every device too (code

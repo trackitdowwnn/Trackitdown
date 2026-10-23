@@ -74,8 +74,19 @@ set local role authenticated;
 select public.register_push_token('ExponentPushToken[everywhere-live]', 'android');
 reset role;
 
+-- …and a JWT with no session_id claim at all (older tokens, other issuers)
+-- registers as before — the check only bites on a NAMED, revoked session.
+select set_config('request.jwt.claims', json_build_object(
+  'sub', '11111111-1111-1111-1111-111111111111', 'role', 'authenticated')::text, true);
+set local role authenticated;
+select public.register_push_token('ExponentPushToken[everywhere-noclaim]', 'android');
+reset role;
+
 do $$
 begin
+  if not exists (select 1 from public.push_tokens where token = 'ExponentPushToken[everywhere-noclaim]') then
+    raise exception 'CHECK 4 FAILED: a JWT with no session_id could not register';
+  end if;
   if exists (select 1 from public.push_tokens where token = 'ExponentPushToken[everywhere-lost]') then
     raise exception 'CHECK 4 FAILED: a revoked session registered its push token again';
   end if;
@@ -93,5 +104,10 @@ begin
   end if;
   if not has_function_privilege('authenticated', 'public.forget_my_push_tokens()', 'execute') then
     raise exception 'CHECK 3 FAILED: a signed-in user can''t call forget_my_push_tokens';
+  end if;
+  -- The redefined register_push_token keeps its grants.
+  if has_function_privilege('anon', 'public.register_push_token(text, text)', 'execute')
+     or not has_function_privilege('authenticated', 'public.register_push_token(text, text)', 'execute') then
+    raise exception 'CHECK 3 FAILED: register_push_token lost its grant posture';
   end if;
 end $$;

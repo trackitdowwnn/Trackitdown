@@ -62,8 +62,9 @@ jest.mock('@/shared/lib/location/locationMemory', () => ({
 const mockUnregister = jest.fn(async () => {
   calls.push('unregisterPushToken');
 });
-const mockForgetAll = jest.fn(async () => {
+const mockForgetAll = jest.fn(async (): Promise<boolean> => {
   calls.push('forgetAllPushTokens');
+  return true;
 });
 jest.mock('@/features/notifications', () => ({
   unregisterCurrentPushToken: () => mockUnregister(),
@@ -131,10 +132,13 @@ describe('signOut', () => {
     expect(mockUnregister).not.toHaveBeenCalled();
   });
 
-  it('everywhere: still signs out if forgetting the tokens fails', async () => {
-    mockForgetAll.mockRejectedValueOnce(new Error('offline'));
-    await expect(signOut({ everywhere: true })).resolves.toBeUndefined();
-    expect(mockAuthSignOut).toHaveBeenCalledWith({ scope: 'global' });
+  // ⚠️ Half-working would be worse than failing: the other phones signed out
+  // but still getting this person's pushes, and the screen saying it worked.
+  it('everywhere: REFUSES, signed in everywhere still, when the tokens could not be forgotten', async () => {
+    mockForgetAll.mockResolvedValueOnce(false);
+    await expect(signOut({ everywhere: true })).rejects.toThrow('PUSH_TOKENS_NOT_FORGOTTEN');
+    expect(mockAuthSignOut).not.toHaveBeenCalled();
+    expect(mockClearDraft).not.toHaveBeenCalled();
   });
 });
 
