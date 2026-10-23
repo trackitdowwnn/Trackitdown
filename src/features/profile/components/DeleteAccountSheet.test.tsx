@@ -137,13 +137,12 @@ describe('blocked', () => {
 });
 
 describe('clear to delete', () => {
-  it('says what goes and what stays', async () => {
+  it('says what goes, and nothing about what’s kept', async () => {
     const screen = await openSheet();
 
     expect(await screen.findByText('What’s deleted')).toBeTruthy();
-    expect(screen.getByText('What’s kept')).toBeTruthy();
-    expect(screen.getByText('Payment records')).toBeTruthy();
-    expect(screen.getByText('For 6 years, as the law requires')).toBeTruthy();
+    // Owner, 2026-10-23: no "What's kept" group in the sheet.
+    expect(screen.queryByText('What’s kept')).toBeNull();
     // The warning sits right above the box they type in. (TextField reads
     // label + hint out on the field itself, so the Text is a11y-hidden.)
     expect(screen.getByText('This can’t be undone.', { includeHiddenElements: true })).toBeTruthy();
