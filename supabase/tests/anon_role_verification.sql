@@ -530,7 +530,10 @@ begin
     -- next person hunting for a fix that does not exist. The risk is also not
     -- ours to carry — spatial_ref_sys is the public EPSG table, it holds
     -- nothing about any user, and truncating it breaks PostGIS rather than
-    -- leaking anything.
+    -- leaking anything. Breaking PostGIS IS an outage, though, so since
+    -- 20261023100000 a trigger (which our role may add) refuses every write
+    -- to it from anon and authenticated — the grants stay, the writes don't
+    -- (spatial_ref_sys_read_only_verification.sql).
     --
     -- ⚠️ THIS MUST STAY NARROW. It excludes objects with a pg_depend extension
     -- dependency and nothing else, so a table WE create can never slip through
