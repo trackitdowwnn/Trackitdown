@@ -956,7 +956,8 @@ unpublished, unsearchable, and carries no money or lifecycle state.
 - Otherwise it happens **straight away** — no grace period (owner,
   2026-10-23). Money records are KEPT, the person is detached:
   - every listing goes through the post afterlife (`delete_post_for_account`
-    = `delete_old_closed_post` for any non-live status): ledger rows detached
+    = `delete_old_closed_post` for any listing LIVE_LISTING doesn't hold back
+    — since 20261023140000 that includes a live one with no money): ledger rows detached
     with a `post_snapshot`, never deleted. The snapshot keeps `owner_id` — a
     recorded decision (SECURITY_AND_TRUST §3);
   - payments paid TO them lose `payee_account_id` and keep `payee_snapshot`

@@ -403,6 +403,12 @@ insert into public.payments (post_id, stripe_payment_intent_id, status, amount_p
   ('ad000001-0000-0000-0000-0000000000f6', 'pi_acctdel_f6_bad',  'failed',           25000, 'bounty_escrow'),
   ('ad000001-0000-0000-0000-0000000000f6', 'pi_acctdel_f6_open', 'requires_payment', 25000, 'bounty_escrow'),
   ('ad000001-0000-0000-0000-0000000000f7', 'pi_acctdel_f7_ref',  'refunded',         25000, 'bounty_escrow');
+-- As in prod, the lapsed reward left its (expired) reward_end hold behind —
+-- a RESTRICT row the delete must clear.
+insert into public.refund_holds (post_id, owner_id, payment_id, exit_path, system_initiated, sighting_ids, expires_at)
+select 'ad000001-0000-0000-0000-0000000000f7', 'ad000000-0000-0000-0000-0000000000f6', id,
+       'reward_end', true, '{}'::uuid[], now() - interval '1 day'
+  from public.payments where stripe_payment_intent_id = 'pi_acctdel_f7_ref';
 -- Someone helped: a sighting on the live listing.
 insert into public.sightings (post_id, spotter_id, status, area_label, location_unavailable)
 values ('ad000001-0000-0000-0000-0000000000f6', 'ad000000-0000-0000-0000-0000000000f7', 'unverified', 'Ancoats', true);
@@ -449,6 +455,54 @@ begin
   if exists (select 1 from public.payments
               where stripe_payment_intent_id in ('pi_acctdel_f6_bad', 'pi_acctdel_f6_open')) then
     raise exception 'CHECK 6c FAILED: an abandoned reward attempt survived';
+  end if;
+end $$;
+rollback;
+
+-- -----------------------------------------------------------------------------
+-- CHECK 7 — ⚠️ the per-listing guard ITSELF refuses a live listing holding
+-- money. It's the backstop for a listing that went live with money after
+-- delete_account_data read the blockers, so it's called directly here — the
+-- blocker check would otherwise refuse first and the guard would never run.
+-- -----------------------------------------------------------------------------
+begin;
+select pg_temp.make_user('ad000000-0000-0000-0000-0000000000a7');
+insert into public.posts (id, owner_id, status, bounty_amount_pence, plate) values
+  ('ad000001-0000-0000-0000-0000000000a1', 'ad000000-0000-0000-0000-0000000000a7', 'active',               25000, 'AD07 HLD'),
+  ('ad000001-0000-0000-0000-0000000000a2', 'ad000000-0000-0000-0000-0000000000a7', 'active',               null,  'AD07 SUP'),
+  ('ad000001-0000-0000-0000-0000000000a3', 'ad000000-0000-0000-0000-0000000000a7', 'pending_verification', 25000, 'AD07 PVH');
+insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, kind, superseded_at) values
+  ('ad000001-0000-0000-0000-0000000000a1', 'pi_acctdel_a1', 'held',       25000, 'bounty_escrow', null),
+  -- A stray capture on a fee listing, owed back: superseded money only.
+  ('ad000001-0000-0000-0000-0000000000a2', 'pi_acctdel_a2', 'superseded', 25000, 'bounty_escrow', now()),
+  ('ad000001-0000-0000-0000-0000000000a3', 'pi_acctdel_a3', 'held',       25000, 'bounty_escrow', null);
+
+do $$
+declare
+  v_post uuid;
+begin
+  foreach v_post in array array[
+    'ad000001-0000-0000-0000-0000000000a1',
+    'ad000001-0000-0000-0000-0000000000a2',
+    'ad000001-0000-0000-0000-0000000000a3']::uuid[]
+  loop
+    begin
+      perform public.delete_post_for_account(v_post, 'ad000000-0000-0000-0000-0000000000a7', '{}');
+      raise exception 'CHECK 7 FAILED: a live listing holding money (%) was deleted', v_post;
+    exception
+      when raise_exception then
+        if sqlerrm <> 'LIVE_LISTING' then
+          raise exception 'CHECK 7 FAILED: % refused for the wrong reason: %', v_post, sqlerrm;
+        end if;
+    end;
+  end loop;
+
+  -- And the screen's list agrees: three listings, one reason, no MONEY_HELD.
+  if (select (b ->> 'count')::int from jsonb_array_elements(
+        public.account_deletion_blockers_for('ad000000-0000-0000-0000-0000000000a7')) b
+       where b ->> 'code' = 'LIVE_LISTING') is distinct from 3 then
+    raise exception 'CHECK 7 FAILED: blockers disagree with the guard: %',
+      public.account_deletion_blockers_for('ad000000-0000-0000-0000-0000000000a7');
   end if;
 end $$;
 rollback;
