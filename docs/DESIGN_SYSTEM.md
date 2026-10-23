@@ -53,7 +53,9 @@ weight, and size rather than hue. Danger red appears only on destructive/error
 UI — never as decoration on "stolen" content. SANCTIONED EXCEPTION
 (2026-09-30): a `danger` outline and label on an EMERGENCY-CALL action
 (`Button variant="dangerOutline"`, the report safety sheet's "Call 999"): one
-per surface, never a fill. `success` green and `warning`
+per surface, never a fill. SANCTIONED EXCEPTION (2026-10-23): the Profile
+Danger zone's 1px `danger` outline and title (`ListRowGroup tone="danger"`,
+owner's call) — one in the app, outline never fill. `success` green and `warning`
 amber remain the semantic status hues (not brand colour), so pending/verified
 states stay legible. SANCTIONED EXCEPTION (2026-07-30): the sighting arc's
 nodes are sage (`success`) — a sighting is affirmative evidence on a hopeful
@@ -952,11 +954,12 @@ to use.
   (`surface`, `radii.xl`, soft shadow, `sizes.avatarXl` avatar); counters
   render as value-over-caption stat rows with hairlines between; settings
   groups take `heading`-scale titles with hairline dividers between rows;
-  the account actions sit in a "Danger zone" `ListRowGroup` at the bottom
-  (2026-10-23, superseding the underlined-text cluster): an ordinary group
-  heading, not a red box, with `danger` only on the Delete account row
-  (`ListRow destructive`) and on the final `danger` button of its own
-  type-DELETE screen — findable-but-quiet on the root. The trusted-spotter
+  plain "Log out" is an ordinary row; below it the "Danger zone" is
+  `ListRowGroup tone="danger"` (2026-10-23, owner: a plain heading "doesn't
+  read as a danger zone") — a `danger` title led by a warning icon, the rows
+  in a 1px `danger` outline card (`radii.lg`), holding only Log out of all
+  devices and the destructive Delete account. The ONE `tone="danger"` use;
+  keep it rare or it stops meaning anything. The trusted-spotter
   avatar chip fills with `primary` as a STATUS mark — a sanctioned exception
   to the actions-only rule (it mirrors the reference's verification badge
   and stays distinct from any nearby CTA). The second exception is the
