@@ -9,6 +9,7 @@
 
 import { fireEvent, render } from '@testing-library/react-native';
 import { Car, Truck } from 'lucide-react-native';
+import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 
 import { CardSelect } from './CardSelect';
 
@@ -82,5 +83,31 @@ describe('CardSelect', () => {
       />,
     );
     expect(view.getByLabelText('Not sure at all')).toBeTruthy();
+  });
+
+  it('layout="inline": compact cards, label and value on one row — same semantics', async () => {
+    const onSelect = jest.fn();
+    const view = await render(
+      <CardSelect
+        options={OPTIONS}
+        value="suv"
+        onSelect={onSelect}
+        layout="inline"
+        testID="group"
+      />,
+    );
+    const flat = (style: unknown): ViewStyle =>
+      StyleSheet.flatten(style as StyleProp<ViewStyle>) ?? {};
+    // Tighter between cards…
+    expect(flat(view.getByTestId('group').props.style).gap).toBeLessThan(12);
+    // …and the label and value side by side in each card.
+    const label = view.getByText('SUV');
+    expect(flat(label.parent?.parent?.props.style).flexDirection).toBe('row');
+    // Still one radio per card, still spoken label + value.
+    expect(view.getByRole('radio', { name: 'SUV. Tall' }).props.accessibilityState).toMatchObject({
+      checked: true,
+    });
+    await fireEvent.press(view.getByRole('radio', { name: 'SUV. Tall' }));
+    expect(onSelect).toHaveBeenCalledWith('suv');
   });
 });

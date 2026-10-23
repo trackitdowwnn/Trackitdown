@@ -40,6 +40,33 @@ export const optionCardStyleSpec = (c: Palette) =>
     cardSelected: {
       borderColor: c.primary,
     },
+    // CardSelect layout="inline" (owner, 2026-10-22: last-seen's time
+    // cards): a 44pt touch target plus a little air, not the md extra, and
+    // half the gap between cards.
+    groupCompact: {
+      gap: spacing.sm,
+    },
+    cardCompact: {
+      minHeight: sizes.touchTarget + spacing.xs,
+      paddingVertical: spacing.md,
+    },
+    // Label left, value right on one line; wraps (value under, still right)
+    // at large text rather than clipping either.
+    textInline: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+      columnGap: spacing.md,
+      rowGap: spacing.xs,
+    },
+    labelInline: {
+      flexShrink: 1,
+    },
+    descriptionInline: {
+      marginLeft: 'auto',
+      textAlign: 'right',
+    },
     cardPressed: {
       backgroundColor: c.surfaceSubtle,
     },

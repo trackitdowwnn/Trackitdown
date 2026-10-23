@@ -49,7 +49,14 @@ import Animated, {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAndroidKeyboardHeight, useFullscreenOverlayOpen } from '../hooks';
-import { motion, spacing, typography, useThemedStyles, type Palette } from '../theme';
+import {
+  listRowStackFontScale,
+  motion,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 import { firstStepFlatIndex, invalidStepIds, resolveQuestion, transitionKind } from './navigation';
 import { PhaseIntro } from './PhaseIntro';
@@ -80,6 +87,9 @@ const slideEasing = easeOut;
  * screen, which is the right trade (DESIGN_SYSTEM.md, dynamic type).
  */
 const FILLS_MAX_FONT_SCALE = 1.3;
+/** A `fitTitle` question shrinks no further than this (32pt → ~22pt, still
+ *  above the 24pt fills title's weight class) before it would truncate. */
+const FIT_TITLE_MIN_SCALE = 0.7;
 
 /**
  * The step body's container. Scrolls by default; a `fills` step gets a plain
@@ -222,6 +232,7 @@ export function WizardScreen<TAnswers>({
   // footer never scrolls, and a wrapped note there ate a third of a small
   // phone. Past the fills threshold it ends the scrolling body instead.
   const { fontScale } = useWindowDimensions();
+  const largeText = (fontScale ?? 1) > listRowStackFontScale;
   const footerNote = screen.kind === 'step' ? screen.step.footerNote : undefined;
   const shownFooterNote = shown.kind === 'step' ? shown.step.footerNote : undefined;
   const noteInBody = (fontScale ?? 1) > FILLS_MAX_FONT_SCALE;
@@ -472,6 +483,15 @@ export function WizardScreen<TAnswers>({
                       styles.question,
                       isFillsStep && styles.questionFills,
                     ]}
+                    // fitTitle: one line, shrunk just enough — but never at
+                    // large text, where wrapping at full size is the point.
+                    {...(shown.step.fitTitle && !largeText
+                      ? {
+                          numberOfLines: 1,
+                          adjustsFontSizeToFit: true,
+                          minimumFontScale: FIT_TITLE_MIN_SCALE,
+                        }
+                      : null)}
                   >
                     {resolveQuestion(shown.step.question, answers)}
                   </Text>

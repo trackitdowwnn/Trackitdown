@@ -100,6 +100,12 @@ export interface WizardStep<TAnswers> {
    * 2026-10-14). Omit it and nothing is drawn.
    */
   eyebrow?: string;
+  /**
+   * Shrink the question just enough to fit ONE line (owner, 2026-10-22:
+   * "When did you last see it?" wrapped). Only at normal text sizes: past
+   * listRowStackFontScale it wraps at full size, so large text stays large.
+   */
+  fitTitle?: boolean;
   component: ComponentType<WizardStepProps<TAnswers>>;
   /**
    * Validates this step's slice of the answers; Next is disabled until

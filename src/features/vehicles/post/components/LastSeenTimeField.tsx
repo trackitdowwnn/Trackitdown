@@ -261,6 +261,8 @@ export function LastSeenTimeField({
         value={selected}
         onSelect={pickCard}
         accessibilityLabel={LAST_SEEN_QUESTIONS.when}
+        // One line per card, the time on the right (owner, 2026-10-22).
+        layout="inline"
         testID="last-seen-cards"
       />
       <BottomSheet ref={sheetRef} title={stage === 'date' ? 'Pick a date' : 'Pick a time'}>
