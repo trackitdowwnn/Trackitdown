@@ -162,7 +162,7 @@ grant execute on function public.account_deletion_blockers() to authenticated;
 
 
 -- 3 — one listing, for an account being deleted --------------------------------
--- ⚠️ delete_old_closed_post BYTE FOR BYTE except the NEW block (see header).
+-- ⚠️ delete_old_closed_post BYTE FOR BYTE except the two NEW blocks (see header).
 create or replace function public.delete_post_for_account(
   p_post_id              uuid,
   p_owner_id             uuid,
@@ -199,8 +199,9 @@ begin
     raise exception 'NOT_OWNER';
   end if;
 
-  -- NEW 20261023120000 — THE ONLY CHANGE from delete_old_closed_post: any
-  -- listing but a LIVE one (the account is going; its age doesn't matter).
+  -- NEW 20261023120000 (1 of 2) — instead of delete_old_closed_post's age and
+  -- status test: any listing but a LIVE one (the account is going; its age
+  -- doesn't matter).
   if v_post.status in ('active', 'pending_verification', 'recovery_claimed') then
     raise exception 'LIVE_LISTING';
   end if;
@@ -322,7 +323,7 @@ end;
 $$;
 
 comment on function public.delete_post_for_account(uuid, uuid, text[]) is
-  'Account deletion (20261023120000): delete_old_closed_post''s body exactly, but for ANY non-live listing (raises LIVE_LISTING for active / pending_verification / recovery_claimed). Every money guard (MONEY_IN_FLIGHT, DISPUTE_OPEN, PAYMENT_REVIEW_OPEN, INTENT_NOT_CANCELLED); ledger rows detached with a post_snapshot, never deleted. SERVICE ROLE ONLY; called by delete_account_data.';
+  'Account deletion (20261023120000): delete_old_closed_post''s body, but for ANY non-live listing (raises LIVE_LISTING for active / pending_verification / recovery_claimed) and refusing only an OPEN dispute (upheld is final). Every money guard (MONEY_IN_FLIGHT, DISPUTE_OPEN, PAYMENT_REVIEW_OPEN, INTENT_NOT_CANCELLED); ledger rows detached with a post_snapshot, never deleted. SERVICE ROLE ONLY; called by delete_account_data.';
 
 revoke execute on function public.delete_post_for_account(uuid, uuid, text[]) from public, anon, authenticated;
 grant execute on function public.delete_post_for_account(uuid, uuid, text[]) to service_role;
@@ -346,6 +347,7 @@ declare
   v_reviews    integer := 0;
   v_disputes   integer := 0;
   v_sightings  integer := 0;
+  v_late_credit integer := 0;
 begin
   if p_user_id is null then
     raise exception 'NOT_AUTHENTICATED';
@@ -355,18 +357,25 @@ begin
   -- not interleave.
   perform pg_advisory_xact_lock(hashtextextended('delete_account:' || p_user_id::text, 0));
 
-  -- Every OTHER listing they have a sighting on, locked before the blockers
-  -- are read: claim_recovery locks the post FOR UPDATE before it credits, so
-  -- an owner can't credit their sighting between the REWARD_ON_ITS_WAY check
-  -- and the sightings delete at the end (security review H2). A credit that
-  -- got in first is seen by the check; one that comes after finds no sighting.
+  -- Every listing this touches — their own, and every other one they have a
+  -- sighting on — locked before the blockers are read, in ONE statement in id
+  -- order (two people deleting at once, each with a sighting on the other's
+  -- listing, would otherwise lock in opposite orders and deadlock).
+  -- claim_recovery locks the post FOR UPDATE before it credits, so an owner
+  -- can't credit their sighting between the REWARD_ON_ITS_WAY check and the
+  -- sightings delete at the end (security review H2): a credit that got in
+  -- first is seen by the check; one that comes after finds no sighting.
+  -- NO KEY UPDATE, not UPDATE: it still queues claim_recovery, but doesn't
+  -- hold up the FK inserts (new sightings, messages) other people make on
+  -- those listings meanwhile. Their own listings are taken FOR UPDATE by
+  -- delete_post_for_account as it reaches each.
   perform 1
      from public.posts po
-    where po.owner_id <> p_user_id
-      and exists (select 1 from public.sightings s
+    where po.owner_id = p_user_id
+       or exists (select 1 from public.sightings s
                    where s.post_id = po.id and s.spotter_id = p_user_id)
     order by po.id
-    for update;
+    for no key update;
 
   -- The same reasons the app showed — re-checked here, where it counts.
   v_blockers := public.account_deletion_blockers_for(p_user_id);
@@ -414,10 +423,49 @@ begin
    where spotter_id = p_user_id;
   get diagnostics v_disputes = row_count;
 
+  -- …and the copies of those records already ARCHIVED into a ledger snapshot
+  -- (when an owner's listing was deleted, its disputes and review rode into
+  -- payments.post_snapshot, kept ~6 years). Same rule as the live rows: the
+  -- record stays, their id, sighting and own words go.
+  update public.payments pay
+     set post_snapshot = pay.post_snapshot || jsonb_build_object(
+           'refund_disputes', (
+             select jsonb_agg(
+                      case when e.d ->> 'spotter_id' = p_user_id::text
+                           then e.d || '{"spotter_id": null, "sighting_id": null, "statement": null}'::jsonb
+                           else e.d
+                      end
+                      order by e.ord)
+               from jsonb_array_elements(pay.post_snapshot -> 'refund_disputes')
+                    with ordinality as e(d, ord)))
+   where jsonb_typeof(pay.post_snapshot -> 'refund_disputes') = 'array'
+     and pay.post_snapshot -> 'refund_disputes'
+         @> jsonb_build_array(jsonb_build_object('spotter_id', p_user_id));
+
+  update public.payments
+     set post_snapshot = jsonb_set(post_snapshot, '{payout_review,spotter_id}', 'null'::jsonb)
+   where post_snapshot -> 'payout_review' ->> 'spotter_id' = p_user_id::text;
+
   -- Their sightings on other listings, NOW, in this transaction — not later
-  -- by the auth cascade — while those listings are still locked (above).
-  delete from public.sightings where spotter_id = p_user_id;
-  get diagnostics v_sightings = row_count;
+  -- by the auth cascade — while those listings are still locked (above). One
+  -- reported AFTER the lock, on a listing it didn't cover, could have been
+  -- credited since: if any credited sighting on a listing still awaiting its
+  -- payout is among them, refuse — the whole deletion rolls back.
+  with gone as (
+    delete from public.sightings
+     where spotter_id = p_user_id
+    returning post_id, status
+  )
+  select count(*)::int,
+         (count(*) filter (where g.status = 'credited' and po.status = 'recovery_claimed'))::int
+    into v_sightings, v_late_credit
+    from gone g
+    left join public.posts po on po.id = g.post_id;
+
+  if v_late_credit > 0 then
+    raise exception 'ACCOUNT_BLOCKED:%',
+      jsonb_build_object('code', 'REWARD_ON_ITS_WAY', 'count', v_late_credit);
+  end if;
 
   return jsonb_build_object(
     'posts_deleted',       v_posts,

@@ -135,12 +135,40 @@ values ('ad000001-0000-0000-0000-00000000000c', 'ad000002-0000-0000-0000-0000000
 insert into public.payout_reviews (post_id, owner_id, spotter_id, reasons, resolution, resolved_at)
 values ('ad000001-0000-0000-0000-00000000000c', 'ad000000-0000-0000-0000-00000000000c',
         'ad000000-0000-0000-0000-00000000000b', array['shared_device'], 'approved', now());
+-- A listing of X's deleted EARLIER: its dispute and review by S were archived
+-- into the ledger snapshot, beside another spotter's (whose words stay).
+insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, kind, post_snapshot)
+values (null, 'pi_acctdel_5', 'refunded', 25000, 'bounty_escrow', jsonb_build_object(
+  'owner_id', 'ad000000-0000-0000-0000-00000000000c',
+  'refund_disputes', jsonb_build_array(
+    jsonb_build_object('spotter_id', 'ad000000-0000-0000-0000-00000000000b',
+                       'sighting_id', 'ad000002-0000-0000-0000-0000000000aa',
+                       'statement', 'S''s own words', 'status', 'rejected'),
+    jsonb_build_object('spotter_id', 'ad000000-0000-0000-0000-0000000000ee',
+                       'sighting_id', 'ad000002-0000-0000-0000-0000000000ab',
+                       'statement', 'someone else''s words', 'status', 'rejected')),
+  'payout_review', jsonb_build_object('spotter_id', 'ad000000-0000-0000-0000-00000000000b',
+                                      'resolution', 'approved')));
 
 do $$
 declare
   v_summary jsonb;
+  v_snap    jsonb;
 begin
   v_summary := public.delete_account_data('ad000000-0000-0000-0000-00000000000b', '{}');
+
+  -- The archived copies lose S too (security re-review M1) — and only S.
+  v_snap := (select post_snapshot from public.payments where stripe_payment_intent_id = 'pi_acctdel_5');
+  if v_snap::text like '%ad000000-0000-0000-0000-00000000000b%'
+     or v_snap::text like '%S''s own words%'
+     or v_snap::text like '%ad000002-0000-0000-0000-0000000000aa%' then
+    raise exception 'CHECK 2 FAILED: S survives in an archived snapshot: %', v_snap;
+  end if;
+  if v_snap -> 'refund_disputes' -> 1 ->> 'statement' is distinct from 'someone else''s words'
+     or v_snap -> 'refund_disputes' -> 0 ->> 'status' is distinct from 'rejected'
+     or v_snap -> 'payout_review' ->> 'resolution' is distinct from 'approved' then
+    raise exception 'CHECK 2 FAILED: scrubbing S damaged the rest of the snapshot: %', v_snap;
+  end if;
 
   -- Their sightings go IN the data step, not later with the auth row — so no
   -- owner can credit one in between (security review H2).

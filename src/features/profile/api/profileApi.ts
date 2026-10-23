@@ -227,7 +227,8 @@ const DELETION_MESSAGES: Record<string, string> = {
   // 20261023120000) — each says what to do, never "try again".
   LIVE_LISTING: 'You have a live listing. Deactivate it first, then delete your account.',
   MONEY_HELD: "Money from one of your listings is still being returned. Try again once it's back.",
-  REWARD_ON_ITS_WAY: "A reward is on its way to you. Try again once it's paid.",
+  // Usually they haven't set up payouts, and nothing pays it until they do.
+  REWARD_ON_ITS_WAY: 'A reward is waiting for you. Set up payouts to receive it first.',
   PAYOUT_ON_ITS_WAY: "A payout is still on its way to your bank. Try again once it's arrived.",
   DISPUTE_OPEN: "A dispute is still being decided. Try again once it's settled.",
   REVIEW_OPEN: "A payment is still being reviewed. Try again once it's done.",

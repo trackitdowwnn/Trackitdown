@@ -113,7 +113,7 @@ describe('requestAccountDeletion', () => {
   it.each([
     ['LIVE_LISTING', 'Deactivate it first'],
     ['MONEY_HELD', 'still being returned'],
-    ['REWARD_ON_ITS_WAY', 'A reward is on its way to you'],
+    ['REWARD_ON_ITS_WAY', 'Set up payouts'],
     ['PAYOUT_ON_ITS_WAY', 'A payout is still on its way'],
     ['DISPUTE_OPEN', 'A dispute is still being decided'],
     ['REVIEW_OPEN', 'still being reviewed'],
