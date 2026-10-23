@@ -1,10 +1,19 @@
 /**
  * WHAT:  Edge Function that erases the calling user's account. Proves identity
- *        from the JWT, RE-CHECKS server-side that they hold no post with money
- *        in escrow, removes every storage object they own, records the erasure
- *        (with the Stripe Connect link, which is about to cascade away), then
- *        deletes the auth.users row — which cascades profiles, posts, sightings,
- *        watches, alerts and push tokens.
+ *        from the JWT, then (2026-10-23, 20261023120000):
+ *          1. the reasons it can't go yet — account_deletion_blockers_for, the
+ *             same list the app's delete screen shows — and money still on
+ *             their payout account (PAYOUT_ON_ITS_WAY): each a 409 with its
+ *             own code, never "try again";
+ *          2. stray unpaid intents cancelled at Stripe, as proof for…
+ *          3. delete_account_data: their listings through the afterlife (money
+ *             records KEPT, detached), payments to them detached, settled
+ *             reviews/disputes on others' listings anonymised — so the RESTRICT
+ *             FKs that used to fail this for anyone with money history no
+ *             longer can;
+ *        then removes every storage object they own, records the erasure,
+ *        deletes the auth.users row (cascading the rest), and closes their
+ *        payout account at Stripe (best effort, recorded in the audit row).
  * WHY:   Apple and Google both require an in-app deletion path, and UK GDPR
  *        Art. 17 requires erasure on request. The client has had the whole
  *        flow — blocking-post pre-check, confirm dialog, the lot — since
@@ -43,17 +52,13 @@
  *        docs/SECURITY_AND_TRUST.md §3; docs/DOMAIN.md (lifecycle).
  */
 
-import { createServiceRoleClient } from '../_shared/clients.ts';
+import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
 
-/**
- * Post statuses that BLOCK erasure: money is in escrow or a payout is pending.
- * Must stay in step with DELETION_BLOCKING_STATUSES in profileApi.ts — that
- * copy is advisory (it drives a friendlier dialog); THIS one is the enforcement.
- * The payments table's ON DELETE RESTRICT on post_id is the last-resort backstop
- * beneath both.
- */
-const BLOCKING_STATUSES = ['active', 'pending_verification', 'recovery_claimed'];
+// What blocks erasure lives in ONE place now: account_deletion_blockers_for
+// (20261023120000) — the app's delete screen reads the same definition through
+// account_deletion_blockers(), and delete_account_data re-checks it under its
+// lock. No status list here to drift from it.
 
 /**
  * Where a user's OWN bytes live. All three are uid-first paths
@@ -134,66 +139,28 @@ Deno.serve(async (request) => {
   }
   const userId = userData.user.id;
 
-  // --- Re-check the escrow block, server-side ---------------------------------
-  // The client checks this too, to show a kinder dialog. That check is advisory:
-  // it runs under RLS on a stale read and can be skipped entirely by calling
-  // this function directly. This is the enforcement.
-  const { count: blockingCount, error: blockingError } = await admin
-    .from('posts')
-    .select('id', { count: 'exact', head: true })
-    .eq('owner_id', userId)
-    .in('status', BLOCKING_STATUSES);
-
-  if (blockingError) {
-    console.error('[profile] blocking-post check failed', blockingError.message);
-    return errorResponse(
-      'LOOKUP_FAILED',
-      'We couldn’t delete your account. Please try again.',
-      500,
-    );
+  // --- The reasons it can't go yet, server-side (20261023120000) -------------
+  // The SAME definition the app's delete screen shows. That read is advisory
+  // (stale, skippable by calling this directly); this is the enforcement, and
+  // delete_account_data re-checks it again under its lock.
+  const { data: blockers, error: blockersError } = await admin.rpc(
+    'account_deletion_blockers_for',
+    { p_user_id: userId },
+  );
+  if (blockersError) {
+    console.error('[profile] blocker check failed', blockersError.message);
+    return errorResponse('LOOKUP_FAILED', 'We couldn’t delete your account. Please try again.', 500);
   }
-  if ((blockingCount ?? 0) > 0) {
-    return errorResponse(
-      'ACCOUNT_HAS_ESCROW',
-      'You have a live listing with a bounty in escrow. Cancel it first, then delete your account.',
-      409,
-    );
+  const firstBlocker = (blockers as { code: string }[] | null)?.[0]?.code;
+  if (firstBlocker) {
+    return blocked(firstBlocker);
   }
 
-  // A status check alone is no longer enough: a refund HOLD (owner-denial
-  // control, 2026-08-05) moves the post to `cancelled` while the payment is
-  // still `held` for its 72-hour dispute window. That post passes the check
-  // above — and the erasure would then die half way on payments' ON DELETE
-  // RESTRICT. Money still in motion blocks deletion, whatever the post says.
-  // `superseded` too (2026-10-05): a renewed reward's old payment, or a stray
-  // capture, is captured money still owed back to this owner — erasing them
-  // before it is refunded would strand it.
-  const { count: heldCount, error: heldError } = await admin
-    .from('payments')
-    .select('id, posts!inner(owner_id)', { count: 'exact', head: true })
-    .in('status', ['held', 'superseded'])
-    .eq('posts.owner_id', userId);
-
-  if (heldError) {
-    console.error('[profile] held-payment check failed', heldError.message);
-    return errorResponse(
-      'LOOKUP_FAILED',
-      'We couldn’t delete your account. Please try again.',
-      500,
-    );
-  }
-  if ((heldCount ?? 0) > 0) {
-    return errorResponse(
-      'ACCOUNT_HAS_ESCROW',
-      'A bounty of yours is still being settled. Once it’s done, you can delete your account.',
-      409,
-    );
-  }
-
-  // --- Capture the Stripe Connect link BEFORE the cascade destroys it ---------
-  // Not fatal if it fails: a missing audit row must never trap someone in an
-  // account they asked to erase. Erasure is the user's right; the audit row is
-  // our record-keeping, and the weaker of the two claims yields.
+  // --- The payout account: the Stripe link, and money still on its way -------
+  // Captured BEFORE the cascade destroys it. A balance still on the connected
+  // account (a payout not yet landed, or funds not yet paid out) blocks the
+  // deletion: closing the account would strand it, and money owed is never
+  // forfeited silently.
   let stripeAccountId: string | null = null;
   const { data: connect, error: connectError } = await admin
     .from('stripe_connected_accounts')
@@ -202,8 +169,94 @@ Deno.serve(async (request) => {
     .maybeSingle();
   if (connectError) {
     console.error('[profile] connect lookup failed', connectError.message);
-  } else if (connect) {
+    return errorResponse('LOOKUP_FAILED', 'We couldn’t delete your account. Please try again.', 500);
+  }
+  if (connect) {
     stripeAccountId = connect.stripe_account_id as string;
+  }
+
+  const stripe = createStripeClient();
+  if (stripeAccountId) {
+    try {
+      const balance = await stripe.balance.retrieve({}, { stripeAccount: stripeAccountId });
+      const owed = [...balance.available, ...balance.pending].reduce(
+        (sum, entry) => sum + Math.max(0, entry.amount),
+        0,
+      );
+      if (owed > 0) {
+        return blocked('PAYOUT_ON_ITS_WAY');
+      }
+    } catch (err) {
+      // An account Stripe no longer knows has nothing to strand; anything
+      // else is "can't tell", and we don't delete on a guess.
+      const code = (err as { code?: string }).code;
+      if (code !== 'account_invalid' && code !== 'resource_missing') {
+        console.error('[profile] payout balance check failed', (err as Error).message);
+        return errorResponse('LOOKUP_FAILED', 'We couldn’t delete your account. Please try again.', 500);
+      }
+    }
+  }
+
+  // --- Cancel stray unpaid intents AT STRIPE, recording what we WATCHED die --
+  // As delete-post does: only never-captured rows on their listings. The RPC
+  // treats this list as evidence; an intent we can't prove dead isn't named,
+  // and the deletion refuses (INTENT_NOT_CANCELLED) rather than guess.
+  const { data: strays, error: straysError } = await admin
+    .from('payments')
+    .select('stripe_payment_intent_id, posts!inner(owner_id)')
+    .eq('posts.owner_id', userId)
+    .in('status', ['requires_payment', 'failed']);
+  if (straysError) {
+    console.error('[profile] stray-intent read failed', straysError.message);
+    return errorResponse('LOOKUP_FAILED', 'We couldn’t delete your account. Please try again.', 500);
+  }
+  const cancelled: string[] = [];
+  for (const row of strays ?? []) {
+    const intentId = row.stripe_payment_intent_id as string;
+    try {
+      const intent = await stripe.paymentIntents.cancel(intentId);
+      if (intent.status === 'canceled') cancelled.push(intentId);
+    } catch (err) {
+      try {
+        const current = await stripe.paymentIntents.retrieve(intentId);
+        if (current.status === 'canceled') cancelled.push(intentId);
+      } catch (retrieveErr) {
+        console.warn('[profile] intent state unknown', {
+          message: (retrieveErr as Error).message,
+          original: (err as Error).message,
+        });
+      }
+    }
+  }
+
+  // --- Their data: listings through the afterlife, the person detached -------
+  // Money records stay (detached, with snapshots); nothing that identifies the
+  // person does. Irreversible — so everything above had to pass first.
+  const { error: dataError } = await admin.rpc('delete_account_data', {
+    p_user_id: userId,
+    p_cancelled_intent_ids: cancelled,
+  });
+  if (dataError) {
+    const message = dataError.message ?? '';
+    const blockedCode = /ACCOUNT_BLOCKED:.*"code"\s*:\s*"([A-Z_]+)"/.exec(message)?.[1];
+    if (blockedCode) return blocked(blockedCode);
+    // A listing's own guard (a race with the check above): the same reasons.
+    if (message.includes('LIVE_LISTING')) return blocked('LIVE_LISTING');
+    if (message.includes('MONEY_IN_FLIGHT')) return blocked('MONEY_HELD');
+    if (message.includes('DISPUTE_OPEN')) return blocked('DISPUTE_OPEN');
+    if (message.includes('PAYMENT_REVIEW_OPEN')) return blocked('REVIEW_OPEN');
+    if (message.includes('INTENT_NOT_CANCELLED')) {
+      console.warn('[profile] deletion refused — an intent could not be proven cancelled', {
+        cancelledCount: cancelled.length,
+      });
+      return errorResponse(
+        'INTENT_NOT_CANCELLED',
+        'A payment is still being processed. Please try again in a moment.',
+        409,
+      );
+    }
+    console.error('[profile] account data deletion failed', message);
+    return errorResponse('DELETE_FAILED', 'We couldn’t delete your account. Please try again.', 500);
   }
 
   // --- Sweep storage (BEFORE the account — see the ORDER note in the header) --
@@ -266,13 +319,18 @@ Deno.serve(async (request) => {
   // Written BEFORE the delete so the Stripe link is durable even if the delete
   // then fails. A retry inserts a second row; that is the right trade — a
   // duplicate audit row is noise, a missing one is an unreconcilable payout.
-  const { error: auditError } = await admin.from('account_deletions').insert({
-    deleted_user_id: userId,
-    stripe_account_id: stripeAccountId,
-    storage_objects_removed: removedCount,
-  });
+  // Non-fatal: a missing audit row must never trap someone in an account they
+  // asked to erase.
+  const { data: audit, error: auditError } = await admin
+    .from('account_deletions')
+    .insert({
+      deleted_user_id: userId,
+      stripe_account_id: stripeAccountId,
+      storage_objects_removed: removedCount,
+    })
+    .select('id')
+    .maybeSingle();
   if (auditError) {
-    // Non-fatal, deliberately — see the Connect note above.
     console.error('[profile] audit insert failed', auditError.message);
   }
 
@@ -287,7 +345,36 @@ Deno.serve(async (request) => {
     );
   }
 
+  // --- Close their payout account at Stripe (best effort) ---------------------
+  // The balance was checked as zero above. Not fatal: the account is already
+  // gone, and the audit row says whether this happened (RECORD_OF_PROCESSING
+  // §4.13) so a failure can be closed by hand.
+  if (stripeAccountId) {
+    let closed = false;
+    try {
+      const result = await stripe.accounts.del(stripeAccountId);
+      closed = result.deleted === true;
+    } catch (err) {
+      console.error('[profile] payout account close failed', (err as Error).message);
+    }
+    if (audit?.id) {
+      const { error: closeAuditError } = await admin
+        .from('account_deletions')
+        .update({ stripe_account_closed: closed })
+        .eq('id', audit.id);
+      if (closeAuditError) {
+        console.error('[profile] audit close update failed', closeAuditError.message);
+      }
+    }
+  }
+
   // ids only, never names or emails (docs/LOGGING.md).
   console.log('[profile] account erased', { userId, removedCount });
   return jsonResponse({ deleted: true, storageObjectsRemoved: removedCount });
 });
+
+/** A reason it can't go yet (account_deletion_blockers_for's codes, plus
+ *  PAYOUT_ON_ITS_WAY): 409 with the code the app maps to its own words. */
+function blocked(code: string): Response {
+  return errorResponse(code, 'You can’t delete your account just yet.', 409);
+}
