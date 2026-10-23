@@ -28,7 +28,6 @@ import {
   Clock,
   FileText,
   MessageCircle,
-  Receipt,
   Scale,
   TriangleAlert,
   UserRound,
@@ -250,17 +249,9 @@ export function DeleteAccountSheet({ ref, userId }: DeleteAccountSheetProps) {
               <ListRow key={item.title} icon={item.icon} title={item.title} wrap />
             ))}
           </ListRowGroup>
-          <ListRowGroup title="What’s kept">
-            {/* The ledger survives, detached (20261023120000) — the tax
-                records rule. Deliberately NOT "nothing identifies you": the
-                snapshot keeps the plate. */}
-            <ListRow
-              icon={Receipt}
-              title="Payment records"
-              subtitle="For 6 years, as the law requires"
-              wrap
-            />
-          </ListRowGroup>
+          {/* No "What's kept" group (owner, 2026-10-23: removed). The kept
+              payment records (6 years, detached — 20261023120000) are
+              disclosed in the privacy policy instead. */}
           <View style={styles.confirm}>
             <TextField
               label={`Type ${CONFIRM_WORD} to confirm`}
