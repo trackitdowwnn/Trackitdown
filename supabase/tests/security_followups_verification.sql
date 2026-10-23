@@ -85,18 +85,18 @@ begin
   end if;
 end $$;
 
--- 4 — onboarding under the cap records.
+-- 4 — onboarding under the cap records. Called as anon; read back as postgres
+-- (anon can't read the table — rightly), so a fixed run id joins the two.
 set local role anon;
+select public.record_onboarding_step('5ecf0000-0000-0000-0000-000000000004', 'completed');
+reset role;
 do $$
-declare
-  v_run uuid := gen_random_uuid();
 begin
-  perform public.record_onboarding_step(v_run, 'completed');
-  if not exists (select 1 from public.onboarding_events where run_id = v_run) then
+  if not exists (select 1 from public.onboarding_events
+                  where run_id = '5ecf0000-0000-0000-0000-000000000004') then
     raise exception 'CHECK 4 FAILED: an onboarding step under the cap was not recorded';
   end if;
 end $$;
-reset role;
 
 -- 5 — fill onboarding to its cap: the next step is quietly not recorded.
 do $$
@@ -107,16 +107,15 @@ begin
   select gen_random_uuid(), 'completed' from generate_series(1, 5000 - v_today);
 end $$;
 set local role anon;
+select public.record_onboarding_step('5ecf0000-0000-0000-0000-000000000005', 'completed'); -- no error
+reset role;
 do $$
-declare
-  v_run uuid := gen_random_uuid();
 begin
-  perform public.record_onboarding_step(v_run, 'completed'); -- no error
-  if exists (select 1 from public.onboarding_events where run_id = v_run) then
+  if exists (select 1 from public.onboarding_events
+              where run_id = '5ecf0000-0000-0000-0000-000000000005') then
     raise exception 'CHECK 5 FAILED: an onboarding step was recorded past the daily cap';
   end if;
 end $$;
-reset role;
 
 -- 6 — both stay open to the public key (pre-sign-in onboarding, app telemetry).
 do $$
