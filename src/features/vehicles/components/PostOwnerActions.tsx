@@ -32,7 +32,7 @@ import { Share, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { exitCheck, useDeactivatePost } from '@/features/payments';
-import { bountyParam, cardFeePence, formatPounds, refundPence } from '@/shared/lib';
+import { bountyParam, formatPounds } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import { spacing, useThemedStyles, type Palette } from '@/shared/theme';
 import {
@@ -444,33 +444,16 @@ export function PostOwnerActions({
         onUnarchive={archive?.archived ? archive.toggle : undefined}
       />
 
-      {/* The ONE deactivate confirm. The refund figure is exact (ADR-0021); the
-          toast repeats the server's figure once it has refunded. */}
+      {/* The ONE deactivate confirm — just the question (owner, 2026-10-23:
+          "something simple"). The money still gets its words: the Manage
+          sheet's row says what happens to the reward or fee before this
+          opens (deactivateKind), and the toast names the exact refund the
+          server sent (ADR-0021). */}
       {canDeactivate(owned) ? (
         <ConfirmDialog
           ref={deactivateRef}
           title="Deactivate this listing?"
-          body={
-            owned.bountyPence === null
-              ? // No bounty means no refund, and the listing fee is not
-                // refundable (ADR-0014). The destructive confirm must not
-                // promise money back that is not coming. A reward that ended
-                // (ADR-0020) has already gone back — and that listing may never
-                // have paid a fee, so it isn't mentioned. The fee is the
-                // ledger's word (noRewardKind), not an inference.
-                {
-                  ended:
-                    'We’ll take it down. Your reward already went back to your card when it ended, so there’s nothing more to refund. This can’t be undone.',
-                  fee: 'We’ll take it down. Your listing fee isn’t refunded. This can’t be undone.',
-                  unknown: 'We’ll take it down. There’s no reward held on it to refund. This can’t be undone.',
-                }[noRewardKind(owned)]
-              : // Exact figures (ADR-0021): the refund IS this amount.
-                `We’ll take it down and send ${formatPounds(
-                  refundPence(owned.bountyPence),
-                )} back to your card. Only the ${formatPounds(
-                  cardFeePence(owned.bountyPence),
-                )} card fee is kept. This can’t be undone.`
-          }
+          body="Are you sure? This can’t be undone."
           confirmLabel="Yes, deactivate"
           destructive
           onConfirm={onDeactivate}
