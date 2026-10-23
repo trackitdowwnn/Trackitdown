@@ -100,6 +100,27 @@ end $$;
 reset role;
 rollback;
 
+-- 3c — ⚠️ a live export's PDF is NOT a stray (20261023160000): the request
+-- names the JSON, the PDF sits beside it; and the bucket takes PDFs.
+begin;
+insert into public.data_export_requests (id, user_id, object_path, byte_size, created_at)
+values ('de000000-0000-0000-0000-0000000000c1', '11111111-1111-1111-1111-111111111111',
+        '1111/pair.json', 10, now() - interval '1 hour');
+insert into storage.objects (bucket_id, name, created_at)
+values ('data-exports', '1111/pair.pdf', now() - interval '26 hours');
+
+do $$
+begin
+  if exists (select 1 from public.claim_expired_data_exports(100) c
+              where c.object_path = '1111/pair.pdf') then
+    raise exception 'CHECK 3c FAILED: a live export''s PDF was claimed as a stray';
+  end if;
+  if not (select 'application/pdf' = any (allowed_mime_types) from storage.buckets where id = 'data-exports') then
+    raise exception 'CHECK 3c FAILED: the data-exports bucket doesn''t take PDFs';
+  end if;
+end $$;
+rollback;
+
 -- 4 — points: their own, nobody else's.
 begin;
 insert into public.alert_zones (id, user_id, point, radius_m, name)

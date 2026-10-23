@@ -303,7 +303,15 @@ Deno.serve(async (request) => {
       if (rows.length > 0) {
         const { error: removeError } = await admin.storage
           .from('data-exports')
-          .remove(rows.map((row) => row.object_path));
+          // A recorded export is a pair: the JSON it names and the PDF beside it
+          // (20261023160000). A stray file is just itself.
+          .remove(
+            rows.flatMap((row) =>
+              row.id === null
+                ? [row.object_path]
+                : [row.object_path, row.object_path.replace(/\.json$/, '.pdf')],
+            ),
+          );
         if (removeError) {
           // Left unmarked deliberately — retried next hour.
           console.error('[storage] export remove failed', removeError.message);

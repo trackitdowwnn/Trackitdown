@@ -32,8 +32,10 @@ caller deleting, as `[{code, count}]`; `forget_my_push_tokens()`
 ## Download your data (2026-10-23)
 
 Support & legal → **Download your data** → a confirm → `requestDataExport()`
-(`export-my-data`) → the 15-minute link opens in the browser (no native
-share sheet in this build). One file a day; a second tap re-sends today's.
+(`export-my-data`) → the 15-minute link opens a **PDF** in the browser (no
+native share sheet in this build; phones can't open JSON without another app —
+owner, 2026-10-23). The PDF links to the same data as JSON for moving it to
+another service. One export a day; a second tap re-sends today's.
 What goes in — and what never does (other people's identities, card details,
 fraud signals) — is `supabase/functions/_shared/dataExport.ts`;
 RECORD_OF_PROCESSING §4.20.

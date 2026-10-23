@@ -306,7 +306,8 @@ const DELETION_FALLBACK = "We couldn't delete your account. Please try again.";
 /**
  * "Download your data" (UK GDPR Art. 15/20, 2026-10-23): asks export-my-data
  * for a copy of everything about the caller. It returns a 15-minute link to a
- * JSON file — the same file again if one was made today — which the caller
+ * PDF (which links to a machine-readable JSON copy) — the same file again if
+ * one was made today — which the caller
  * opens in the browser. Throws calm copy; never logs the link.
  */
 export async function requestDataExport(): Promise<{ url: string; expiresAt: string }> {

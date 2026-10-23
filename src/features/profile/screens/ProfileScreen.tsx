@@ -558,7 +558,7 @@ function LoadedProfile({
       <ConfirmDialog
         ref={exportRef}
         title="Download your data?"
-        body="A copy of your account as a file. The link works for 15 minutes."
+        body="A copy of your account as a PDF. The link works for 15 minutes."
         confirmLabel="Get my data"
         onConfirm={() => void downloadData()}
       />
