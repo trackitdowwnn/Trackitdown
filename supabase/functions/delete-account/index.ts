@@ -80,6 +80,9 @@ const BUCKETS = [
   // it (docs/RECORD_OF_PROCESSING.md §5). The reporter's own, unlike sighting
   // photos below: nobody else's case depends on them.
   { id: 'bug-screenshots', uidSegment: 1 },
+  // Their data exports (`<uid>/…`, 20261023150000) — a copy of everything
+  // about them must go with the account, not wait for the 24h sweep.
+  { id: 'data-exports', uidSegment: 1 },
 ] as const;
 
 /*

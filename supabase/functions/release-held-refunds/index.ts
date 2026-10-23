@@ -108,6 +108,7 @@ Deno.serve(async (request) => {
     oldClosedPostsSkipped: 0,
     photosRemoved: 0,
     sightingPhotosRemoved: 0,
+    dataExportsRemoved: 0,
     deletionWarningsSent: 0,
     cancelledPostsPurged: 0,
     cancelledPostsSkipped: 0,
@@ -283,6 +284,43 @@ Deno.serve(async (request) => {
     }
   } catch (err) {
     console.error('[storage] sighting orphan sweep failed', (err as Error).message);
+  }
+
+  // Data exports older than 24 hours (20261023150000): a whole person's data
+  // in one file must not sit around. Same claim → remove → forget contract as
+  // the photo queues above — forget only after the Storage API removed it.
+  try {
+    const { data: expired, error: exportClaimError } = await admin.rpc(
+      'claim_expired_data_exports',
+      { p_limit: 100 },
+    );
+    if (exportClaimError) {
+      console.error('[storage] export claim failed', exportClaimError.message);
+    } else {
+      // id is null for a stray file no request row names — removed, nothing
+      // to mark.
+      const rows = (expired ?? []) as { id: string | null; object_path: string }[];
+      if (rows.length > 0) {
+        const { error: removeError } = await admin.storage
+          .from('data-exports')
+          .remove(rows.map((row) => row.object_path));
+        if (removeError) {
+          // Left unmarked deliberately — retried next hour.
+          console.error('[storage] export remove failed', removeError.message);
+        } else {
+          const { error: forgetError } = await admin.rpc('forget_data_export', {
+            p_ids: rows.map((row) => row.id).filter((id): id is string => id !== null),
+          });
+          if (forgetError) {
+            console.error('[storage] export forget failed', forgetError.message);
+          } else {
+            summary.dataExportsRemoved = rows.length;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[storage] export sweep failed', (err as Error).message);
   }
 
   // --- Phase 0d-warn: the warning before the purge ----------------------------
