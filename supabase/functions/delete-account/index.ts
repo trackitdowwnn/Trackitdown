@@ -1,10 +1,8 @@
 /**
  * WHAT:  Edge Function that erases the calling user's account. Proves identity
- *        from the JWT — and that this session verified a fresh code (or
- *        re-signed in) within 5 minutes, else REAUTH_REQUIRED (_shared/
- *        recentSignIn) — then (2026-10-23, 20261023120000):
+ *        from the JWT, then (2026-10-23, 20261023120000):
  *          1. the reasons it can't go yet — account_deletion_blockers_for, the
- *             same list the app's delete screen shows — and money still on
+ *             same list the app's delete sheet shows — and money still on
  *             their payout account (PAYOUT_ON_ITS_WAY): each a 409 with its
  *             own code, never "try again";
  *          2. stray unpaid intents cancelled at Stripe, as proof for…
@@ -61,10 +59,9 @@ import type Stripe from 'npm:stripe@22.4.0';
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
 import { sendOpsAlert } from '../_shared/opsAlert.ts';
-import { isRecentSignIn } from '../_shared/recentSignIn.ts';
 
 // What blocks erasure lives in ONE place now: account_deletion_blockers_for
-// (20261023120000) — the app's delete screen reads the same definition through
+// (20261023120000) — the app's delete sheet reads the same definition through
 // account_deletion_blockers(), and delete_account_data re-checks it under its
 // lock. No status list here to drift from it.
 
@@ -147,17 +144,8 @@ Deno.serve(async (request) => {
   }
   const userId = userData.user.id;
 
-  // --- Proof it's really them, NOW (2026-10-23) --------------------------------
-  // A valid token only proves the phone is signed in. Before the irreversible
-  // step the app has them verify a fresh email code (or re-sign-in with
-  // Google/Apple), which mints a session whose `amr` says "just now". Checked
-  // FIRST — before the blockers, Stripe, anything — and fails closed.
-  if (!isRecentSignIn(jwt, Math.floor(Date.now() / 1000))) {
-    return errorResponse('REAUTH_REQUIRED', 'Please confirm it’s you first.', 401);
-  }
-
   // --- The reasons it can't go yet, server-side (20261023120000) -------------
-  // The SAME definition the app's delete screen shows. That read is advisory
+  // The SAME definition the app's delete sheet shows. That read is advisory
   // (stale, skippable by calling this directly); this is the enforcement, and
   // delete_account_data re-checks it again under its lock.
   const { data: blockers, error: blockersError } = await admin.rpc(

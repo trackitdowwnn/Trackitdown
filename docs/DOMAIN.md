@@ -940,7 +940,7 @@ unpublished, unsearchable, and carries no money or lifecycle state.
     HOLDING reward money (`held`/`superseded` — it comes down through its
     refund exit). **Changed 2026-10-23 (20261023140000):** a live listing with
     NO money held — free, an abandoned "add a reward", a lapsed/refunded reward
-    — no longer blocks: deletion takes it down, and the delete screen says so
+    — no longer blocks: deletion takes it down, and the delete sheet says so
     first ("Your live listing — taken down now"). Its abandoned intents are
     proved dead at Stripe like any other stray.
   - `MONEY_HELD` — their payment `held`/`superseded` on a listing that ISN'T

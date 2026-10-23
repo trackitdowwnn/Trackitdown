@@ -8,7 +8,7 @@
  * WHY:   This screen is the door to the account-ending actions; a confirm that
  *        fires on dismiss, or a sign-out that silently goes everywhere (or
  *        nowhere), is a Tier 1 failure. Deletion itself is tested in
- *        DeleteAccountScreen.test.tsx. Hook and api are mocked at the module
+ *        DeleteAccountSheet.test.tsx. Hook and api are mocked at the module
  *        boundary so each state is exact.
  * LINKS: src/features/profile/screens/ProfileScreen.tsx; docs/TESTING.md.
  */
@@ -112,6 +112,19 @@ jest.mock('../hooks/useMyProfile', () => ({
 }));
 
 const mockSignOut = jest.fn();
+// The sheet is tested on its own (DeleteAccountSheet.test.tsx); here only that
+// the row opens it.
+const mockOpenDeleteSheet = jest.fn();
+jest.mock('../components/DeleteAccountSheet', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const React = require('react');
+  return {
+    DeleteAccountSheet: ({ ref }: { ref?: React.Ref<unknown> }) => {
+      React.useImperativeHandle(ref, () => ({ open: mockOpenDeleteSheet, close: jest.fn() }));
+      return null;
+    },
+  };
+});
 jest.mock('../api/profileApi', () => ({
   get signOut() {
     return mockSignOut;
@@ -493,12 +506,13 @@ describe('signed in', () => {
     expect(mockSignOut).not.toHaveBeenCalled();
   });
 
-  it('delete account opens its own confirm screen — nothing is deleted from here', async () => {
+  it('delete account opens its sheet — nothing is deleted from here', async () => {
     const { getByTestId } = await render(<ProfileScreen />);
     await act(async () => {
       fireEvent.press(getByTestId('row-delete-account'));
     });
-    expect(mockPush).toHaveBeenCalledWith('/delete-account');
+    expect(mockOpenDeleteSheet).toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalledWith('/delete-account');
   });
 
   it('copy recent logs writes to the clipboard and confirms', async () => {
