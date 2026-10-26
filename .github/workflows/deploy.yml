@@ -56,6 +56,13 @@ jobs:
     # PINNED (2026-10-07): `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19.
     # Move this deliberately, with a green run, not when GitHub flips a label.
     runs-on: ubuntu-24.04
+    # MAIN ONLY (2026-10-26, security audit lead 8). A manual run from a
+    # feature branch deployed THAT branch's migrations and functions — how an
+    # unmerged migration once reached production (20261013110000). Now a
+    # dispatch from anywhere but main skips the job. (A branch cut before this
+    # line carries its old copy of the file, so it is not bound; a protected
+    # `production` environment would bind every branch.)
+    if: github.ref == 'refs/heads/main'
     # No `environment:` on purpose — it would need creating in repo settings
     # before the first run and failing there teaches nothing. Add
     # `environment: production` later if you want required reviewers gating
