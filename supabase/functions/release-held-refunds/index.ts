@@ -620,6 +620,24 @@ Deno.serve(async (request) => {
       continue;
     }
     try {
+      // MONEY (20261026140000): a reward_end hold runs on a LIVE listing, so
+      // the owner can credit a finder right up to this refund. Claim it under
+      // the post lock first — claim_recovery and begin_payout refuse while it
+      // is claimed, and the claim re-asks refunds_due under that lock — so a
+      // credit that landed since the read above wins, and is never refunded.
+      if (row.reason === 'reward_end') {
+        const { data: claimed, error: claimError } = await admin.rpc('claim_reward_end_refund', {
+          p_payment_intent_id: paymentIntentId,
+        });
+        if (claimError || claimed !== true) {
+          if (claimError) {
+            console.error('[payments] reward_end refund claim failed', claimError.message);
+          }
+          summary.skipped += 1;
+          continue;
+        }
+      }
+
       // THE SAME KEY every path uses for this payment (`payment-refund-<pi>`):
       // if the owner's original request died after Stripe but before the
       // ledger, this retries into that refund instead of minting a second one.
@@ -632,6 +650,20 @@ Deno.serve(async (request) => {
       if (outcome.status !== 'refunded') {
         // no_held_payment = settled between the query and here; the others
         // retry next run.
+        // A reward_end claim goes back only when no refund can have reached
+        // Stripe (the ledger read failed). A stripe_error may be a refund that
+        // timed out, so the claim stays and the next run resumes it —
+        // refundPayment finds that refund and it is recorded.
+        // shortcut: a stripe_error that never clears keeps the owner from
+        // crediting on that listing; it is logged here, alert if it recurs.
+        if (row.reason === 'reward_end' && outcome.status === 'lookup_failed') {
+          const { error: releaseError } = await admin.rpc('release_reward_end_refund_claim', {
+            p_payment_intent_id: paymentIntentId,
+          });
+          if (releaseError) {
+            console.error('[payments] reward_end claim release failed', releaseError.message);
+          }
+        }
         summary.skipped += 1;
         continue;
       }

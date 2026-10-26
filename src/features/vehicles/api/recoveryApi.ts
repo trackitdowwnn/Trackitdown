@@ -87,6 +87,9 @@ const CLAIM_MESSAGES: Record<string, string> = {
   // (20260924120000). Rare, and it needs a person, so say so.
   POST_HAS_BOUNTY:
     'This listing still has a reward payment attached, so we can’t close it here. Please contact us and we’ll sort it out.',
+  // The reward's term ended and its refund is going through right now
+  // (20261026140000). A few seconds' window; trying again then works.
+  REWARD_ENDING: 'Your reward is going back to your card right now. Try again in a minute.',
 };
 
 const REFUND_MESSAGES: Record<string, string> = {
