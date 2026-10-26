@@ -23,6 +23,11 @@ on:
     branches: [main]
   pull_request:
 
+# Read-only token (audit hardening, 2026-10-26): CI writes nothing to GitHub.
+# Actions are pinned to full commit SHAs, the tag in a comment beside each.
+permissions:
+  contents: read
+
 jobs:
   checks:
     # PINNED (2026-10-07): `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19.
@@ -30,9 +35,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           # 24: what the app is developed and tested on (Node 20 reached end of
           # life in April 2026).
@@ -156,9 +161,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           # 24: what the app is developed and tested on (Node 20 reached end of
           # life in April 2026).

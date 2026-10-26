@@ -71,6 +71,10 @@ import { releaseAllPendingFor } from '../_shared/releasePayout.ts';
 import { sendOpsAlert } from '../_shared/opsAlert.ts';
 import { notifyUsers } from '../_shared/push.ts';
 
+/** True when this deployment's Stripe key is a LIVE one — every event must
+ *  match it (sk_live_ / rk_live_ vs the test keys). */
+const LIVE_KEY = /^(sk|rk)_live_/.test(Deno.env.get('STRIPE_SECRET_KEY') ?? '');
+
 // NOTE: no CORS / preflight — Stripe calls this server-to-server, not a browser.
 // The endpoint takes the RAW body (signature is computed over the exact bytes),
 // so this must never be invoked through supabase.functions.invoke (which JSON-
@@ -144,6 +148,17 @@ Deno.serve(async (request) => {
     return new Response('Invalid signature', { status: 400 });
   }
   const event: Stripe.Event = verified;
+
+  // SAFETY (audit hardening, 2026-10-26): an event from the OTHER mode than
+  // this deployment's key — a sandbox endpoint secret left configured after
+  // the company-account move, say — is acknowledged and never applied.
+  if (event.livemode !== LIVE_KEY) {
+    console.warn('[payments] webhook event from the other mode ignored', {
+      type: event.type,
+      livemode: event.livemode,
+    });
+    return new Response(JSON.stringify({ received: true, ignored: 'mode' }), { status: 200 });
+  }
 
   const admin = createServiceRoleClient();
 
@@ -517,6 +532,13 @@ async function handleThinEvent(
   stripe: Stripe,
   notification: ThinEventNotification,
 ): Promise<Response> {
+  // The same mode check as v1 events (audit hardening, 2026-10-26).
+  const livemode = (notification as { livemode?: unknown }).livemode;
+  if (typeof livemode === 'boolean' && livemode !== LIVE_KEY) {
+    console.warn('[payments] thin event from the other mode ignored', { type: notification.type });
+    return new Response(JSON.stringify({ received: true, ignored: 'mode' }), { status: 200 });
+  }
+
   const admin = createServiceRoleClient();
 
   const { data: existing, error: lookupError } = await admin

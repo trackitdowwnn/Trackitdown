@@ -12,7 +12,12 @@
 
 import type Stripe from 'npm:stripe@22.4.0';
 
-import { payoutSourceCharge, payoutTransferGroups, splitBounty } from './releasePayout';
+import {
+  findExistingPayoutTransfer,
+  payoutSourceCharge,
+  payoutTransferGroups,
+  splitBounty,
+} from './releasePayout';
 
 // The money core imports these at runtime; none of them is under test here.
 jest.mock('./collusion.ts', () => ({ collusionGate: jest.fn() }));
@@ -78,5 +83,34 @@ describe('splitBounty', () => {
   it('still pays 95% and keeps the remainder', () => {
     expect(splitBounty(25000)).toEqual({ transferPence: 23750, feePence: 1250 });
     expect(splitBounty(47500)).toEqual({ transferPence: 45125, feePence: 2375 });
+  });
+});
+
+// The idempotency key lapses after ~24h; a late retry must find the first
+// transfer instead of making a second (audit hardening, 2026-10-26).
+describe('findExistingPayoutTransfer', () => {
+  const transfersIn = (byGroup: Record<string, string>) => ({
+    transfers: {
+      list: jest.fn(async ({ transfer_group }: { transfer_group: string }) => ({
+        data: byGroup[transfer_group] ? [{ id: byGroup[transfer_group] }] : [],
+      })),
+    },
+  });
+
+  it('finds a payout under any of its groups', async () => {
+    const stripe = transfersIn({ group_pi_1: 'tr_first' });
+    const found = await findExistingPayoutTransfer(stripe as never, ['post-1', 'group_pi_1']);
+    expect(found?.id).toBe('tr_first');
+  });
+
+  it('answers null when no group holds one', async () => {
+    const stripe = transfersIn({});
+    await expect(findExistingPayoutTransfer(stripe as never, ['post-1', 'group_pi_1'])).resolves.toBeNull();
+    expect(stripe.transfers.list).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws when Stripe cannot be asked — never a transfer on no answer', async () => {
+    const stripe = { transfers: { list: jest.fn().mockRejectedValue(new Error('down')) } };
+    await expect(findExistingPayoutTransfer(stripe as never, ['post-1'])).rejects.toThrow('down');
   });
 });
