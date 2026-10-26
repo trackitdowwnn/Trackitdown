@@ -73,3 +73,15 @@ describe('claimRecovery nextStep mapping', () => {
     expect(result).toEqual({ nextStep: 'done', creditedSightingId: 'sighting-9' });
   });
 });
+
+describe('claimRecovery errors', () => {
+  it('words REWARD_ENDING as a short wait, never the generic fallback', async () => {
+    // 20261026140000: the sweep is refunding the reward at its term end.
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'REWARD_ENDING' } });
+
+    await expect(claimRecovery('p1', 'sighting-9')).rejects.toMatchObject({
+      code: 'REWARD_ENDING',
+      message: 'Your reward is going back to your card right now. Try again in a minute.',
+    });
+  });
+});
