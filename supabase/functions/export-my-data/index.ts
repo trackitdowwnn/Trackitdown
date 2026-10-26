@@ -38,6 +38,7 @@ import { createServiceRoleClient } from '../_shared/clients.ts';
 import { buildDataExport, type DataExportRaw, type Row } from '../_shared/dataExport.ts';
 import { renderDataExportPdf } from '../_shared/dataExportPdf.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { isOwnCleanPath } from '../_shared/storagePath.ts';
 
 const BUCKET = 'data-exports';
 /** How long the download link works. */
@@ -355,7 +356,10 @@ async function gather(admin: Admin, user: AuthUser): Promise<DataExportRaw> {
     ...p,
     url: sightingUrls.get(String(p.path)) ?? null,
   }));
-  const screenshotPaths = bugReports.flatMap((r) => (r.screenshot_paths as string[] | null) ?? []);
+  // SAFETY (audit lead 10): sign only paths inside the requester's own folder.
+  const screenshotPaths = bugReports
+    .flatMap((r) => (r.screenshot_paths as string[] | null) ?? [])
+    .filter((path) => isOwnCleanPath(path, userId));
   const screenshotUrls = await signAll(admin, 'bug-screenshots', screenshotPaths);
   const bugScreenshotUrls: Record<string, string[]> = {};
   for (const report of bugReports) {

@@ -414,16 +414,33 @@ async function chargeRewardChange(
     .eq('post_id', postId)
     .eq('kind', 'bounty_escrow')
     .in('status', ['requires_payment', 'failed'])
-    .neq('stripe_payment_intent_id', paymentIntent.id);
+    // AUDIT 2026-10-26 (lead 11): an intent Stripe already cancelled is never
+    // asked again (stamped below), and one request asks about 20 at most —
+    // before this, every change re-cancelled every earlier attempt.
+    .is('stripe_intent_cancelled_at', null)
+    .neq('stripe_payment_intent_id', paymentIntent.id)
+    .limit(20);
   if (openError) {
     console.error('[payments] open reward intent lookup failed', openError.message);
   }
   for (const row of openRows ?? []) {
+    const intentId = row.stripe_payment_intent_id as string;
     try {
-      await stripe.paymentIntents.cancel(row.stripe_payment_intent_id as string);
+      await stripe.paymentIntents.cancel(intentId);
     } catch (err) {
-      // Already cancelled / terminal is the common case and harmless.
-      console.warn('[payments] stale reward intent cancel failed', (err as Error).message);
+      // Already cancelled (or otherwise terminal) can never be confirmed
+      // again, so it is stamped like a success; anything else retries later.
+      if ((err as { code?: string }).code !== 'payment_intent_unexpected_state') {
+        console.warn('[payments] stale reward intent cancel failed', (err as Error).message);
+        continue;
+      }
+    }
+    const { error: stampError } = await admin
+      .from('payments')
+      .update({ stripe_intent_cancelled_at: new Date().toISOString() })
+      .eq('stripe_payment_intent_id', intentId);
+    if (stampError) {
+      console.warn('[payments] stale reward intent stamp failed', stampError.message);
     }
   }
 

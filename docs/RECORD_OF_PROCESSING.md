@@ -100,7 +100,10 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
 - **Basis:** contract.
 - **Recipients:** the public while active (recovered: 30 days more); watchers
   keep a minimal tombstone for 30 days; Supabase.
-- **Retention:** cancelled listings hard-deleted 30 days after closing (owner
+- **Retention:** a photo uploaded but never attached to a listing (the app
+  closed mid-post) is removed after 48 hours by the hourly sweep
+  (`enqueue_unreferenced_uploads`, 2026-10-26; the same for sighting photos).
+  Cancelled listings hard-deleted 30 days after closing (owner
   warned at 27 days); recovered (and expired) listings deleted 12 months
   after closing, no warning (`purge_old_closed_posts`, 2026-10-22; never
   while money moves). The payments ledger keeps a
@@ -205,7 +208,10 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
   last registered them — every cold start — (`purge_stale_push_tokens`,
   2026-10-22), or with the account. Trade-off: a phone idle that long and
   then signed into a DIFFERENT account records no handset-switch link
-  (`device_links`, 4.13), since the old token row is gone.
+  (`device_links`, 4.13), since the old token row is gone. Signing out keeps
+  a hashed `push_token_releases` row (the last account on that device, so a
+  different account signing in next still links — 2026-10-26); it goes at the
+  same 270 days, or with the account.
 - **Security:** payloads carry ids only; visible text bounded (§5, item 2 on
   what it actually carries).
 
