@@ -157,8 +157,20 @@ commenting standards.
     measure from the coarsened point via `post_pin_geog`. (The radius clamp
     never defended this, despite an old note saying so: it bounds the radius,
     not the precision reported for a post inside it.)
-    Both routes are now closed, and every coordinate-emitting or
-    distance-reporting surface measures a driveway theft from the ~1km grid.
+    (c) **CLOSED 2026-10-26** (20261026120000, security audit run 1). Feed
+    MEMBERSHIP still read the exact point: whether a known post id came back
+    from `get_nearby_posts` / `get_home_feed` at a caller-chosen origin and
+    radius was a 1-metre bit, so a radius binary search from three origins
+    found the home. Membership now reads `post_pin_geog` too (padded exact
+    pre-filter for the index). `audit_fixes_verification.sql` CHECK 1.
+    (d) **CLOSED 2026-10-26** (same migration). `last_seen_area` is the
+    reverse-geocoded street/postcode label — for a driveway theft, the
+    victim's address — and every public surface carried it. Non-owners now
+    get the district (`last_seen_locality`) via `post_public_area`, or no area
+    at all; the owner keeps the street. Both columns left the client grants.
+    All routes are now closed, and every surface that matches, measures,
+    emits or labels a driveway theft for a non-owner uses the ~1km grid or the
+    district.
   - **Map-search distance filter (2026-08-10).** `search_posts` /
     `search_posts_count` take a caller-supplied origin and a radius clamped to
     1–50 miles, mirroring `get_home_feed`. The origin is always the exact

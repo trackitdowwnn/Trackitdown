@@ -30,7 +30,7 @@ import { avatarUrlFromPath } from '@/shared/lib/avatarUrl';
 import { forgetLocationMemory } from '@/shared/lib/location/locationMemory';
 import { createLogger } from '@/shared/lib/logger';
 
-import type { MyProfile, PublicProfile, ReputationCounters } from '../types';
+import type { MyProfile, ReputationCounters } from '../types';
 
 const log = createLogger('profile');
 
@@ -137,30 +137,6 @@ export async function uploadAvatar(userId: string, localUri: string): Promise<vo
     throw updateError;
   }
   log.info('Avatar updated', { userId });
-}
-
-// SAFETY: the ONLY columns an owner may learn about a spotter (DOMAIN.md /
-// SECURITY_AND_TRUST §1: first name + reputation only). display_name is
-// deliberately absent — it may contain a surname. Widening this select is a
-// privacy decision; update docs/DOMAIN.md and the PublicProfile type first.
-export async function fetchPublicProfile(userId: string): Promise<PublicProfile> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select(
-      // updated_at is fetched ONLY to cache-bust the avatar URL — never rendered.
-      'first_name, avatar_path, created_at, updated_at, sightings_reported, sightings_helpful, recoveries_credited',
-    )
-    .eq('id', userId)
-    .single<Omit<ProfileRow, 'id' | 'display_name'>>();
-  if (error) {
-    throw error;
-  }
-  return {
-    firstName: data.first_name,
-    avatarUrl: avatarUrlFromPath(data.avatar_path, data.updated_at),
-    createdAt: data.created_at,
-    counters: countersFromRow(data),
-  };
 }
 
 /**

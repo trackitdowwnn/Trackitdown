@@ -303,9 +303,10 @@ const threadPeerResultSchema = z.object({
 
 /**
  * PRIVACY: this deliberately replaced a direct read of the thread row. The
- * row is participant-readable and carries both uids, but a uid in app code
- * pivots (via the permissive profiles select) to display_name — which may
- * hold a surname — and avatar_path. The RPC keeps the uid server-side and
+ * row is participant-readable and carries both uids, and a uid in app code
+ * pivoted (via the then-permissive profiles select; own-row only since
+ * 20261026120000) to display_name — which may hold a surname — and
+ * avatar_path, which is still public by uid. The RPC keeps the uid server-side and
  * returns only what may be rendered; avatarUrl stays null because the
  * storage path embeds the uid this exists to withhold.
  */

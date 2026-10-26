@@ -1,13 +1,13 @@
 /**
  * WHAT:  Public API of the profile feature.
  * WHY:   Routes import the screens; the tab layout renders the Profile tab
- *        from useProfileTab; the sightings feature (later) opens the
- *        PublicProfileSheet with fetchPublicProfile — everything else stays
+ *        from useProfileTab; another user's profile reaches the
+ *        PublicProfileSheet only through a SECURITY DEFINER RPC (the profiles
+ *        table is own-row only since 20261026120000) — everything else stays
  *        internal (docs/ARCHITECTURE.md rule 1).
  * LINKS: src/features/profile/README.md.
  */
 
-export { fetchPublicProfile } from './api/profileApi';
 export {
   PublicProfileSheet,
   type PublicProfileSheetProps,
