@@ -53,6 +53,7 @@ import {
   usePendingIntent,
 } from '../gate/gateIntent';
 import { invalidateProfileCheck, useAuthStanding } from '../hooks/useAuthStanding';
+import { useCaptcha } from '../hooks/useCaptcha';
 import { useResendCountdown } from '../hooks/useResendCountdown';
 import { useSession } from '../hooks/useSession';
 import { AppleComingSoonSheet } from './AppleComingSoonSheet';
@@ -300,13 +301,15 @@ function EmailStep({
   // email field red reads as "your email is wrong" — it isn't).
   const [emailError, setEmailError] = useState<string | null>(null);
   const [socialError, setSocialError] = useState<string | null>(null);
+  // Audit lead 5: a fresh Turnstile token per code request (none while off).
+  const captcha = useCaptcha();
 
   const handleContinue = async () => {
     setBusy(true);
     setEmailError(null);
     setSocialError(null);
     try {
-      await requestEmailOtp(email);
+      await requestEmailOtp(email, await captcha.getToken());
       onCodeSent();
     } catch (err) {
       setEmailError(err instanceof AuthActionError ? err.message : GENERIC_ERROR);
@@ -390,6 +393,7 @@ function EmailStep({
         error={emailError ?? undefined}
         disabled={busy}
       />
+      {captcha.widget}
       <Button label="Continue" onPress={submitEmail} disabled={!canContinue} loading={busy} />
       {/* Below all actions: "By continuing…" covers the social buttons too. */}
       <AuthLegalNotice />
@@ -416,6 +420,7 @@ function OtpStep({
   // said nothing (2026-10-15).
   const [resent, setResent] = useState(false);
   const { secondsLeft, canResend, restart } = useResendCountdown(RESEND_SECONDS);
+  const captcha = useCaptcha();
 
   /** An error, said — the live region covers Android; iOS needs telling. */
   const showError = (message: string) => {
@@ -447,7 +452,7 @@ function OtpStep({
     setErrorText(null);
     setResent(false);
     try {
-      await requestEmailOtp(email);
+      await requestEmailOtp(email, await captcha.getToken());
       restart();
       setResent(true);
       AccessibilityInfo.announceForAccessibility(`New code sent to ${email.trim()}`);
@@ -496,6 +501,7 @@ function OtpStep({
         loading={submitting}
       />
 
+      {captcha.widget}
       <Pressable
         onPress={handleResend}
         disabled={!canResend || resending}
