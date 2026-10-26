@@ -68,6 +68,35 @@ describe('renderPdf', () => {
     expect(pdf).not.toContain('javascript');
   });
 
+  it('a row puts the label and the value in their own columns, on one line', () => {
+    const pdf = text(
+      renderPdf([{ kind: 'row', label: 'Status', value: 'Active' }], { title: 'T' }),
+    );
+    const at = (s: string) =>
+      new RegExp(`1 0 0 1 ([\\d.]+) ([\\d.]+) Tm\\n\\(${s}\\) Tj`).exec(pdf)?.slice(1).map(Number);
+    const [labelX, labelY] = at('Status') ?? [];
+    const [valueX, valueY] = at('Active') ?? [];
+    expect(valueX).toBeGreaterThan(labelX + 100);
+    expect(valueY).toBe(labelY);
+  });
+
+  it('⚠️ with a header, the logo heads every page and nothing else enters its band', () => {
+    const lines = Array.from({ length: 150 }, (_, i) => ({ text: `Line ${i}` }));
+    const pdf = text(renderPdf(lines, { title: 'T', header: 'Trackitdown' }));
+    const pages = Number(/\/Count (\d+)/.exec(pdf)?.[1]);
+    expect(pages).toBeGreaterThan(1);
+    expect(pdf.match(/\(Trackitdown\) Tj/g)).toHaveLength(pages);
+    // The mark is drawn as filled paths (Béziers), every coordinate plain.
+    expect(pdf).toMatch(/ c\n[\s\S]*\nh\n[\s\S]*\nf\n/);
+    expect(pdf).not.toMatch(/\de[-+]?\d/);
+    // Body text starts below the band: A4 height − margin − band.
+    const bodyTop = 841.89 - 40 - 36;
+    for (const m of pdf.matchAll(/1 0 0 1 [\d.]+ ([\d.]+) Tm\n\((Line \d+)\) Tj/g)) {
+      expect(Number(m[1])).toBeLessThan(bodyTop);
+    }
+    expectValidXref(pdf);
+  });
+
   it('runs onto more pages, each numbered', () => {
     const lines = Array.from({ length: 200 }, (_, i) => ({ text: `Line ${i}` }));
     const pdf = text(renderPdf(lines, { title: 'T' }));
@@ -79,8 +108,8 @@ describe('renderPdf', () => {
 });
 
 describe('text helpers', () => {
-  it('keeps what Helvetica draws; emoji become "?" and arrows "->"', () => {
-    expect(toWinAnsi('Café £5 – “ok” → 🚗\tend')).toBe('Café £5 – “ok” -> ? end');
+  it('keeps what Helvetica draws; emoji become "?" and arrows "›"', () => {
+    expect(toWinAnsi('Café £5 – “ok” → 🚗\tend')).toBe('Café £5 – “ok” › ? end');
   });
 
   it('joins a decomposed accent (e + ́) into é', () => {

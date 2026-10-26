@@ -1,9 +1,11 @@
 /**
  * WHAT:  dataExportPdf — lays out the data export (buildDataExport's object)
- *        as a readable PDF: a title page explaining what it is and what isn't
- *        in it, a link to the machine-readable copy, then one section per kind
- *        of data — listings, sightings, conversations, payments… — with dates
- *        in UK format, pence as pounds, photos as tappable links.
+ *        as a readable PDF: the logo on every page, a short intro, a link to
+ *        the machine-readable copy, then one section per kind of data that has
+ *        something in it — label/value rows, dates in UK format, pence as
+ *        pounds, codes as words, photos as tappable links — and the empty ones
+ *        named together at the end ("Nothing to show"). Owner, 2026-10-26:
+ *        "Not included" out, more readable, the logo in the corner.
  * WHY:   Owner, 2026-10-23: phones can't open JSON without another app, so
  *        the download is a PDF every phone opens. The JSON stays — linked from
  *        page 1 — for moving data to another service (Art. 20 portability).
@@ -16,7 +18,7 @@
  *        ./dataExportPdf.test.ts; ../export-my-data/index.ts.
  */
 
-import { renderPdf, type PdfLine } from './pdfDocument.ts';
+import { renderPdf, type PdfBlock, type PdfLine, type PdfRow } from './pdfDocument.ts';
 
 type Value = unknown;
 type Obj = Record<string, Value>;
@@ -89,6 +91,43 @@ const LABELS: Record<string, string> = {
   desc_drives: 'How it drives',
 };
 
+/** Fields that hold a code ("listing_fee", "collected"): shown as words. */
+const CODE_KEYS = new Set([
+  'status',
+  'kind',
+  'role',
+  'reason',
+  'target_type',
+  'platform',
+  'providers',
+  'severity',
+  'frequency',
+  'direction',
+  'exit_path',
+  'body_type',
+  'colour_finish',
+  'parked_likelihood',
+  'people_presence',
+  'context_flags',
+  'damage_kinds',
+  'missing_parts',
+  'withdraw_reason',
+  'last_payout_status',
+  'you_are',
+]);
+const CODE = /^[a-z0-9]+(_[a-z0-9]+)*$/;
+
+/** "listing_fee" → "Listing fee". Only a value shaped like a code changes —
+ *  free text (a name, a note) is never touched — and an unknown code still
+ *  reads (the database is ahead of this list at times). */
+export function humanise(value: string): string {
+  if (!CODE.test(value)) return value;
+  const words = value.replace(/_/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+const isRow = (block: PdfBlock): block is PdfRow => 'kind' in block && block.kind === 'row';
+
 /** Ids mean nothing to a person (the JSON copy keeps them). */
 const isIdKey = (key: string) => key === 'id' || key.endsWith('_id') || key.endsWith('_ids');
 
@@ -107,9 +146,14 @@ export function formatValue(key: string, value: Value): string | null {
     if (key === 'radius_m') return `${Math.round(value / 100) / 10} km`;
     return String(value);
   }
-  if (typeof value === 'string') return ISO.test(value) ? formatDate(value) : value;
+  if (typeof value === 'string') {
+    if (ISO.test(value)) return formatDate(value);
+    return CODE_KEYS.has(key) ? humanise(value) : value;
+  }
   if (Array.isArray(value)) {
-    const parts = value.map((v) => formatValue('', v)).filter((v): v is string => v !== null);
+    // A list of codes (damage kinds, sign-in methods) reads as words too.
+    const itemKey = CODE_KEYS.has(key) ? key : '';
+    const parts = value.map((v) => formatValue(itemKey, v)).filter((v): v is string => v !== null);
     return parts.length ? parts.join(', ') : null;
   }
   if (isObj(value)) {
@@ -125,68 +169,81 @@ export function formatValue(key: string, value: Value): string | null {
   return String(value);
 }
 
-// --- line builders ------------------------------------------------------------
+// --- block builders -----------------------------------------------------------
 
-const heading = (text: string): PdfLine => ({ text, font: 'bold', size: 14, gapBefore: 18 });
-const subheading = (text: string, indent = 0): PdfLine => ({
+const heading = (text: string): PdfLine => ({
   text,
   font: 'bold',
-  size: 11,
-  gapBefore: 8,
-  indent,
+  size: 17,
+  gapBefore: 22,
+  rule: true,
 });
-const none = (): PdfLine => ({ text: 'None', tone: 'muted' });
+const subheading = (text: string): PdfLine => ({ text, font: 'bold', size: 13, gapBefore: 12 });
+const row = (label: string, value: string, link?: string): PdfRow => ({
+  kind: 'row',
+  label,
+  value,
+  link,
+});
 
-/** "Label: value" lines for an object's fields (nested lists handled by the
+/** Label/value rows for an object's fields (nested lists handled by the
  *  caller), skipping ids and empties. */
-function fields(obj: Obj | null, skip: readonly string[] = [], indent = 0): PdfLine[] {
+function fields(obj: Obj | null, skip: readonly string[] = []): PdfBlock[] {
   if (!obj) return [];
-  const lines: PdfLine[] = [];
+  const rows: PdfBlock[] = [];
   for (const [key, value] of Object.entries(obj)) {
     if (isIdKey(key) || skip.includes(key)) continue;
     if (Array.isArray(value) && value.some(isObj)) continue; // lists render as blocks
     const text = formatValue(key, value);
-    if (text !== null) lines.push({ text: `${label(key)}: ${text}`, indent });
+    if (text !== null) rows.push(row(label(key), text));
   }
-  return lines;
+  return rows;
 }
 
-const linkLines = (urls: Value, name: string, indent = 0): PdfLine[] =>
+/** "Photos  Photo 1 / Photo 2…" — the label once, each link on its own line. */
+const linkRows = (urls: Value, labelText: string, name: string): PdfBlock[] =>
   (Array.isArray(urls) ? urls : [])
     .filter((u): u is string => typeof u === 'string' && u.length > 0)
-    .map((url, i) => ({ text: `${name} ${i + 1}`, link: url, indent }));
+    .map((url, i) => row(i === 0 ? labelText : '', `${name} ${i + 1}`, url));
 
-const mapLink = (point: Value, indent = 0): PdfLine[] =>
+const mapRows = (point: Value): PdfBlock[] =>
   isObj(point) && typeof point.lat === 'number' && typeof point.lng === 'number'
     ? [
-        {
-          text: 'Open on a map',
-          link: `https://www.google.com/maps?q=${point.lat},${point.lng}`,
-          indent,
-        },
+        row('Last seen location', `${point.lat}, ${point.lng}`),
+        row('', 'Open on a map', `https://www.google.com/maps?q=${point.lat},${point.lng}`),
       ]
     : [];
 
 const list = (value: Value): Obj[] => (Array.isArray(value) ? value.filter(isObj) : []);
 
-/** A plain section: each item's fields, items apart. */
-function itemsSection(
-  title: string,
-  items: Obj[],
+/** Each item's fields, under its own subheading or a little apart. */
+function items(
+  entries: Obj[],
   itemTitle?: (item: Obj, i: number) => string,
-): PdfLine[] {
-  const lines: PdfLine[] = [heading(title)];
-  if (items.length === 0) return [...lines, none()];
-  items.forEach((item, i) => {
-    if (itemTitle) lines.push(subheading(itemTitle(item, i)));
-    else if (i > 0) lines.push({ text: '', size: 4 });
-    lines.push(...fields(item));
+  /** Fields the title already says. */
+  skip: readonly string[] = [],
+): PdfBlock[] {
+  const blocks: PdfBlock[] = [];
+  entries.forEach((item, i) => {
+    if (itemTitle) blocks.push(subheading(itemTitle(item, i)));
+    const rows = fields(item, skip);
+    if (!itemTitle && i > 0 && rows[0]) rows[0] = { ...rows[0], gapBefore: 12 };
+    blocks.push(...rows);
   });
-  return lines;
+  return blocks;
 }
 
 const vehicleName = (v: Obj) =>
   [v.plate, v.make, v.model].filter((p) => typeof p === 'string' && p).join(' · ') || 'Car';
+
+const distinctive = (features: Value): PdfBlock[] =>
+  list(features).flatMap((feature) => [
+    row('Distinctive', String(feature.description ?? '')),
+    ...(typeof feature.photo_url === 'string' ? [row('', 'Photo', feature.photo_url)] : []),
+  ]);
+
+const joined = (...parts: Value[]) =>
+  parts.filter((p): p is string => typeof p === 'string' && p.length > 0).join(' · ');
 
 // --- the document -------------------------------------------------------------
 
@@ -196,215 +253,227 @@ export interface MachineReadableCopy {
   expiresAt: string;
 }
 
-export function dataExportPdfLines(data: Obj, machineReadable: MachineReadableCopy): PdfLine[] {
+export function dataExportPdfLines(data: Obj, machineReadable: MachineReadableCopy): PdfBlock[] {
   const about = isObj(data.about) ? data.about : {};
-  const lines: PdfLine[] = [
-    { text: 'Your Trackitdown data', font: 'bold', size: 20 },
+  const blocks: PdfBlock[] = [
+    { text: 'Your data', font: 'bold', size: 24 },
     {
       text: `Made ${typeof about.generated_at === 'string' ? formatDate(about.generated_at) : ''}`,
       tone: 'muted',
+      gapBefore: 2,
     },
   ];
-  if (typeof about.what_this_is === 'string') {
-    lines.push({ text: about.what_this_is, gapBefore: 10 });
+  // What's withheld and why stays in the JSON copy's `about` (and RECORD_OF_
+  // PROCESSING §4.20) — the owner took the "Not included" list out of the PDF.
+  for (const key of ['what_this_is', 'photos', 'your_rights', 'delete_your_account'] as const) {
+    if (typeof about[key] === 'string') {
+      // The JSON's line is only the path; the PDF says what it's for.
+      const text =
+        key === 'delete_your_account'
+          ? `To delete your account: ${about[key] as string}`
+          : (about[key] as string);
+      blocks.push({ text, gapBefore: key === 'what_this_is' ? 14 : 6 });
+    }
   }
-  lines.push(subheading('Not included'));
-  for (const item of Array.isArray(about.not_included) ? about.not_included : []) {
-    lines.push({ text: `• ${item}`, indent: 8 });
-  }
-  for (const key of ['photos', 'your_rights', 'delete_your_account'] as const) {
-    if (typeof about[key] === 'string') lines.push({ text: about[key] as string, gapBefore: 6 });
-  }
-  lines.push(
+  blocks.push(
     subheading('Machine-readable copy'),
+    { text: 'Download the same data as a file (JSON)', link: machineReadable.url, gapBefore: 2 },
     {
       // The time, not "24 hours": a PDF re-sent later in the day has less left.
-      text: `The same data as a file, for moving it to another service. This link works until ${formatDate(machineReadable.expiresAt)}.`,
+      text: `For moving it to another service. The link works until ${formatDate(machineReadable.expiresAt)}.`,
+      tone: 'muted',
+      gapBefore: 2,
     },
-    { text: 'Download the machine-readable copy (JSON)', link: machineReadable.url },
   );
+
+  // Sections with something in them get a heading; the empty ones are named
+  // together at the end (owner's pick, 2026-10-26) — short, but the reader
+  // still sees every kind of data was looked at.
+  const empty: string[] = [];
+  const section = (title: string, body: PdfBlock[]) => {
+    if (body.length) blocks.push(heading(title), ...body);
+    else empty.push(title);
+  };
 
   // Account.
   const account = isObj(data.account) ? data.account : {};
-  lines.push(heading('Your account'), ...fields(account, ['sign_in', 'avatar']));
-  if (isObj(account.sign_in)) lines.push(...fields(account.sign_in));
-  if (typeof account.avatar === 'string') lines.push({ text: 'Your photo', link: account.avatar });
+  section('Your account', [
+    ...fields(account, ['sign_in', 'avatar']),
+    ...(isObj(account.sign_in) ? fields(account.sign_in) : []),
+    ...(typeof account.avatar === 'string' ? [row('Your photo', 'Open', account.avatar)] : []),
+  ]);
 
   // Listings.
-  const listings = list(data.listings);
-  lines.push(heading('Your listings'));
-  if (listings.length === 0) lines.push(none());
-  for (const listing of listings) {
-    lines.push(subheading(vehicleName(listing)));
-    // Plate, make and model are the heading already.
-    lines.push(
-      ...fields(listing, ['photos', 'features', 'last_seen_point', 'plate', 'make', 'model']),
-    );
-    if (listing.last_seen_point) {
-      const where = formatValue('last_seen_point', listing.last_seen_point);
-      if (where) lines.push({ text: `Last seen location: ${where}` });
-      lines.push(...mapLink(listing.last_seen_point));
-    }
-    const features = formatValue(
-      'features',
-      Array.isArray(listing.features)
-        ? listing.features.map((f) => (typeof f === 'string' ? f.replace(/_/g, ' ') : f))
-        : listing.features,
-    );
-    if (features) lines.push({ text: `Features: ${features}` });
-    lines.push(...linkLines(listing.photos, 'Photo'));
-    for (const feature of list(listing.distinctive_features)) {
-      lines.push({ text: `Distinctive: ${feature.description ?? ''}`.trim() });
-      if (typeof feature.photo_url === 'string')
-        lines.push({ text: 'Photo', link: feature.photo_url, indent: 8 });
-    }
-    const sightings = list(listing.sightings_from_others);
-    if (sightings.length) {
-      lines.push({
-        text: `Sightings from others (${sightings.length})`,
-        font: 'bold',
-        gapBefore: 4,
-      });
-      for (const s of sightings) {
-        const summary = [formatValue('created_at', s.created_at), s.area_label, s.status]
-          .filter((p) => typeof p === 'string' && p)
-          .join(' · ');
-        lines.push({ text: summary || 'Sighting', indent: 8 });
-        lines.push(...fields(s, ['created_at', 'area_label', 'status'], 16));
-      }
-    }
-  }
+  section(
+    'Your listings',
+    list(data.listings).flatMap((listing) => {
+      const sightings = list(listing.sightings_from_others);
+      const features = formatValue(
+        'features',
+        Array.isArray(listing.features)
+          ? listing.features.map((f) => (typeof f === 'string' ? humanise(f) : f))
+          : listing.features,
+      );
+      return [
+        subheading(vehicleName(listing)),
+        // Plate, make and model are the heading already.
+        ...fields(listing, ['photos', 'features', 'last_seen_point', 'plate', 'make', 'model']),
+        ...mapRows(listing.last_seen_point),
+        ...(features ? [row('Features', features)] : []),
+        ...linkRows(listing.photos, 'Photos', 'Photo'),
+        ...distinctive(listing.distinctive_features),
+        ...(sightings.length
+          ? [
+              {
+                text: `Sightings from others (${sightings.length})`,
+                font: 'bold',
+                gapBefore: 10,
+              } as PdfLine,
+              ...sightings.flatMap((s) => [
+                row(
+                  formatValue('created_at', s.created_at) ?? '',
+                  joined(s.area_label, formatValue('status', s.status)) || 'Sighting',
+                ),
+                ...fields(s, ['created_at', 'area_label', 'status']).map((r) =>
+                  // Their details sit under the sighting's own line.
+                  isRow(r) ? { ...r, gapBefore: 0 } : r,
+                ),
+              ]),
+            ]
+          : []),
+      ];
+    }),
+  );
 
   // Garage.
-  const garage = list(data.garage);
-  lines.push(heading('Your garage'));
-  if (garage.length === 0) lines.push(none());
-  for (const vehicle of garage) {
-    lines.push(
+  section(
+    'Your garage',
+    list(data.garage).flatMap((vehicle) => [
       subheading(vehicleName(vehicle)),
       ...fields(vehicle, ['photos', 'plate', 'make', 'model']),
-    );
-    lines.push(...linkLines(vehicle.photos, 'Photo'));
-    for (const feature of list(vehicle.distinctive_features)) {
-      lines.push({ text: `Distinctive: ${feature.description ?? ''}`.trim() });
-      if (typeof feature.photo_url === 'string')
-        lines.push({ text: 'Photo', link: feature.photo_url, indent: 8 });
-    }
-  }
+      ...linkRows(vehicle.photos, 'Photos', 'Photo'),
+      ...distinctive(vehicle.distinctive_features),
+    ]),
+  );
 
   // Sightings they reported.
-  const mine = list(data.sightings_you_reported);
-  lines.push(heading('Sightings you reported'));
-  if (mine.length === 0) lines.push(none());
-  for (const s of mine) {
-    lines.push(
-      subheading(
-        [formatValue('created_at', s.created_at), s.area_label]
-          .filter((p) => typeof p === 'string' && p)
-          .join(' · ') || 'Sighting',
-      ),
+  section(
+    'Sightings you reported',
+    list(data.sightings_you_reported).flatMap((s) => [
+      subheading(joined(formatValue('created_at', s.created_at), s.area_label) || 'Sighting'),
       ...fields(s, ['created_at', 'area_label']),
-    );
-    for (const [i, photo] of list(s.photos).entries()) {
-      if (typeof photo.url === 'string') lines.push({ text: `Photo ${i + 1}`, link: photo.url });
-    }
-  }
+      ...linkRows(
+        list(s.photos).map((p) => p.url),
+        'Photos',
+        'Photo',
+      ),
+    ]),
+  );
 
   // Conversations — the other person stays "Other person".
-  const conversations = list(data.conversations);
-  lines.push(heading('Conversations'));
-  if (conversations.length === 0) lines.push(none());
-  conversations.forEach((c, i) => {
-    lines.push(
+  section(
+    'Conversations',
+    list(data.conversations).flatMap((c, i) => [
       subheading(`Conversation ${i + 1}${c.you_are ? ` — you were the ${c.you_are}` : ''}`),
-    );
-    for (const m of list(c.messages)) {
-      const who = m.from === 'you' ? 'You' : 'Other person';
-      const when = typeof m.sent_at === 'string' ? formatDate(m.sent_at) : '';
-      lines.push({ text: `${who} · ${when}`, tone: 'muted', gapBefore: 2 });
-      for (const para of String(m.text ?? '').split('\n')) lines.push({ text: para, indent: 8 });
-    }
-  });
+      ...list(c.messages).flatMap((m): PdfBlock[] => [
+        {
+          text: joined(
+            m.from === 'you' ? 'You' : 'Other person',
+            typeof m.sent_at === 'string' ? formatDate(m.sent_at) : '',
+          ),
+          tone: 'muted',
+          size: 11,
+          gapBefore: 8,
+        },
+        ...String(m.text ?? '')
+          .split('\n')
+          .map((para): PdfLine => ({ text: para, gapBefore: 1 })),
+      ]),
+    ]),
+  );
 
   // Watchlist.
   const watchlist = isObj(data.watchlist) ? data.watchlist : {};
-  lines.push(heading('Watchlist'));
   const collections = list(watchlist.collections);
   const saved = list(watchlist.saved_listings);
-  if (!collections.length && !saved.length) lines.push(none());
-  if (collections.length) {
-    lines.push({
-      text: `Collections: ${collections
-        .map((c) => c.name)
-        .filter(Boolean)
-        .join(', ')}`,
-    });
-  }
-  if (saved.length) lines.push({ text: `Saved listings: ${saved.length}` });
+  section('Watchlist', [
+    ...(collections.length
+      ? [row('Collections', joined(...collections.map((c) => c.name)).replace(/ · /g, ', '))]
+      : []),
+    ...(saved.length ? [row('Saved listings', String(saved.length))] : []),
+  ]);
 
-  // Alert areas.
-  lines.push(
-    ...itemsSection('Alert areas', list(data.alert_areas), (a) => String(a.name ?? 'Alert area')),
+  section(
+    'Alert areas',
+    items(list(data.alert_areas), (a) => String(a.name ?? 'Alert area')),
   );
 
-  // Notifications: one line each.
-  const notifications = list(data.notifications);
-  lines.push(heading('Notifications'));
-  if (notifications.length === 0) lines.push(none());
-  for (const n of notifications) {
-    const when = typeof n.created_at === 'string' ? formatDate(n.created_at) : '';
-    lines.push({ text: when, tone: 'muted', gapBefore: 2 });
-    lines.push({ text: [n.title, n.body].filter(Boolean).join(' — '), indent: 8 });
-  }
-  lines.push(
-    heading('Notification settings'),
-    ...(isObj(data.notification_settings) ? fields(data.notification_settings) : [none()]),
+  // Notifications: the time beside what it said.
+  section(
+    'Notifications',
+    list(data.notifications).map((n) =>
+      row(
+        typeof n.created_at === 'string' ? formatDate(n.created_at) : '',
+        [n.title, n.body].filter(Boolean).join(' — '),
+      ),
+    ),
+  );
+  section(
+    'Notification settings',
+    isObj(data.notification_settings) ? fields(data.notification_settings) : [],
   );
 
   // Payments.
-  lines.push(
-    ...itemsSection('Payments', list(data.payments), (p) =>
-      [
-        formatValue('created_at', p.created_at),
-        p.role === 'received' ? 'Paid to you' : 'You paid',
-        formatValue('amount_pence', p.amount_pence),
-      ]
-        .filter(Boolean)
-        .join(' · '),
+  section(
+    'Payments',
+    items(
+      list(data.payments),
+      (p) =>
+        joined(
+          formatValue('created_at', p.created_at),
+          p.role === 'received' ? 'Paid to you' : 'You paid',
+          formatValue('amount_pence', p.amount_pence),
+        ),
+      // The title says when, which way and how much.
+      ['created_at', 'role', 'amount_pence'],
     ),
   );
-  lines.push(
-    heading('Payout account'),
-    ...(isObj(data.payout_account) ? fields(data.payout_account) : [none()]),
-  );
+  section('Payout account', isObj(data.payout_account) ? fields(data.payout_account) : []);
 
   const disputes = isObj(data.disputes) ? data.disputes : {};
-  lines.push(...itemsSection('Refund holds', list(data.refund_holds)));
-  lines.push(...itemsSection('Disputes you raised', list(disputes.you_raised)));
-  lines.push(...itemsSection('Disputes on your listings', list(disputes.on_your_listings)));
-  lines.push(...itemsSection('Reports you made', list(data.reports_you_made)));
-  lines.push(...itemsSection('People you blocked', list(data.people_you_blocked)));
+  section('Refund holds', items(list(data.refund_holds)));
+  section('Disputes you raised', items(list(disputes.you_raised)));
+  section('Disputes on your listings', items(list(disputes.on_your_listings)));
+  section('Reports you made', items(list(data.reports_you_made)));
+  section('People you blocked', items(list(data.people_you_blocked)));
 
   // Bug reports.
-  const bugs = list(data.bug_reports);
-  lines.push(heading('Bug reports'));
-  if (bugs.length === 0) lines.push(none());
-  for (const bug of bugs) {
-    lines.push(
+  section(
+    'Bug reports',
+    list(data.bug_reports).flatMap((bug) => [
       subheading(typeof bug.created_at === 'string' ? formatDate(bug.created_at) : 'Bug report'),
       ...fields(bug, ['created_at', 'screenshots', 'breadcrumbs']),
-    );
-    lines.push(...linkLines(bug.screenshots, 'Screenshot'));
-  }
+      ...linkRows(bug.screenshots, 'Screenshots', 'Screenshot'),
+    ]),
+  );
 
-  lines.push(...itemsSection('Devices', list(data.devices)));
-  lines.push(...itemsSection('Verification documents', list(data.verification_documents)));
-  return lines;
+  section('Devices', items(list(data.devices)));
+  section('Verification documents', items(list(data.verification_documents)));
+
+  if (empty.length) {
+    blocks.push(heading('Nothing to show'), {
+      text: empty.join(' · '),
+      tone: 'muted',
+      gapBefore: 2,
+    });
+  }
+  return blocks;
 }
 
-/** The PDF's bytes. */
+/** The PDF's bytes: every page headed with the logo and "Trackitdown". */
 export function renderDataExportPdf(data: Obj, machineReadable: MachineReadableCopy): Uint8Array {
   return renderPdf(dataExportPdfLines(data, machineReadable), {
     title: 'Your Trackitdown data',
+    header: 'Trackitdown',
   });
 }

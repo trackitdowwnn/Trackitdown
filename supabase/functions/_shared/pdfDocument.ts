@@ -1,8 +1,10 @@
 /**
- * WHAT:  renderPdf — a tiny, dependency-free PDF writer: lines of text in the
- *        built-in Helvetica (regular / bold), wrapped to the page width,
- *        paginated on A4, with optional clickable links. Returns the file's
- *        bytes.
+ * WHAT:  renderPdf — a tiny, dependency-free PDF writer: lines of text and
+ *        label/value rows in the built-in Helvetica (regular / bold), wrapped
+ *        to the page width, paginated on A4, with hairlines under headings,
+ *        optional clickable links, and a page header with the "T" mark drawn
+ *        as vector paths (owner, 2026-10-26: "the logo in the corner").
+ *        Returns the file's bytes.
  * WHY:   "Download your data" became a PDF (owner, 2026-10-23: phones can't
  *        open JSON without another app; every phone opens a PDF). The export
  *        is plain text — headings, label/value lines, links — so a ~200-line
@@ -12,10 +14,12 @@
  *
  *        ⚠️ TEXT IS WinAnsi (the standard fonts' encoding). Characters outside
  *        it (emoji, most non-Latin scripts) can't be drawn by Helvetica; they
- *        become "?" (and → becomes ->) rather than breaking the file. The
+ *        become "?" (and → becomes ›) rather than breaking the file. The
  *        machine-readable copy linked from the PDF keeps every character.
  * LINKS: ./dataExportPdf.ts (the layout); ../export-my-data/index.ts.
  */
+
+import { MARK_ASPECT, MARK_BARS, MARK_DOTS } from './brandMark.ts';
 
 export type PdfFont = 'regular' | 'bold';
 export type PdfTone = 'normal' | 'muted' | 'link';
@@ -23,21 +27,46 @@ export type PdfTone = 'normal' | 'muted' | 'link';
 export interface PdfLine {
   text: string;
   font?: PdfFont;
-  /** Point size (default 10). */
+  /** Point size (default BODY_SIZE). */
   size?: number;
   /** Left indent in points. */
   indent?: number;
-  /** Extra space above, in points. */
+  /** Extra space above, in points (dropped at the top of a page). */
   gapBefore?: number;
   tone?: PdfTone;
   /** Makes the line clickable. */
   link?: string;
+  /** A hairline under it — for section headings. */
+  rule?: boolean;
 }
+
+/** A label beside its value: the label in a muted column on the left, the
+ *  value wrapped in the column beside it. */
+export interface PdfRow {
+  kind: 'row';
+  label: string;
+  value: string;
+  /** Makes the value clickable. */
+  link?: string;
+  gapBefore?: number;
+}
+
+export type PdfBlock = PdfLine | PdfRow;
+
+const isRow = (block: PdfBlock): block is PdfRow => 'kind' in block && block.kind === 'row';
 
 const PAGE_WIDTH = 595.28; // A4
 const PAGE_HEIGHT = 841.89;
-const MARGIN = 48;
+const MARGIN = 40;
 const LINE_HEIGHT = 1.35;
+// Read on phones: an A4 page on a ~360pt screen is shown at ~0.6×, so 12pt
+// body text lands near 7pt — the smallest that reads comfortably.
+export const BODY_SIZE = 12;
+/** The label column of a row. */
+const LABEL_WIDTH = 132;
+/** The logo band at the top of every page (when there's a header). */
+const HEADER_BAND = 36;
+const MARK_WIDTH = 13;
 
 // Helvetica advance widths (1/1000 em) for ASCII 32–126 (Adobe AFM).
 const HELVETICA_WIDTHS = [
@@ -174,8 +203,9 @@ const CP1252_EXTRAS: Record<string, number> = {
 
 /** Readable stand-ins for common characters Helvetica can't draw. */
 const SUBSTITUTES: Record<string, string> = {
-  '→': '->',
-  '←': '<-',
+  // "Profile › Support & legal" — › is in WinAnsi and reads as a path.
+  '→': '›',
+  '←': '‹',
   '✓': 'v',
   ' ': ' ',
   ' ': ' ',
@@ -290,41 +320,168 @@ interface PlacedLine {
   link?: string;
 }
 
-/** Lays the lines out on A4 pages and returns the PDF's bytes. */
-export function renderPdf(lines: PdfLine[], meta: { title: string }): Uint8Array {
-  const pages: PlacedLine[][] = [[]];
-  let y = PAGE_HEIGHT - MARGIN;
-  const usable = PAGE_WIDTH - MARGIN * 2;
+interface Page {
+  lines: PlacedLine[];
+  /** Hairlines: from x1 to x2 at y. */
+  rules: { x1: number; x2: number; y: number }[];
+}
 
-  for (const line of lines) {
-    const size = line.size ?? 10;
+// Only web links: nothing else should open from a data export.
+const webLink = (link?: string) => (link?.startsWith('https://') ? link : undefined);
+
+/** A filled rounded rectangle as path operators (corners as Béziers). */
+function roundedRect(x: number, y: number, w: number, h: number, r: number): string {
+  const k = 0.5523 * r;
+  return [
+    `${fmt(x + r)} ${fmt(y)} m`,
+    `${fmt(x + w - r)} ${fmt(y)} l`,
+    `${fmt(x + w - r + k)} ${fmt(y)} ${fmt(x + w)} ${fmt(y + r - k)} ${fmt(x + w)} ${fmt(y + r)} c`,
+    `${fmt(x + w)} ${fmt(y + h - r)} l`,
+    `${fmt(x + w)} ${fmt(y + h - r + k)} ${fmt(x + w - r + k)} ${fmt(y + h)} ${fmt(x + w - r)} ${fmt(y + h)} c`,
+    `${fmt(x + r)} ${fmt(y + h)} l`,
+    `${fmt(x + r - k)} ${fmt(y + h)} ${fmt(x)} ${fmt(y + h - r + k)} ${fmt(x)} ${fmt(y + h - r)} c`,
+    `${fmt(x)} ${fmt(y + r)} l`,
+    `${fmt(x)} ${fmt(y + r - k)} ${fmt(x + r - k)} ${fmt(y)} ${fmt(x + r)} ${fmt(y)} c`,
+    'h',
+  ].join('\n');
+}
+
+/** A filled circle as path operators. */
+function circle(cx: number, cy: number, r: number): string {
+  const k = 0.5523 * r;
+  return [
+    `${fmt(cx + r)} ${fmt(cy)} m`,
+    `${fmt(cx + r)} ${fmt(cy + k)} ${fmt(cx + k)} ${fmt(cy + r)} ${fmt(cx)} ${fmt(cy + r)} c`,
+    `${fmt(cx - k)} ${fmt(cy + r)} ${fmt(cx - r)} ${fmt(cy + k)} ${fmt(cx - r)} ${fmt(cy)} c`,
+    `${fmt(cx - r)} ${fmt(cy - k)} ${fmt(cx - k)} ${fmt(cy - r)} ${fmt(cx)} ${fmt(cy - r)} c`,
+    `${fmt(cx + k)} ${fmt(cy - r)} ${fmt(cx + r)} ${fmt(cy - k)} ${fmt(cx + r)} ${fmt(cy)} c`,
+    'h',
+  ].join('\n');
+}
+
+/** The page header: the "T" mark (the app's own geometry, ./brandMark.ts)
+ *  and the wordmark, top left, with a hairline under the band. */
+function headerOps(wordmark: string): string[] {
+  const top = PAGE_HEIGHT - MARGIN;
+  const s = MARK_WIDTH / 2; // the geometry is in units of half the mark's width
+  const cx = MARGIN + s;
+  const cy = top - MARK_ASPECT * s;
+  const shapes = [
+    ...MARK_BARS.map((bar) =>
+      roundedRect(
+        cx + (bar.cx - bar.hw) * s,
+        // SVG's y runs down, the PDF's up.
+        cy - (bar.cy + bar.hh) * s,
+        2 * bar.hw * s,
+        2 * bar.hh * s,
+        bar.r * s,
+      ),
+    ),
+    ...MARK_DOTS.map((dot) => circle(cx + dot.cx * s, cy - dot.cy * s, dot.r * s)),
+  ];
+  const ruleY = top - HEADER_BAND + 10;
+  return [
+    TONE_COLOUR.normal,
+    ...shapes,
+    'f',
+    'BT',
+    '/F2 12 Tf',
+    `1 0 0 1 ${fmt(MARGIN + MARK_WIDTH + 6)} ${fmt(cy - 4.2)} Tm`,
+    `${pdfString(wordmark)} Tj`,
+    'ET',
+    `${RULE_COLOUR} 0.6 w ${fmt(MARGIN)} ${fmt(ruleY)} m ${fmt(PAGE_WIDTH - MARGIN)} ${fmt(ruleY)} l S`,
+  ];
+}
+
+const RULE_COLOUR = '0.85 0.85 0.85 RG';
+
+/** Lays the blocks out on A4 pages and returns the PDF's bytes. With a
+ *  `header`, every page carries the logo and that wordmark top left. */
+export function renderPdf(
+  blocks: PdfBlock[],
+  meta: { title: string; header?: string },
+): Uint8Array {
+  const top = PAGE_HEIGHT - MARGIN - (meta.header ? HEADER_BAND : 0);
+  const usable = PAGE_WIDTH - MARGIN * 2;
+  const pages: Page[] = [{ lines: [], rules: [] }];
+  let y = top;
+  const page = () => pages[pages.length - 1];
+  const newPage = () => {
+    pages.push({ lines: [], rules: [] });
+    y = top;
+  };
+  // Space above a block, except at the top of a page.
+  const gap = (points = 0) => {
+    if (y < top) y -= points;
+  };
+
+  for (const block of blocks) {
+    if (isRow(block)) {
+      // ⚠️ Linear like wrap: each column wrapped once, then placed line by line.
+      const size = BODY_SIZE;
+      const step = size * LINE_HEIGHT;
+      const labels = block.label
+        ? wrap(toWinAnsi(block.label), LABEL_WIDTH - 10, size, 'regular')
+        : [];
+      const values = wrap(toWinAnsi(block.value), usable - LABEL_WIDTH, size, 'regular');
+      const count = Math.max(labels.length, values.length);
+      const link = webLink(block.link);
+      gap(block.gapBefore ?? 3);
+      // Whole on a fresh page when it fits on one; a longer row (another
+      // person's long message) flows on, its label staying with line one.
+      if (y - count * step < MARGIN && count * step <= top - MARGIN) newPage();
+      for (let i = 0; i < count; i += 1) {
+        if (y - step < MARGIN) newPage();
+        y -= step;
+        if (labels[i]) {
+          page().lines.push({
+            text: labels[i],
+            font: 'regular',
+            size,
+            x: MARGIN,
+            y,
+            tone: 'muted',
+          });
+        }
+        if (values[i]) {
+          page().lines.push({
+            text: values[i],
+            font: 'regular',
+            size,
+            x: MARGIN + LABEL_WIDTH,
+            y,
+            tone: link ? 'link' : 'normal',
+            link,
+          });
+        }
+      }
+      continue;
+    }
+
+    const line = block;
+    const size = line.size ?? BODY_SIZE;
     const font = line.font ?? 'regular';
     const indent = line.indent ?? 0;
-    const tone = line.tone ?? (line.link?.startsWith('https://') ? 'link' : 'normal');
+    const link = webLink(line.link);
+    const tone = line.tone ?? (link ? 'link' : 'normal');
     const step = size * LINE_HEIGHT;
-    // A bold line is a heading: keep room for one body line under it, so it
-    // never sits alone at the foot of a page.
-    const keepWithNext = font === 'bold' ? 10 * LINE_HEIGHT : 0;
-    y -= line.gapBefore ?? 0;
+    // A bold line is a heading: keep room under it, so it never sits alone at
+    // the foot of a page — a section heading enough for a subheading and the
+    // first lines under that, a subheading two lines.
+    const keepWithNext = font !== 'bold' ? 0 : (line.rule ? 4 : 2) * BODY_SIZE * LINE_HEIGHT;
+    gap(line.gapBefore);
     const pieces = wrap(toWinAnsi(line.text), usable - indent, size, font);
     pieces.forEach((piece, index) => {
       const reserve = index === pieces.length - 1 ? keepWithNext : 0;
-      if (y - step - reserve < MARGIN) {
-        pages.push([]);
-        y = PAGE_HEIGHT - MARGIN;
-      }
+      if (y - step - reserve < MARGIN) newPage();
       y -= step;
-      pages[pages.length - 1].push({
-        text: piece,
-        font,
-        size,
-        x: MARGIN + indent,
-        y,
-        tone,
-        // Only web links: nothing else should open from a data export.
-        link: line.link?.startsWith('https://') ? line.link : undefined,
-      });
+      page().lines.push({ text: piece, font, size, x: MARGIN + indent, y, tone, link });
     });
+    if (line.rule) {
+      y -= 5;
+      page().rules.push({ x1: MARGIN + indent, x2: PAGE_WIDTH - MARGIN, y });
+      y -= 3;
+    }
   }
 
   // --- Serialise ------------------------------------------------------------
@@ -342,9 +499,14 @@ export function renderPdf(lines: PdfLine[], meta: { title: string }): Uint8Array
 
   const pageRefs: number[] = [];
   pages.forEach((placed, index) => {
-    const ops: string[] = [];
+    const ops: string[] = meta.header ? headerOps(meta.header) : [];
     const annots: number[] = [];
-    for (const line of placed) {
+    for (const rule of placed.rules) {
+      ops.push(
+        `${RULE_COLOUR} 0.6 w ${fmt(rule.x1)} ${fmt(rule.y)} m ${fmt(rule.x2)} ${fmt(rule.y)} l S`,
+      );
+    }
+    for (const line of placed.lines) {
       ops.push(
         'BT',
         TONE_COLOUR[line.tone],
