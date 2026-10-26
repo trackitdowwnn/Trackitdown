@@ -168,6 +168,10 @@ commenting standards.
     victim's address — and every public surface carried it. Non-owners now
     get the district (`last_seen_locality`) via `post_public_area`, or no area
     at all; the owner keeps the street. Both columns left the client grants.
+    (e) **CLOSED 2026-10-26** (20261026170000). Spotter ALERTS matched a zone
+    on the exact point, so whether a push arrived told a zone's owner if the
+    home lay in their circle. `match_alert_zones` now matches on
+    `post_pin_geog` too. `alert_zones_pin_verification.sql`.
     All routes are now closed, and every surface that matches, measures,
     emits or labels a driveway theft for a non-owner uses the ~1km grid or the
     district.
