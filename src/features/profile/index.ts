@@ -21,6 +21,7 @@ export { useMyProfile } from './hooks/useMyProfile';
 export { ProfileScreen } from './screens/ProfileScreen';
 export { ReportBugScreen } from './screens/ReportBugScreen';
 export { BlockedAccountsScreen } from './screens/BlockedAccountsScreen';
+export { YourDataScreen } from './screens/YourDataScreen';
 export { SettingsScreen } from './screens/SettingsScreen';
 export { useTrackVisitedTab } from './lib/lastArea';
 export { SpotterStoryScreen } from './screens/SpotterStoryScreen';

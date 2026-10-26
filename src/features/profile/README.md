@@ -31,11 +31,14 @@ caller deleting, as `[{code, count}]`; `forget_my_push_tokens()`
 
 ## Download your data (2026-10-23)
 
-Support & legal → **Download your data** → a confirm → `requestDataExport()`
-(`export-my-data`) → the 15-minute link opens a **PDF** in the browser (no
-native share sheet in this build; phones can't open JSON without another app —
-owner, 2026-10-23). The PDF links to the same data as JSON for moving it to
-another service. One export a day; a second tap re-sends today's.
+Support & legal → **Download your data** → a confirm → the **Your data** screen
+(`YourDataScreen`): `requestDataExport()` (`export-my-data`), then the **PDF** is
+drawn in the app with pdf.js in a WebView (`lib/pdfViewerHtml.ts`) — phones
+can't open JSON without another app (owner, 2026-10-23), and Android's in-app
+browser shows a PDF as a blank page (owner, 2026-10-26). **Save** opens the link
+in the phone's browser, which keeps the file; the PDF's links (the same data as
+JSON, photos, maps) open outside the app, https only. One export a day; a
+second tap re-sends today's.
 What goes in — and what never does (other people's identities, card details,
 fraud signals) — is `supabase/functions/_shared/dataExport.ts`;
 RECORD_OF_PROCESSING §4.20.

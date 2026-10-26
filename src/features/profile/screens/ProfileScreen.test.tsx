@@ -135,11 +135,6 @@ jest.mock('../api/profileApi', () => ({
   },
 }));
 
-const mockOpenBrowser = jest.fn();
-jest.mock('expo-web-browser', () => ({
-  openBrowserAsync: (...a: unknown[]) => mockOpenBrowser(...a),
-}));
-
 const mockRequireAuth = jest.fn();
 jest.mock('@/features/auth', () => ({
   useRequireAuth: () => mockRequireAuth,
@@ -516,15 +511,7 @@ describe('signed in', () => {
   });
 
   describe('download your data', () => {
-    beforeEach(() => {
-      mockRequestExport.mockResolvedValue({
-        url: 'https://files.example/export.json',
-        expiresAt: '2026-10-23T12:15:00Z',
-      });
-      mockOpenBrowser.mockResolvedValue(undefined);
-    });
-
-    it('confirming builds the file and opens it in the browser', async () => {
+    it('confirming opens the Your data screen, which builds the file', async () => {
       const { getByTestId, getByText } = await render(<ProfileScreen />);
       await act(async () => {
         fireEvent.press(getByTestId('row-download-data'));
@@ -533,30 +520,9 @@ describe('signed in', () => {
       await act(async () => {
         fireEvent.press(getByText('Get my data'));
       });
-      await waitFor(() =>
-        expect(mockOpenBrowser).toHaveBeenCalledWith('https://files.example/export.json'),
-      );
-      expect(mockRequestExport).toHaveBeenCalledTimes(1);
-    });
-
-    it('a failure says so and opens nothing', async () => {
-      mockRequestExport.mockRejectedValueOnce(
-        new Error('We couldn’t put your data together. Please try again.'),
-      );
-      const { getByTestId, getByText } = await render(<ProfileScreen />);
-      await act(async () => {
-        fireEvent.press(getByTestId('row-download-data'));
-      });
-      await act(async () => {
-        fireEvent.press(getByText('Get my data'));
-      });
-      await waitFor(() =>
-        expect(mockShowToast).toHaveBeenCalledWith(
-          'We couldn’t put your data together. Please try again.',
-          'error',
-        ),
-      );
-      expect(mockOpenBrowser).not.toHaveBeenCalled();
+      expect(mockPush).toHaveBeenCalledWith('/your-data');
+      // The screen asks for the file, not Profile.
+      expect(mockRequestExport).not.toHaveBeenCalled();
     });
 
     it('cancelling asks for nothing', async () => {
