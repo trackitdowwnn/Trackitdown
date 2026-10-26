@@ -35,6 +35,7 @@
 
 import { createServiceRoleClient, requireEnv } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { isOwnCleanPath } from '../_shared/storagePath.ts';
 // ⚠️ THE CONTENT BUILDERS LIVE NEXT DOOR SO THEY CAN BE TESTED. They are pure
 // and Deno-free on purpose: a TypeError in one of them stopped every bug-report
 // email on 2026-08-27, and this directory is outside tsconfig and outside lint.
@@ -151,6 +152,11 @@ Deno.serve(async (request) => {
   const paths = report.screenshot_paths ?? [];
   const links: { label: string; url: string | null }[] = [];
   for (const [index, path] of paths.entries()) {
+    // SAFETY (audit lead 10): never sign a path outside the reporter's folder.
+    if (!isOwnCleanPath(path, report.reporter_id)) {
+      links.push({ label: `Screenshot ${index + 1}`, url: null });
+      continue;
+    }
     const { data: signed } = await admin.storage
       .from(BUCKET)
       .createSignedUrl(path, LINK_TTL_SECONDS);

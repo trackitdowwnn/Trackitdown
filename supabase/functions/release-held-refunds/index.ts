@@ -195,6 +195,25 @@ Deno.serve(async (request) => {
     }
   }
 
+  // --- Phase 0b′: uploads nothing ever named (audit leads 9 + 17) ------------
+  // An upload whose submit never landed (an app killed mid-post, a rejected
+  // sighting) has no row, so no delete trigger ever queues it. Older than 48
+  // hours, in the app's own naming and named by no row → into the same queues
+  // the drains below empty (20261026160000). The drains re-check references
+  // at claim time, as for every other queued path.
+  try {
+    const { data: queued, error: queueError } = await admin.rpc('enqueue_unreferenced_uploads', {
+      p_limit: 200,
+    });
+    if (queueError) {
+      console.error('[storage] unreferenced upload scan failed', queueError.message);
+    } else if (queued) {
+      console.log('[storage] unreferenced uploads queued', { count: queued });
+    }
+  } catch (err) {
+    console.error('[storage] unreferenced upload scan threw', (err as Error).message);
+  }
+
   // --- Phase 0c: orphaned photo objects -------------------------------------
   // ⚠️ THE ERASURE HALF THAT SQL CANNOT DO. delete_vehicle removes rows and the
   // photo rows cascade, but the JPEGs sat in the PUBLIC post-photos bucket

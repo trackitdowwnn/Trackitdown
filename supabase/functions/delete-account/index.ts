@@ -69,7 +69,8 @@ import { sendOpsAlert } from '../_shared/opsAlert.ts';
  * Where a user's OWN bytes live. All three are uid-first paths
  * (`<uid>/...`), matching their storage policies' `foldername(name)[1]`.
  *
- * `sighting-photos` is DELIBERATELY ABSENT — see SIGHTING PHOTOS below.
+ * `sighting-photos` keys on segment 2 (`<post>/<uid>/…`) — see SIGHTING
+ * PHOTOS below for its history.
  */
 const BUCKETS = [
   { id: 'avatars', uidSegment: 1 },
@@ -83,10 +84,16 @@ const BUCKETS = [
   // Their data exports (`<uid>/…`, 20261023150000) — a copy of everything
   // about them must go with the account, not wait for the 24h sweep.
   { id: 'data-exports', uidSegment: 1 },
+  // Their sighting photos (`<post>/<uid>/…`), added 2026-10-26 (audit lead
+  // 9): rows cascade and queue their files, but an upload whose sighting
+  // never landed had no row and outlived the account. Gone now, at once.
+  { id: 'sighting-photos', uidSegment: 2 },
 ] as const;
 
 /*
- * SIGHTING PHOTOS — not swept HERE, but they do NOT survive the account.
+ * SIGHTING PHOTOS — swept HERE since 2026-10-26 (audit lead 9: an upload
+ * whose sighting never landed had no row to cascade, so it outlived the
+ * account). The history below explains why they were once left out.
  * ⚠️ Updated 2026-10-22: the reasoning below was written 2026-08 and is now
  * history. The spotter's sightings cascade with the account, and since
  * 20260921110000 every deleted sighting_photos row queues its file for the
