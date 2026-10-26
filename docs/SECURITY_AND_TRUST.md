@@ -723,6 +723,12 @@ commenting standards.
   - `account.updated` must be enabled by hand on the Stripe webhook endpoint.
     It is not a default, and without it `payouts_enabled` never becomes true,
     so every payout answers `awaiting_payee` forever — silently.
+    **Since 2026-10-26** the event is only a prompt: the webhook finds OUR row
+    by the account id and reads the account fresh from Stripe
+    (`syncPayoutAccountFromStripe`), so a stale or out-of-order delivery
+    cannot flip `payouts_enabled`, and the event's metadata can never re-point
+    which account a spotter is paid into (only the onboarding functions, on the
+    spotter's own JWT, record that).
   - **The collusion check is BUILT (2026-08-03)** and runs inside
     `release-payout` before any transfer, replacing the "do not take a live
     payment" gate that stood here. Three signals, any hit → the payout answers
