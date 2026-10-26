@@ -34,7 +34,6 @@
 import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
 import {
   Banknote,
   Bell,
@@ -79,7 +78,7 @@ import { useHasSavedCar } from '@/features/garage';
 import { useMyAlerts } from '@/features/notifications';
 import { usePayoutsRelevant } from '@/features/payments';
 
-import { requestDataExport, signOut } from '../api/profileApi';
+import { signOut } from '../api/profileApi';
 import { DeleteAccountSheet } from '../components/DeleteAccountSheet';
 import { ProfileHeroCard } from '../components/ProfileHeroCard';
 import { legalHref } from '@/shared/lib';
@@ -263,34 +262,16 @@ function LoadedProfile({
     deleteSheetRef.current?.open();
   };
 
-  // "Download your data": a confirm, then the file opens in the browser (no
-  // native share sheet in this build). The ref guards a double tap — the
-  // server builds at most one file a day, but a second request mid-build
-  // would still do the work twice.
+  // "Download your data": a confirm, then the Your data screen builds the file
+  // and shows the PDF in the app (the in-app browser can't show a PDF on
+  // Android — a blank page, owner 2026-10-26).
   const exportRef = useRef<ConfirmDialogRef>(null);
-  const exporting = useRef(false);
   const openDataExport = () => {
     if (devPreview) {
       toast.show('Sample data — download is disabled in preview.', 'error');
       return;
     }
     exportRef.current?.open();
-  };
-  const downloadData = async () => {
-    if (exporting.current) return;
-    exporting.current = true;
-    toast.show('Putting your data together…');
-    try {
-      const { url } = await requestDataExport();
-      await WebBrowser.openBrowserAsync(url);
-    } catch (error) {
-      toast.show(
-        error instanceof Error ? error.message : 'We couldn’t put your data together.',
-        'error',
-      );
-    } finally {
-      exporting.current = false;
-    }
   };
 
   const copyLogs = async () => {
@@ -558,9 +539,9 @@ function LoadedProfile({
       <ConfirmDialog
         ref={exportRef}
         title="Download your data?"
-        body="A copy of your account as a PDF. The link works for 15 minutes."
+        body="A copy of your account as a PDF."
         confirmLabel="Get my data"
-        onConfirm={() => void downloadData()}
+        onConfirm={() => router.push('/your-data')}
       />
     </SafeAreaView>
   );
