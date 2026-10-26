@@ -9,6 +9,30 @@
 
 import { buildDataExport, type DataExportRaw } from './dataExport';
 import { dataExportPdfLines, formatValue, renderDataExportPdf } from './dataExportPdf';
+import type { PdfBlock, PdfLine } from './pdfDocument';
+
+/** Every section the PDF can have. */
+const SECTIONS = [
+  'Your account',
+  'Your listings',
+  'Your garage',
+  'Sightings you reported',
+  'Conversations',
+  'Watchlist',
+  'Alert areas',
+  'Notifications',
+  'Notification settings',
+  'Payments',
+  'Payout account',
+  'Refund holds',
+  'Disputes you raised',
+  'Disputes on your listings',
+  'Reports you made',
+  'People you blocked',
+  'Bug reports',
+  'Devices',
+  'Verification documents',
+];
 
 const A = 'aaaaaaaa-0000-0000-0000-00000000000a';
 const B = 'bbbbbbbb-0000-0000-0000-00000000000b';
@@ -90,15 +114,15 @@ const raw: DataExportRaw = {
 };
 
 const exported = buildDataExport(raw, A, NOW);
-const allText = () =>
-  dataExportPdfLines(exported, JSON_COPY)
-    .map((l) => l.text)
-    .join('\n');
+/** A block as a person reads it: "Label: value" for a row. */
+const blockText = (b: PdfBlock) =>
+  'kind' in b ? (b.label ? `${b.label}: ${b.value}` : b.value) : b.text;
+const allText = () => dataExportPdfLines(exported, JSON_COPY).map(blockText).join('\n');
 
 describe('dataExportPdfLines', () => {
   it('reads like a document: UK dates, pounds, Yes/No', () => {
     const text = allText();
-    expect(text).toContain('Your Trackitdown data');
+    expect(text).toContain('Your data');
     expect(text).toContain('AB12 CDE · Ford · Fiesta');
     expect(text).toContain('Reward: £250.00');
     expect(text).toContain('Keys taken: No');
@@ -119,14 +143,14 @@ describe('dataExportPdfLines', () => {
     expect(lines).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ link: JSON_URL }),
-        expect.objectContaining({ text: 'Photo 1', link: 'https://cdn/p1.jpg' }),
+        expect.objectContaining({ value: 'Photo 1', link: 'https://cdn/p1.jpg' }),
         expect.objectContaining({ link: 'https://www.google.com/maps?q=53.48,-2.24' }),
       ]),
     );
   });
 
   it('says when the JSON link stops working, as a time', () => {
-    expect(allText()).toContain('This link works until 24 Oct 2026, 13:00.');
+    expect(allText()).toContain('The link works until 24 Oct 2026, 13:00.');
   });
 
   it('id lists (…_ids) are left out like ids', () => {
@@ -134,20 +158,74 @@ describe('dataExportPdfLines', () => {
       { account: { first_name: 'Ann', confirmed_feature_ids: ['mark-9'] } },
       JSON_COPY,
     )
-      .map((l) => l.text)
+      .map(blockText)
       .join('\n');
     expect(text).toContain('Ann');
     expect(text).not.toContain('mark-9');
   });
 
-  it('empty sections say "None" rather than vanish', () => {
-    expect(allText()).toMatch(/Your garage\nNone/);
+  it('empty sections are named together at the end, not given a heading each', () => {
+    const lines = dataExportPdfLines(exported, JSON_COPY);
+    const headings = lines.filter((b): b is PdfLine => 'rule' in b && b.rule === true);
+    expect(headings.map((h) => h.text)).not.toContain('Your garage');
+    expect(headings.at(-1)?.text).toBe('Nothing to show');
+    expect(blockText(lines.at(-1) as PdfBlock)).toContain('Your garage');
+  });
+
+  it('⚠️ every kind of data appears — as a section or by name in "Nothing to show"', () => {
+    const text = allText();
+    for (const title of SECTIONS) expect(text).toContain(title);
+    // An empty export names them all.
+    const empty = dataExportPdfLines({}, JSON_COPY).map(blockText).join('\n');
+    for (const title of SECTIONS) expect(empty).toContain(title);
+  });
+
+  it('the "Not included" list is no longer in the PDF (the JSON keeps it)', () => {
+    expect(allText()).not.toContain('Not included');
+    expect(exported.about).toHaveProperty('not_included');
+  });
+
+  it('codes read as words, free text is left as written', () => {
+    const text = dataExportPdfLines(
+      {
+        payments: [{ kind: 'listing_fee', status: 'collected', role: 'paid', amount_pence: 500 }],
+        account: { first_name: 'alice_b' },
+      },
+      JSON_COPY,
+    )
+      .map(blockText)
+      .join('\n');
+    expect(text).toContain('Kind: Listing fee');
+    expect(text).toContain('Status: Collected');
+    expect(text).toContain('First name: alice_b');
+  });
+
+  it('⚠️ another person’s 2000-character message lays out with every character kept', () => {
+    const long = 'W'.repeat(2000);
+    const pdf = String.fromCharCode(
+      ...renderDataExportPdf(
+        {
+          conversations: [
+            {
+              you_are: 'owner',
+              messages: [{ from: 'other', sent_at: NOW.toISOString(), text: long }],
+            },
+          ],
+        },
+        JSON_COPY,
+      ),
+    );
+    const drawn = [...pdf.matchAll(/\((W+)\) Tj/g)].map((m) => m[1]).join('');
+    expect(drawn).toBe(long);
   });
 
   it('renders to a PDF', () => {
     const pdf = String.fromCharCode(...renderDataExportPdf(exported, JSON_COPY));
     expect(pdf.startsWith('%PDF-1.4')).toBe(true);
     expect(pdf).toContain(`/URI (${JSON_URL})`);
+    // The logo and wordmark head every page.
+    const pages = Number(/\/Count (\d+)/.exec(pdf)?.[1]);
+    expect(pdf.match(/\(Trackitdown\) Tj/g)).toHaveLength(pages);
   });
 });
 
@@ -158,7 +236,10 @@ describe('formatValue', () => {
     ['payouts_enabled', true, 'Yes'],
     ['created_at', '2026-10-21T10:00:00Z', '21 Oct 2026, 11:00'],
     ['term_ends_at', '2026-12-25', '25 Dec 2026'],
-    ['damage_kinds', ['dent', 'scratch'], 'dent, scratch'],
+    ['damage_kinds', ['dent', 'scratch'], 'Dent, Scratch'],
+    ['kind', 'listing_fee', 'Listing fee'],
+    ['status', 'Pending review', 'Pending review'],
+    ['note', 'keep_as_written', 'keep_as_written'],
     ['note', '', null],
     ['note', null, null],
   ])('%s %p → %p', (key, value, expected) => {
