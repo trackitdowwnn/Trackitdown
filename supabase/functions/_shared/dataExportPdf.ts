@@ -90,7 +90,7 @@ const LABELS: Record<string, string> = {
 };
 
 /** Ids mean nothing to a person (the JSON copy keeps them). */
-const isIdKey = (key: string) => key === 'id' || key.endsWith('_id');
+const isIdKey = (key: string) => key === 'id' || key.endsWith('_id') || key.endsWith('_ids');
 
 function label(key: string): string {
   if (LABELS[key]) return LABELS[key];
@@ -190,7 +190,13 @@ const vehicleName = (v: Obj) =>
 
 // --- the document -------------------------------------------------------------
 
-export function dataExportPdfLines(data: Obj, machineReadableUrl: string): PdfLine[] {
+/** The JSON copy's signed link and when it stops working. */
+export interface MachineReadableCopy {
+  url: string;
+  expiresAt: string;
+}
+
+export function dataExportPdfLines(data: Obj, machineReadable: MachineReadableCopy): PdfLine[] {
   const about = isObj(data.about) ? data.about : {};
   const lines: PdfLine[] = [
     { text: 'Your Trackitdown data', font: 'bold', size: 20 },
@@ -212,9 +218,10 @@ export function dataExportPdfLines(data: Obj, machineReadableUrl: string): PdfLi
   lines.push(
     subheading('Machine-readable copy'),
     {
-      text: 'The same data as a file, for moving it to another service. This link works for 24 hours.',
+      // The time, not "24 hours": a PDF re-sent later in the day has less left.
+      text: `The same data as a file, for moving it to another service. This link works until ${formatDate(machineReadable.expiresAt)}.`,
     },
-    { text: 'Download the machine-readable copy (JSON)', link: machineReadableUrl },
+    { text: 'Download the machine-readable copy (JSON)', link: machineReadable.url },
   );
 
   // Account.
@@ -396,8 +403,8 @@ export function dataExportPdfLines(data: Obj, machineReadableUrl: string): PdfLi
 }
 
 /** The PDF's bytes. */
-export function renderDataExportPdf(data: Obj, machineReadableUrl: string): Uint8Array {
-  return renderPdf(dataExportPdfLines(data, machineReadableUrl), {
+export function renderDataExportPdf(data: Obj, machineReadable: MachineReadableCopy): Uint8Array {
+  return renderPdf(dataExportPdfLines(data, machineReadable), {
     title: 'Your Trackitdown data',
   });
 }

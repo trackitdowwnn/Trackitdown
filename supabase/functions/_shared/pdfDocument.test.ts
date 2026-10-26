@@ -62,6 +62,12 @@ describe('renderPdf', () => {
     expectValidXref(pdf);
   });
 
+  it('only https links become annotations', () => {
+    const pdf = text(renderPdf([{ text: 'Open', link: 'javascript:alert(1)' }], { title: 'T' }));
+    expect(pdf).not.toContain('/Subtype /Link');
+    expect(pdf).not.toContain('javascript');
+  });
+
   it('runs onto more pages, each numbered', () => {
     const lines = Array.from({ length: 200 }, (_, i) => ({ text: `Line ${i}` }));
     const pdf = text(renderPdf(lines, { title: 'T' }));
@@ -75,6 +81,17 @@ describe('renderPdf', () => {
 describe('text helpers', () => {
   it('keeps what Helvetica draws; emoji become "?" and arrows "->"', () => {
     expect(toWinAnsi('Café £5 – “ok” → 🚗\tend')).toBe('Café £5 – “ok” -> ? end');
+  });
+
+  it('joins a decomposed accent (e + ́) into é', () => {
+    expect(toWinAnsi('Café')).toBe('Café');
+  });
+
+  it('measures bold, accents and em dashes at their real widths', () => {
+    expect(textWidth('i', 10, 'bold')).toBeCloseTo(2.78);
+    expect(textWidth('i', 10)).toBeCloseTo(2.22);
+    expect(textWidth('é', 10)).toBeCloseTo(textWidth('e', 10));
+    expect(textWidth('—', 10)).toBeCloseTo(10);
   });
 
   it('wraps to the width, never over it', () => {
@@ -93,5 +110,20 @@ describe('text helpers', () => {
     const lines = wrap('x'.repeat(200), 100, 10, 'regular');
     expect(lines.length).toBeGreaterThan(1);
     for (const line of lines) expect(textWidth(line, 10)).toBeLessThanOrEqual(100);
+  });
+
+  it('⚠️ a 2000-character message with no spaces wraps fast and keeps every character', () => {
+    // Another person writes this; it lands in your export. Was cubic (#272 review).
+    const word = 'W'.repeat(2000);
+    const started = Date.now();
+    for (let i = 0; i < 50; i += 1) wrap(word, 499, 10, 'regular');
+    expect(Date.now() - started).toBeLessThan(500);
+    const lines = wrap(word, 499, 10, 'regular');
+    expect(lines.join('')).toBe(word);
+    for (const line of lines) expect(textWidth(line, 10)).toBeLessThanOrEqual(499);
+  });
+
+  it('a column narrower than one character still ends (one per line)', () => {
+    expect(wrap('WWW', 1, 10, 'regular')).toEqual(['W', 'W', 'W']);
   });
 });

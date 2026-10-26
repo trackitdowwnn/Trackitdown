@@ -14,6 +14,7 @@ const A = 'aaaaaaaa-0000-0000-0000-00000000000a';
 const B = 'bbbbbbbb-0000-0000-0000-00000000000b';
 const NOW = new Date('2026-10-23T12:00:00Z');
 const JSON_URL = 'https://files.example/export.json';
+const JSON_COPY = { url: JSON_URL, expiresAt: '2026-10-24T12:00:00Z' };
 
 const raw: DataExportRaw = {
   email: 'alice@example.com',
@@ -90,7 +91,7 @@ const raw: DataExportRaw = {
 
 const exported = buildDataExport(raw, A, NOW);
 const allText = () =>
-  dataExportPdfLines(exported, JSON_URL)
+  dataExportPdfLines(exported, JSON_COPY)
     .map((l) => l.text)
     .join('\n');
 
@@ -114,7 +115,7 @@ describe('dataExportPdfLines', () => {
   });
 
   it('links the machine-readable copy, photos and the map', () => {
-    const lines = dataExportPdfLines(exported, JSON_URL);
+    const lines = dataExportPdfLines(exported, JSON_COPY);
     expect(lines).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ link: JSON_URL }),
@@ -124,12 +125,27 @@ describe('dataExportPdfLines', () => {
     );
   });
 
+  it('says when the JSON link stops working, as a time', () => {
+    expect(allText()).toContain('This link works until 24 Oct 2026, 13:00.');
+  });
+
+  it('id lists (…_ids) are left out like ids', () => {
+    const text = dataExportPdfLines(
+      { account: { first_name: 'Ann', confirmed_feature_ids: ['mark-9'] } },
+      JSON_COPY,
+    )
+      .map((l) => l.text)
+      .join('\n');
+    expect(text).toContain('Ann');
+    expect(text).not.toContain('mark-9');
+  });
+
   it('empty sections say "None" rather than vanish', () => {
     expect(allText()).toMatch(/Your garage\nNone/);
   });
 
   it('renders to a PDF', () => {
-    const pdf = String.fromCharCode(...renderDataExportPdf(exported, JSON_URL));
+    const pdf = String.fromCharCode(...renderDataExportPdf(exported, JSON_COPY));
     expect(pdf.startsWith('%PDF-1.4')).toBe(true);
     expect(pdf).toContain(`/URI (${JSON_URL})`);
   });

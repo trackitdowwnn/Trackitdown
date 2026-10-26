@@ -48,6 +48,99 @@ const HELVETICA_WIDTHS = [
   222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
 ];
 
+// Helvetica-Bold, the same range (Adobe AFM).
+const HELVETICA_BOLD_WIDTHS = [
+  278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556,
+  556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611, 975, 722, 722, 722, 722, 667,
+  611, 778, 722, 278, 556, 722, 611, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667,
+  667, 611, 333, 278, 333, 584, 556, 333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556,
+  278, 889, 611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
+];
+
+/** Non-ASCII WinAnsi characters that aren't an accented ASCII letter: the
+ *  wider of the two fonts' widths. Accented letters take their base letter's
+ *  width (as in the AFM); anything else counts 1000, so text never overflows. */
+const HIGH_WIDTHS: Record<string, number> = {
+  '€': 556,
+  '‚': 278,
+  ƒ: 556,
+  '„': 500,
+  '…': 1000,
+  '†': 556,
+  '‡': 556,
+  ˆ: 333,
+  '‰': 1000,
+  '‹': 333,
+  Œ: 1000,
+  '‘': 278,
+  '’': 278,
+  '“': 500,
+  '”': 500,
+  '•': 350,
+  '–': 556,
+  '—': 1000,
+  '˜': 333,
+  '™': 1000,
+  '›': 333,
+  œ: 944,
+  '¡': 333,
+  '¢': 556,
+  '£': 556,
+  '¤': 556,
+  '¥': 556,
+  '¦': 280,
+  '§': 556,
+  '¨': 333,
+  '©': 737,
+  ª: 370,
+  '«': 556,
+  '¬': 584,
+  '®': 737,
+  '¯': 333,
+  '°': 400,
+  '±': 584,
+  '²': 333,
+  '³': 333,
+  '´': 333,
+  µ: 611,
+  '¶': 556,
+  '·': 278,
+  '¸': 333,
+  '¹': 333,
+  º: 365,
+  '»': 556,
+  '¼': 834,
+  '½': 834,
+  '¾': 834,
+  '¿': 611,
+  Æ: 1000,
+  æ: 889,
+  Ø: 778,
+  ø: 611,
+  ß: 611,
+  Ð: 722,
+  ð: 611,
+  Þ: 667,
+  þ: 611,
+  '×': 584,
+  '÷': 584,
+};
+
+/** One character's advance width, 1/1000 em. */
+function charUnits(char: string, font: PdfFont): number {
+  const table = font === 'bold' ? HELVETICA_BOLD_WIDTHS : HELVETICA_WIDTHS;
+  const code = char.codePointAt(0) ?? 0;
+  if (code >= 32 && code <= 126) return table[code - 32];
+  if (code === 0xa0) return 278; // no-break space
+  if (code === 0xad) return 333; // soft hyphen
+  const known = HIGH_WIDTHS[char];
+  if (known !== undefined) return known;
+  // é, Š, ÿ… are as wide as e, S, y.
+  const base = char.normalize('NFD').codePointAt(0) ?? 0;
+  if (base >= 65 && base <= 122 && base !== code) return table[base - 32];
+  return 1000;
+}
+
 /** Windows-1252 bytes 0x80–0x9F, by the character they stand for. */
 const CP1252_EXTRAS: Record<string, number> = {
   '€': 0x80,
@@ -100,7 +193,8 @@ function winAnsiByte(char: string): number | null {
  *  characters (tabs, stray newlines) as spaces. */
 export function toWinAnsi(text: string): string {
   let out = '';
-  for (const char of text) {
+  // NFC first: an "e" + combining accent becomes "é", which WinAnsi has.
+  for (const char of text.normalize('NFC')) {
     const code = char.codePointAt(0) ?? 0;
     if (code < 0x20) {
       out += ' ';
@@ -118,34 +212,49 @@ export function toWinAnsi(text: string): string {
 /** Width in points of WinAnsi-safe text. */
 export function textWidth(text: string, size: number, font: PdfFont = 'regular'): number {
   let units = 0;
-  for (const char of text) {
-    const code = char.codePointAt(0) ?? 0;
-    units += code >= 32 && code <= 126 ? HELVETICA_WIDTHS[code - 32] : 556;
-  }
-  // Bold runs ~5–10% wider; err wide so wrapping never overflows.
-  return (units / 1000) * size * (font === 'bold' ? 1.1 : 1);
+  for (const char of text) units += charUnits(char, font);
+  return (units / 1000) * size;
 }
 
-/** Words onto lines no wider than `max`; an over-long word is broken. */
+/** Words onto lines no wider than `max`; an over-long word is broken.
+ *  ⚠️ LINEAR in the text: another person's 2000-character message with no
+ *  spaces lands in your export, and re-measuring per cut made it cubic —
+ *  enough to time the export out (review of #272). */
 export function wrap(text: string, max: number, size: number, font: PdfFont): string[] {
   const lines: string[] = [];
+  const space = textWidth(' ', size, font);
   let current = '';
+  let currentWidth = 0;
   for (const word of text.split(' ')) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (textWidth(candidate, size, font) <= max) {
-      current = candidate;
+    const wordWidth = textWidth(word, size, font);
+    const candidateWidth = current ? currentWidth + space + wordWidth : wordWidth;
+    if (candidateWidth <= max) {
+      current = current ? `${current} ${word}` : word;
+      currentWidth = candidateWidth;
       continue;
     }
     if (current) lines.push(current);
-    // A single word wider than the line (a long link): break it by character.
-    let rest = word;
-    while (textWidth(rest, size, font) > max) {
-      let cut = rest.length - 1;
-      while (cut > 1 && textWidth(rest.slice(0, cut), size, font) > max) cut -= 1;
-      lines.push(rest.slice(0, cut));
-      rest = rest.slice(cut);
+    if (wordWidth <= max) {
+      current = word;
+      currentWidth = wordWidth;
+      continue;
     }
-    current = rest;
+    // A single word wider than the line (a long link): break it by character,
+    // at least one per line so a too-narrow column can't loop for ever.
+    let piece = '';
+    let pieceWidth = 0;
+    for (const char of word) {
+      const width = (charUnits(char, font) / 1000) * size;
+      if (piece && pieceWidth + width > max) {
+        lines.push(piece);
+        piece = '';
+        pieceWidth = 0;
+      }
+      piece += char;
+      pieceWidth += width;
+    }
+    current = piece;
+    currentWidth = pieceWidth;
   }
   lines.push(current);
   return lines;
@@ -191,11 +300,16 @@ export function renderPdf(lines: PdfLine[], meta: { title: string }): Uint8Array
     const size = line.size ?? 10;
     const font = line.font ?? 'regular';
     const indent = line.indent ?? 0;
-    const tone = line.tone ?? (line.link ? 'link' : 'normal');
+    const tone = line.tone ?? (line.link?.startsWith('https://') ? 'link' : 'normal');
     const step = size * LINE_HEIGHT;
+    // A bold line is a heading: keep room for one body line under it, so it
+    // never sits alone at the foot of a page.
+    const keepWithNext = font === 'bold' ? 10 * LINE_HEIGHT : 0;
     y -= line.gapBefore ?? 0;
-    for (const piece of wrap(toWinAnsi(line.text), usable - indent, size, font)) {
-      if (y - step < MARGIN) {
+    const pieces = wrap(toWinAnsi(line.text), usable - indent, size, font);
+    pieces.forEach((piece, index) => {
+      const reserve = index === pieces.length - 1 ? keepWithNext : 0;
+      if (y - step - reserve < MARGIN) {
         pages.push([]);
         y = PAGE_HEIGHT - MARGIN;
       }
@@ -207,9 +321,10 @@ export function renderPdf(lines: PdfLine[], meta: { title: string }): Uint8Array
         x: MARGIN + indent,
         y,
         tone,
-        link: line.link,
+        // Only web links: nothing else should open from a data export.
+        link: line.link?.startsWith('https://') ? line.link : undefined,
       });
-    }
+    });
   }
 
   // --- Serialise ------------------------------------------------------------

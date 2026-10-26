@@ -542,7 +542,11 @@ Deno.serve(async (request) => {
   let pdf: Uint8Array;
   try {
     if (jsonLinkError || !jsonLink?.signedUrl) throw new Error('json link');
-    pdf = renderDataExportPdf(exported, jsonLink.signedUrl);
+    pdf = renderDataExportPdf(exported, {
+      url: jsonLink.signedUrl,
+      // Signed just after createdAt, so this is never later than the real end.
+      expiresAt: new Date(createdAt.getTime() + PHOTO_LINK_SECONDS * 1000).toISOString(),
+    });
   } catch (error) {
     console.error('[profile] export pdf failed', (error as Error).message);
     await removeBoth();
