@@ -320,7 +320,8 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
 ### 4.20 Data exports ("Download your data", 2026-10-23)
 - **Subjects:** the user asking for their own data (Art. 15 access, Art. 20
   portability).
-- **Data:** one JSON file per request in the private `data-exports` bucket —
+- **Data:** per request, a readable PDF and the same data as JSON (linked from
+  the PDF, for portability) in the private `data-exports` bucket —
   their account, listings, garage, own sightings, chats (the other person
   shown as "other person"), anonymised sightings on their listings, watchlist,
   alert areas, notifications, payments, payout status, holds/disputes, reports

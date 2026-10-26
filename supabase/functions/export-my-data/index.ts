@@ -5,8 +5,11 @@
  *             THAT (a lost link costs nothing; one build a day);
  *          2. otherwise gather every row about them with the service role,
  *             build the export (_shared/dataExport — what goes in, and what
- *             never does), store it privately at data-exports/<uid>/<random>,
- *             record it, and return a 15-minute signed download link.
+ *             never does), store it privately as data-exports/<uid>/<random>
+ *             .json (machine-readable, Art. 20) AND .pdf (readable — owner,
+ *             2026-10-23: phones can't open JSON without another app; the PDF
+ *             links to the JSON), record it, and return a 15-minute signed
+ *             download link to the PDF.
  *        The app opens the link in the browser — no native share module.
  * WHY:   Owner, 2026-10-23. Until now the only route was emailing support.
  *
@@ -33,6 +36,7 @@
 
 import { createServiceRoleClient } from '../_shared/clients.ts';
 import { buildDataExport, type DataExportRaw, type Row } from '../_shared/dataExport.ts';
+import { renderDataExportPdf } from '../_shared/dataExportPdf.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
 
 const BUCKET = 'data-exports';
@@ -432,12 +436,16 @@ async function gather(admin: Admin, user: AuthUser): Promise<DataExportRaw> {
   };
 }
 
-/** A 15-minute link that downloads (not just displays) the file. */
-async function downloadLink(admin: Admin, path: string, createdAt: Date) {
-  const filename = `trackitdown-data-${createdAt.toISOString().slice(0, 10)}.json`;
+/** The readable PDF beside an export's JSON (the request row names the JSON;
+ *  the sweep removes both — 20261023160000). */
+const pdfPathFor = (jsonPath: string) => jsonPath.replace(/\.json$/, '.pdf');
+
+/** A 15-minute link that downloads the readable PDF. */
+async function downloadLink(admin: Admin, jsonPath: string, createdAt: Date) {
+  const filename = `trackitdown-data-${createdAt.toISOString().slice(0, 10)}.pdf`;
   const { data, error } = await admin.storage
     .from(BUCKET)
-    .createSignedUrl(path, LINK_SECONDS, { download: filename });
+    .createSignedUrl(pdfPathFor(jsonPath), LINK_SECONDS, { download: filename });
   if (error || !data?.signedUrl) return null;
   return {
     url: data.signedUrl,
@@ -494,11 +502,12 @@ Deno.serve(async (request) => {
     // The file is gone (removed early?) — fall through and build a new one.
   }
 
-  // 2 — build a new one.
-  let json: string;
+  // 2 — build a new one: the machine-readable JSON (Art. 20), then the
+  // readable PDF that links to it (owner, 2026-10-23: phones can't open JSON).
+  let exported: Record<string, unknown>;
   try {
     const raw = await gather(admin, userData.user as AuthUser);
-    json = JSON.stringify(buildDataExport(raw, userId, new Date()), null, 2);
+    exported = buildDataExport(raw, userId, new Date());
   } catch (error) {
     if (!(error instanceof GatherError)) {
       console.error('[profile] export build failed', (error as Error).message);
@@ -508,7 +517,15 @@ Deno.serve(async (request) => {
 
   const createdAt = new Date();
   const path = `${userId}/${crypto.randomUUID()}.json`;
-  const bytes = new TextEncoder().encode(json);
+  const pdfPath = pdfPathFor(path);
+  const removeBoth = async () => {
+    const { error: rollbackError } = await admin.storage.from(BUCKET).remove([path, pdfPath]);
+    if (rollbackError) {
+      console.error('[profile] export rollback failed — left for the sweep', { userId });
+    }
+  };
+
+  const bytes = new TextEncoder().encode(JSON.stringify(exported, null, 2));
   const { error: uploadError } = await admin.storage
     .from(BUCKET)
     .upload(path, bytes, { contentType: 'application/json', upsert: false });
@@ -516,24 +533,49 @@ Deno.serve(async (request) => {
     console.error('[profile] export upload failed', uploadError.message);
     return failed();
   }
+  // The PDF carries a link to the JSON, good for as long as the files live.
+  const { data: jsonLink, error: jsonLinkError } = await admin.storage
+    .from(BUCKET)
+    .createSignedUrl(path, PHOTO_LINK_SECONDS, {
+      download: `trackitdown-data-${createdAt.toISOString().slice(0, 10)}.json`,
+    });
+  let pdf: Uint8Array;
+  try {
+    if (jsonLinkError || !jsonLink?.signedUrl) throw new Error('json link');
+    pdf = renderDataExportPdf(exported, {
+      url: jsonLink.signedUrl,
+      // Signed just after createdAt, so this is never later than the real end.
+      expiresAt: new Date(createdAt.getTime() + PHOTO_LINK_SECONDS * 1000).toISOString(),
+    });
+  } catch (error) {
+    console.error('[profile] export pdf failed', (error as Error).message);
+    await removeBoth();
+    return failed();
+  }
+  const { error: pdfUploadError } = await admin.storage
+    .from(BUCKET)
+    .upload(pdfPath, pdf, { contentType: 'application/pdf', upsert: false });
+  if (pdfUploadError) {
+    console.error('[profile] export pdf upload failed', pdfUploadError.message);
+    await removeBoth();
+    return failed();
+  }
+
   const { data: recorded, error: recordError } = await admin
     .from('data_export_requests')
     .insert({
       user_id: userId,
       object_path: path,
-      byte_size: bytes.byteLength,
+      byte_size: bytes.byteLength + pdf.byteLength,
       created_at: createdAt.toISOString(),
     })
     .select('id')
     .single();
   if (recordError) {
-    // Unrecorded: take it back now. If that fails too, the hourly sweep still
-    // finds it — it also removes old files no request row names.
+    // Unrecorded: take them back now. If that fails too, the hourly sweep
+    // still finds them — it also removes old files no request row names.
     console.error('[profile] export record failed', recordError.message);
-    const { error: rollbackError } = await admin.storage.from(BUCKET).remove([path]);
-    if (rollbackError) {
-      console.error('[profile] export rollback failed — left for the sweep', { userId });
-    }
+    await removeBoth();
     return failed();
   }
 
@@ -545,7 +587,7 @@ Deno.serve(async (request) => {
   console.log('[profile] data export built', {
     userId,
     requestId: recorded.id,
-    bytes: bytes.byteLength,
+    bytes: bytes.byteLength + pdf.byteLength,
   });
   return jsonResponse({ ...link, reused: false });
 });
