@@ -67,6 +67,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockWebView = {};
   mockRequestExport.mockResolvedValue(LINK);
+  process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://proj.supabase.co';
   globalThis.fetch = jest.fn().mockResolvedValue({
     ok: true,
     arrayBuffer: async () => PDF_BYTES.buffer,
@@ -113,14 +114,31 @@ describe('YourDataScreen', () => {
     await waitFor(() => expect(openURL).toHaveBeenCalledWith('https://files.example/fresh.pdf'));
   });
 
-  it('opens the PDF’s https links outside the app, and nothing else', async () => {
+  it('opens the links the export writes (storage, Maps) outside the app', async () => {
     await shown();
     await message({ type: 'open', url: 'https://www.google.com/maps?q=53.48,-2.24' });
     expect(openURL).toHaveBeenCalledWith('https://www.google.com/maps?q=53.48,-2.24');
-    openURL.mockClear();
+    const photo = 'https://proj.supabase.co/storage/v1/object/public/post-photos/a.jpg';
+    await message({ type: 'open', url: photo });
+    expect(openURL).toHaveBeenCalledWith(photo);
+  });
+
+  it('⚠️ refuses any other link — a page could hide the data in one', async () => {
+    await shown();
+    await message({ type: 'open', url: 'https://evil.example/?data=everything' });
+    await message({ type: 'open', url: 'https://www.google.com/search?q=x' });
     await message({ type: 'open', url: 'javascript:alert(1)' });
     await message({ type: 'open', url: 'tel:999' });
     expect(openURL).not.toHaveBeenCalled();
+  });
+
+  it('a failed Save never shows the error’s text (it can quote the signed link)', async () => {
+    openURL.mockRejectedValueOnce(new Error(`Unable to open URL: ${LINK.url}`));
+    const { getByText } = await shown();
+    await act(async () => {
+      fireEvent.press(getByText('Save'));
+    });
+    expect(mockToast).toHaveBeenCalledWith('We couldn’t save your data. Please try again.', 'error');
   });
 
   it('⚠️ the WebView refuses every navigation but its own page', async () => {
@@ -128,6 +146,7 @@ describe('YourDataScreen', () => {
     const allow = mockWebView.onShouldStartLoadWithRequest as (r: { url: string }) => boolean;
     expect(allow({ url: 'about:blank' })).toBe(true);
     expect(allow({ url: 'https://evil.example/' })).toBe(false);
+    expect(allow({ url: 'data:text/html,<script></script>' })).toBe(false);
     expect(allow({ url: 'file:///data/data/app' })).toBe(false);
   });
 

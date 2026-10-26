@@ -9,8 +9,8 @@
  *        build. So the app draws the PDF itself (../lib/pdfViewerHtml.ts).
  *
  *        ⚠️ THE WEBVIEW GOES NOWHERE: every navigation is refused, and only
- *        https links the PDF asks for are opened — with Linking, outside the
- *        app. The PDF's bytes are fetched here and handed over as base64, so
+ *        the links the export writes (our storage, Google Maps — isExportLink)
+ *        are opened, with Linking, outside the app. The PDF's bytes are fetched here and handed over as base64, so
  *        the page never needs the signed link.
  *
  *        ⚠️ SAVE RE-ASKS WHEN THE LINK IS NEARLY OUT: the signed link lasts 15
@@ -37,7 +37,7 @@ import {
 import { BrandLoader, Button, ErrorState, Screen, useToast } from '@/shared/ui';
 
 import { requestDataExport } from '../api/profileApi';
-import { parsePdfViewerMessage, pdfViewerHtml } from '../lib/pdfViewerHtml';
+import { isExportLink, parsePdfViewerMessage, pdfViewerHtml } from '../lib/pdfViewerHtml';
 
 type Status = 'loading' | 'ready' | 'error';
 type ExportLink = Awaited<ReturnType<typeof requestDataExport>>;
@@ -102,7 +102,10 @@ export function YourDataScreen() {
       setShown(true);
     } else if (message.type === 'error') {
       setStatus('error');
-    } else if (message.type === 'open' && message.url.startsWith('https://')) {
+    } else if (
+      message.type === 'open' &&
+      isExportLink(message.url, process.env.EXPO_PUBLIC_SUPABASE_URL)
+    ) {
       void Linking.openURL(message.url);
     }
   }, []);
@@ -117,11 +120,10 @@ export function YourDataScreen() {
         link.current = current;
       }
       await Linking.openURL(current.url);
-    } catch (error) {
-      toast.show(
-        error instanceof Error ? error.message : 'We couldn’t save your data. Please try again.',
-        'error',
-      );
+    } catch {
+      // Never the error's own text: Android's openURL failure quotes the URL,
+      // which here is the signed link to the file.
+      toast.show('We couldn’t save your data. Please try again.', 'error');
     } finally {
       saving.current = false;
     }
@@ -166,9 +168,8 @@ export function YourDataScreen() {
               source={{ html }}
               originWhitelist={['*']}
               // Nothing loads in here but the viewer page itself.
-              onShouldStartLoadWithRequest={(request) =>
-                request.url.startsWith('about:') || request.url.startsWith('data:')
-              }
+              // (An html source loads as about:blank on both platforms.)
+              onShouldStartLoadWithRequest={(request) => request.url.startsWith('about:')}
               setSupportMultipleWindows={false}
               onMessage={onMessage}
               onError={() => setStatus('error')}

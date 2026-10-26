@@ -15,9 +15,12 @@
  *        so pdf.js runs it on the main thread and never builds a Worker from a
  *        cross-origin URL.
  *
- *        ⚠️ THE PAGE NAVIGATES NOWHERE. Links post {type:'open', url} and the
- *        screen opens https ones with Linking; the WebView refuses every
- *        navigation (YourDataScreen's onShouldStartLoadWithRequest).
+ *        ⚠️ THE PAGE NAVIGATES NOWHERE AND SENDS NOTHING. Links post
+ *        {type:'open', url} and the screen opens only isExportLink ones with
+ *        Linking; the WebView refuses every navigation (YourDataScreen's
+ *        onShouldStartLoadWithRequest); the CSP allows no fetch, no remote
+ *        image or font, no form or frame — so even a bad script can't carry
+ *        the export off the page (security review of #273).
  *
  *        Messages out: {type:'ready'} once pdf.js loaded (then the screen calls
  *        window.showPdf(base64)), {type:'rendered'}, {type:'error'},
@@ -48,6 +51,29 @@ export function parsePdfViewerMessage(data: string): PdfViewerMessage | null {
   return null;
 }
 
+/**
+ * ⚠️ Whether a link the page asks to open is one the export writes: our own
+ * storage (the JSON copy, photos) or a Google Maps pin. Anything else is
+ * refused — a page that could post {open} with the data in a URL would
+ * otherwise have a way out past the CSP below.
+ */
+export function isExportLink(url: string, storageUrl: string | undefined): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'https:') return false;
+  if (parsed.hostname === 'www.google.com' && parsed.pathname === '/maps') return true;
+  if (!storageUrl) return false;
+  try {
+    return parsed.origin === new URL(storageUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
 /** The viewer page, on the screen's background colour. */
 export function pdfViewerHtml(background: string): string {
   return `<!doctype html>
@@ -55,6 +81,7 @@ export function pdfViewerHtml(background: string): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://cdnjs.cloudflare.com 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data: blob:; connect-src 'none'; form-action 'none'; frame-src 'none'; base-uri 'none'">
 <style>
   html, body { margin: 0; background: ${background}; }
   #pages { padding: 12px; }
