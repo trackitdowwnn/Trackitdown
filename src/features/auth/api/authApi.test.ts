@@ -101,6 +101,15 @@ describe('requestEmailOtp', () => {
     });
   });
 
+  it('passes a captcha token when there is one (audit lead 5)', async () => {
+    mockSignInWithOtp.mockResolvedValue({ error: null });
+    await requestEmailOtp('jane@example.com', 'turnstile-token');
+    expect(mockSignInWithOtp).toHaveBeenCalledWith({
+      email: 'jane@example.com',
+      options: { shouldCreateUser: true, captchaToken: 'turnstile-token' },
+    });
+  });
+
   it('maps a 429 to the rate-limit copy', async () => {
     mockSignInWithOtp.mockResolvedValue({ error: { status: 429, code: 'over_email_send_rate_limit' } });
     await expect(requestEmailOtp('jane@example.com')).rejects.toMatchObject({

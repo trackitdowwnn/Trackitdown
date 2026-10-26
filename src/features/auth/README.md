@@ -423,6 +423,28 @@ white with a `#747775` border and `#1F1F1F` text, or its dark variant
 BLACK on light and WHITE on dark. The colours are pinned by
 `SocialSignInButtons.test.tsx`; don't swap them for palette tokens.
 
+### Captcha on "send me a code" (Cloudflare Turnstile, 2026-10-26)
+
+Security audit lead 5: the auth email limit is project-wide, so without a
+captcha one source could use it all and block email sign-in for everyone.
+Supabase checks a captcha token only on code and sign-up requests; Google,
+Apple, token refresh and code verification are exempt. `hooks/useCaptcha` asks
+a hidden Turnstile WebView for one fresh token per request (`lib/turnstile`).
+It is invisible unless Cloudflare wants a tap. With no site key it does
+nothing.
+
+⚠️ **Order matters, or email sign-in breaks:**
+1. Cloudflare → Turnstile → add a widget (Managed). Hostname: the domain in
+   `EXPO_PUBLIC_TURNSTILE_ORIGIN`.
+2. EAS → environment `preview`: add `EXPO_PUBLIC_TURNSTILE_SITE_KEY` and
+   `EXPO_PUBLIC_TURNSTILE_ORIGIN` (`https://<that domain>`). Both are public.
+3. Publish the OTA, then open the app twice on a test phone so it runs the
+   update.
+4. Only then: Supabase → Authentication → Attack Protection → captcha ON,
+   provider Turnstile, paste the **secret** key.
+5. Sign in with an email code on a phone. If it fails, switch captcha off
+   first, then investigate.
+
 ## Notes / follow-ups
 
 - SecureStore has a ~2048-byte iOS value limit; base sessions fit. If a real

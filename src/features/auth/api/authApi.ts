@@ -74,13 +74,15 @@ function isRateLimited(error: { status?: number; code?: string }): boolean {
 /**
  * Send a 6-digit OTP to `email`. Sign-up and sign-in are the SAME call
  * (shouldCreateUser: true) — no account-exists fork, no password.
+ * `captchaToken` is a fresh Turnstile token (hooks/useCaptcha) once captcha
+ * protection is on; undefined while it is off.
  */
-export async function requestEmailOtp(email: string): Promise<void> {
+export async function requestEmailOtp(email: string, captchaToken?: string): Promise<void> {
   const address = email.trim();
   log.info('otp_requested', { email: redactEmail(address) });
   const { error } = await supabase.auth.signInWithOtp({
     email: address,
-    options: { shouldCreateUser: true },
+    options: { shouldCreateUser: true, ...(captchaToken ? { captchaToken } : {}) },
   });
   if (error) {
     if (isRateLimited(error)) {
