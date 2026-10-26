@@ -358,45 +358,44 @@ Deno.serve(async (request) => {
       // verification can still fail afterwards, and that is precisely the case
       // that must not look ready. `charges_enabled` is irrelevant here: we
       // never charge a connected account, we only transfer to one.
+      //
+      // ⚠️ RESOLVED BY THE ACCOUNT ID WE RECORDED, READ FRESH (2026-10-26,
+      // security audit hardening). This used to take the profile from
+      // account.metadata.profile_id and copy the event's own snapshot of the
+      // flags: a delayed older delivery could set payouts_enabled back to true
+      // after Stripe had turned it off (and release money on it), and the
+      // upsert could re-point a profile's payout destination to whatever
+      // account the metadata named. Now it is the same path as the v2 events
+      // below — find OUR row by account id, ask Stripe for the account as it is
+      // now, record it, and release on the false → true edge
+      // (applyPayoutAccountState). Order and duplicates stop mattering, and a
+      // webhook can never change which account a spotter is paid into: only
+      // the onboarding functions, acting on the spotter's own JWT, record that.
+      //
+      // MONEY: the collusion gate runs INSIDE the release core, on this path
+      // too, and it never throws — a release failure must not 500 this event.
       const account = event.data.object as Stripe.Account;
-      const profileId = account.metadata?.profile_id;
-      if (!profileId) {
-        // Not one of ours, or made outside the onboarding function. Ignored
-        // rather than guessed at — matching on anything else risks writing a
-        // payee row against the wrong person, and that is a payment to a
-        // stranger.
-        console.warn('[payments] account.updated without profile_id', {
+      const result = await syncPayoutAccountFromStripe(admin, stripe, account.id, (profileId) =>
+        releaseAllPendingFor(admin, stripe, profileId),
+      );
+      if (result.outcome === 'unreadable') {
+        // A Stripe blip — thrown so this event is answered 500 and redelivered.
+        throw new Error('payout account unreadable');
+      }
+      if (result.outcome === 'unknown_account') {
+        // Not one we recorded: every creator records the id before onboarding
+        // can begin, so this is another integration or a test account. Never
+        // guessed at — that would risk paying a stranger.
+        console.warn('[payments] account.updated for an unrecorded account', {
           accountId: account.id,
         });
       } else {
-        const { error } = await admin.rpc('upsert_connected_account', {
-          p_profile_id: profileId,
-          p_stripe_account_id: account.id,
-          p_onboarding_complete: Boolean(account.details_submitted),
-          p_payouts_enabled: Boolean(account.payouts_enabled),
-        });
-        if (error) throw error;
         // Flags only — never a name, never the bank details Stripe just took.
         console.log('[payments] payee account updated', {
           accountId: account.id,
-          payoutsEnabled: Boolean(account.payouts_enabled),
+          changed: result.changed,
+          becamePayable: result.becamePayable,
         });
-
-        // AUTO-RELEASE (2026-08-04): the moment a payee becomes payable, send
-        // whatever they are already owed — this is what makes "you'll be paid
-        // automatically" true instead of a promise about a tap the owner never
-        // knew to make. Fired on payable regardless of transition direction:
-        // the core is a no-op unless a recovery_claimed post with a credited
-        // sighting exists, and the per-post idempotency key makes racing the
-        // owner's manual tap safe.
-        //
-        // MONEY: the collusion gate runs INSIDE the core, on this path too.
-        // Never throws — an auto-release failure must not 500 this event and
-        // force Stripe to replay it; the flags above are already recorded, and
-        // the owner's manual retry remains the recovery path.
-        if (account.payouts_enabled) {
-          await releaseAllPendingFor(admin, stripe, profileId);
-        }
       }
     } else if (event.type.startsWith('payout.') && event.account) {
       // THE LAST LEG (2026-10-14): Stripe's payout from a spotter's payee
