@@ -83,9 +83,10 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
   tokens in the device keychain.
 - **Purpose:** passwordless sign-in; a first name as the public identity.
 - **Basis:** contract.
-- **Recipients:** Supabase; Apple/Google sign-in; Resend (codes). Profiles are
-  readable by any signed-in user (`profiles_select_authenticated`) — the
-  private `display_name` included (DOMAIN.md notes this).
+- **Recipients:** Supabase; Apple/Google sign-in; Resend (codes). A profile row
+  is readable by its owner only (`profiles_select_self`, 2026-10-26); other
+  users see a first name and reputation counters through server functions,
+  never `display_name`.
 - **Retention:** while the account exists; cascades on deletion.
 - **Security:** RLS, own-row writes; emails redacted in logs; keychain storage.
 

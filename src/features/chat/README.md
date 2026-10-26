@@ -75,9 +75,10 @@ Both routes call the same `open_thread` and land in `/chat/[threadId]`.
    simply did nothing on one of them. The server is the enforcement either
    way: `get_thread_peer` returns `peer: null` unless the caller owns the
    post. The data comes from that RPC,
-   which keeps the peer's uid SERVER-side (a uid in app code pivots via
-   the permissive profiles select to display_name/avatar_path — security
-   review H1); the sheet returns no avatar for the same reason. Only the
+   which keeps the peer's uid SERVER-side (a uid in app code pivoted via
+   the then-permissive profiles select to display_name — security review
+   H1; profiles is own-row only since 20261026120000 — and the avatars
+   bucket is still public by uid); the sheet returns no avatar. Only the
    sheet COMPONENT is deferred-imported, to avoid closing a require cycle
    (chat → profile → garage → vehicles → chat; same precedent as
    PostSightingsScreen).

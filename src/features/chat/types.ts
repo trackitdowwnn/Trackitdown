@@ -55,10 +55,10 @@ export interface OutgoingMessage {
  *  other party is FIRST NAME ONLY. No avatar: the avatar storage path is
  *  pinned to `<uid>/avatar.jpg`, so returning it (or any URL built from it)
  *  would ship the other participant's uid to the client — reversing the
- *  boundary open_thread_for_sighting exists to protect, and chaining to a
- *  surname via the permissive profiles policy. Same call the post-detail
- *  owner block already made (20260713170000_post_detail_owner_no_avatar_path).
- *  Chat avatars can return once the profiles read-path is hardened. */
+ *  boundary open_thread_for_sighting exists to protect. Same call the
+ *  post-detail owner block already made (20260713170000_post_detail_owner_no_avatar_path).
+ *  The profiles table is own-row only since 20261026120000, but the avatars
+ *  bucket is still public by uid, so avatars stay out until it is not. */
 export interface InboxThread {
   threadId: string;
   postId: string;

@@ -430,10 +430,9 @@ BLACK on light and WHITE on dark. The colours are pinned by
   (cipher key in SecureStore, ciphertext in AsyncStorage).
 - Apple nonce hardening (hashed nonce through `signInAsync`) is a sensible later
   addition; the baseline passes the identity token directly.
-- **Profiles read-path hardening (tracked, pre-existing).** `profiles.display_name`
-  is readable by any signed-in user (permissive `profiles_select_authenticated`
-  policy), yet DOMAIN/SECURITY_AND_TRUST §1 say a surname must stay private. This
-  flow therefore does NOT collect a surname at sign-up (first name only). Before
-  any surname is collected anywhere (e.g. the profile-edit screen), harden the
-  read path: a first-name-only view/RPC + revoke the raw-row SELECT. Not this
-  feature's scope.
+- **Profiles read path — hardened 2026-10-26 (20261026120000).** The table
+  policy is now `profiles_select_self` (own row only). Another user's first
+  name and counters reach the app only through SECURITY DEFINER RPCs
+  (get_post_detail, get_post_sightings, get_inbox, get_thread_peer), so a
+  `display_name` holding a surname is no longer readable by anyone else. Do
+  not add a direct `from('profiles')` read of another user's row; add an RPC.

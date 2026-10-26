@@ -835,9 +835,9 @@ Rules that follow, and are not implementation details:
 - Never exposed to anyone: surname / `display_name`, email, the owner's other
   posts, precise location, `owner_id`, or any contact path (chat opens only
   after a sighting — see Chat). **No avatar photo**: the avatar path is pinned
-  to `<owner_id>/…`, so serving it would leak `owner_id` (and, via the
-  permissive `profiles` read policy, the surname) — restoring the photo needs
-  the profiles read path hardened first. Member-since is coarsened to the
+  to `<owner_id>/…` in the public `avatars` bucket, so serving it would leak
+  `owner_id`. (The `profiles` table itself is own-row only since 2026-10-26,
+  so a uid no longer leads to a surname.) Member-since is coarsened to the
   month. Enforced server-side in `get_post_detail` (SECURITY_AND_TRUST.md §6).
   (Approved 2026-07-13 with the post-detail content-density pass.)
 
@@ -862,7 +862,10 @@ A post carries structured, spotter-useful data beyond make/model/plate:
   `search_posts` needs no owner branch, unlike `get_post_detail`, because it
   never returns the caller's own posts. `get_home_feed` and `get_nearby_posts`
   need no snap: they return `home_feed_post_json` only, which carries
-  `last_seen_area` and a distance but no coordinates. (`get_home_feed`'s own
+  an area label and a distance but no coordinates — and since 2026-10-26 they
+  MATCH on the snapped point too, and a driveway theft's label is its
+  district (`last_seen_locality`), never the street; the owner still sees
+  their own street. (`get_home_feed`'s own
   `ST_SnapToGrid` is a different rule for a different status — it withholds a
   **recovered** post's precise point.)
   Two indirect routes to the same address were found and closed in the same
