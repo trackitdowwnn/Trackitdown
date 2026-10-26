@@ -89,6 +89,25 @@ export function payoutTransferGroups(
   return [...new Set(groups)];
 }
 
+/**
+ * A transfer Stripe already holds for this post, or null. The payout's
+ * idempotency key only converges retries for ~24 hours: a transfer whose
+ * ledger record failed, retried a day later, would otherwise be a SECOND
+ * transfer (security audit hardening, 2026-10-26). Asked under every group a
+ * payout for the post can carry. Throws if Stripe can't be asked — never a
+ * transfer on an unanswered question.
+ */
+export async function findExistingPayoutTransfer(
+  stripe: Pick<Stripe, 'transfers'>,
+  groups: string[],
+): Promise<Stripe.Transfer | null> {
+  for (const group of groups) {
+    const found = await stripe.transfers.list({ transfer_group: group, limit: 1 });
+    if (found.data.length > 0) return found.data[0];
+  }
+  return null;
+}
+
 export type ReleaseOutcome =
   | { status: 'paid'; transferPence: number; feePence: number }
   | { status: 'awaiting_payee' }
@@ -239,11 +258,14 @@ export async function releasePayoutForPost(
   // Read BEFORE the lock below, so a Stripe hiccup here never stamps
   // payout_started_at for a payout that was never attempted.
   let sourceChargeId: string | null;
+  let chargeGroup: string | null = null;
   try {
     const intent = await stripe.paymentIntents.retrieve(paymentIntentId, {
       expand: ['latest_charge'],
     });
     sourceChargeId = payoutSourceCharge(intent.latest_charge);
+    const charge = intent.latest_charge;
+    chargeGroup = charge && typeof charge !== 'string' ? (charge.transfer_group ?? null) : null;
   } catch (err) {
     console.error('[payments] reward charge lookup failed', (err as Error).message);
     return { status: 'error', code: 'STRIPE_ERROR' };
@@ -279,7 +301,17 @@ export async function releasePayoutForPost(
   // --- Transfer (idempotent — never a second payout) --------------------------
   let transfer: Stripe.Transfer;
   try {
-    transfer = await stripe.transfers.create(
+    // Already paid? Under the post lock, ask Stripe first — the key below
+    // lapses after ~24h, so a late retry must find the first transfer, not
+    // mint another (audit hardening, 2026-10-26).
+    const existing = await findExistingPayoutTransfer(
+      stripe,
+      payoutTransferGroups(postId, paymentIntentId, chargeGroup),
+    );
+    if (existing) {
+      console.log('[payments] payout already at Stripe — recording it', { postId });
+    }
+    transfer = existing ?? await stripe.transfers.create(
       {
         amount: transferPence,
         currency: 'gbp',
