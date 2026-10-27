@@ -1,6 +1,7 @@
 /**
  * WHAT:  The pending "offer to save a car" intent — set when someone abandons
- *        the post-a-car wizard, consumed by SaveYourCarSheet.
+ *        the post-a-car wizard or marks a listing recovered, consumed by
+ *        SaveYourCarSheet.
  * WHY:   The wizard route UNMOUNTS when the user backs out, so the sheet cannot
  *        live there; it needs a store the departing screen can post to and a
  *        root-mounted sheet can read. Deliberately a FORK of the auth
@@ -13,7 +14,8 @@
  *        nowhere, long after the moment that prompted it.
  * LINKS: src/features/auth/gate/gateIntent.ts (the shape this copies);
  *        src/features/garage/components/SaveYourCarSheet.tsx (the consumer);
- *        src/app/post-a-car.tsx (the only setter).
+ *        the setters: StartReportScreen.tsx (the wizard's onAbandon) and
+ *        src/app/recover-post.tsx (after a recovery).
  */
 
 import { useSyncExternalStore } from 'react';
@@ -40,7 +42,8 @@ function getSnapshot(): SaveCarNudgeIntent | null {
 }
 
 /** Ask for the offer to be made. The sheet decides whether it actually should
- *  be (signed in, no saved car, never offered before) — the caller only reports
+ *  be (signed in, no saved car, never offered before — a recovery skips that
+ *  last rule, being its own rare moment) — the caller only reports
  *  that the moment happened. A second request simply replaces the first; it
  *  never queues, because two identical offers is one offer. */
 export function requestSaveCarNudge(
