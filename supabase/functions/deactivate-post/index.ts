@@ -31,6 +31,9 @@
  *        request dies after the refund is issued. Escrow model per ADR-0002:
  *        the charge was captured to the platform balance ('held'); a refund
  *        returns it to the owner.
+ *        The refund is CLAIMED under the post lock first
+ *        (claim_deactivate_refund, 20261027100000), so a credit or payout
+ *        racing it is refused rather than refunded from under the spotter.
  * LINKS: supabase/functions/_shared/refundEscrow.ts (the refund execution);
  *        supabase/functions/_shared/clients.ts, _shared/http.ts;
  *        supabase/functions/create-payment-intent/index.ts (the charge sibling
@@ -47,7 +50,7 @@
 
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
-import { refundHeldEscrow } from '../_shared/refundEscrow.ts';
+import { refundPayment } from '../_shared/refundEscrow.ts';
 import { gateExitRefund } from '../_shared/refundHold.ts';
 
 /** The paid states whose escrow can be refunded on deactivation. A draft has no
@@ -199,16 +202,53 @@ Deno.serve(async (request) => {
     return jsonResponse({ held: true, refundAfter: gate.expiresAt });
   }
 
-  // --- Refund the held escrow (the one shared implementation) -----------------
+  // --- MONEY: claim the reward under the post lock, before any Stripe call ----
+  // The status read above holds no lock. A credit (claim_recovery) or a payout
+  // (begin_payout) landing between it and the refund would be refunded from
+  // under the spotter (audit run 2, lead 1). The claim re-checks under the
+  // lock and, once taken, both refuse with REWARD_ENDING. Idempotent: a retry
+  // gets the same payment back.
+  const { data: claimedIntent, error: claimError } = await admin.rpc('claim_deactivate_refund', {
+    p_post_id: postId,
+  });
+  if (claimError) {
+    console.error('[payments] claim_deactivate_refund failed', claimError.message);
+    return errorResponse('LOOKUP_FAILED', 'We couldn’t deactivate your listing. Please try again.', 500);
+  }
+  if (typeof claimedIntent !== 'string') {
+    // Credited, paying out, or no held reward any more — nothing to refund.
+    return errorResponse(
+      'POST_NOT_REFUNDABLE',
+      'This listing can’t be deactivated for a refund.',
+      409,
+    );
+  }
+
+  // --- Refund the claimed payment (the one shared implementation) -------------
   // Fixed-fee amount (ADR-0021), arithmetic guarded, refund idempotent — see
   // _shared/refundEscrow.ts. The key is the PAYMENT's (`payment-refund-<pi>`),
   // so a retry after a dropped response returns the SAME refund, and the
   // sweep, retrying this exit after a hold, asks with that same key.
   const stripe = createStripeClient();
-  const outcome = await refundHeldEscrow(admin, stripe, { postId });
+  const outcome = await refundPayment(admin, stripe, {
+    paymentIntentId: claimedIntent,
+    // Still the reward when we refund it — see refundPayment.
+    statuses: ['held'],
+  });
 
+  if (outcome.status === 'no_held_payment' || outcome.status === 'lookup_failed') {
+    // No refund reached Stripe: give the claim back so the owner can credit.
+    // stripe_error keeps it — a timed-out refund may have moved the money, and
+    // a retry resumes it (refundPayment finds the existing refund).
+    const { error: releaseError } = await admin.rpc('release_reward_end_refund_claim', {
+      p_payment_intent_id: claimedIntent,
+    });
+    if (releaseError) {
+      console.error('[payments] release_reward_end_refund_claim failed', releaseError.message);
+    }
+  }
   if (outcome.status === 'no_held_payment') {
-    // Defensive: an eligible-status post with no held escrow is an anomaly.
+    // Defensive: the claimed payment stopped being held (a renewal captured).
     return errorResponse('NO_HELD_PAYMENT', 'We couldn’t find the escrow for this listing.', 409);
   }
   if (outcome.status === 'lookup_failed') {
