@@ -114,63 +114,108 @@ export async function sendExpoPush(
   if (messages.length === 0) return result;
 
   for (const batch of chunk(messages, MAX_MESSAGES_PER_REQUEST)) {
-    let tickets: ExpoTicket[];
-    try {
-      const response = await fetch(EXPO_SEND_URL, {
-        method: 'POST',
-        headers: expoHeaders(),
-        body: JSON.stringify(batch),
-      });
-      const payload = (await response.json()) as { data?: ExpoTicket[]; errors?: unknown };
-      if (!response.ok || !Array.isArray(payload.data)) {
-        // Request-level failure (TOO_MANY_REQUESTS, UNAUTHORIZED, …). Nothing
-        // in this chunk was accepted; the post is still visible in-app.
-        console.error('[notifications] expo send rejected the batch', response.status);
-        result.rejected += batch.length;
-        continue;
-      }
-      tickets = payload.data;
-    } catch (err) {
-      console.error('[notifications] expo send failed', (err as Error).message);
-      result.rejected += batch.length;
-      continue;
-    }
-
-    // Tickets map POSITIONALLY onto the messages we sent, which is the only
-    // way to know whose token a failure belongs to.
-    const pending: { ticket_id: string; token: string }[] = [];
-    const dead: string[] = [];
-    tickets.forEach((ticket, index) => {
-      const token = batch[index]?.to;
-      if (ticket.status === 'ok' && ticket.id) {
-        result.accepted += 1;
-        if (token) pending.push({ ticket_id: ticket.id, token });
-        return;
-      }
-      result.rejected += 1;
-      // DeviceNotRegistered can arrive HERE as well as in the receipt — the
-      // app was uninstalled and Expo already knows.
-      if (ticket.details?.error === 'DeviceNotRegistered' && token) dead.push(token);
-      else if (ticket.status === 'error') {
-        console.error('[notifications] push ticket error', ticket.details?.error ?? 'unknown');
-      }
-    });
-
-    if (pending.length > 0) {
-      const { error } = await admin.from('push_receipts').upsert(pending, {
-        onConflict: 'ticket_id',
-      });
-      // A parking failure costs us the ability to prune later, nothing more.
-      if (error) console.error('[notifications] could not park tickets', error.message);
-    }
-    result.pruned += await pruneTokens(admin, dead);
+    await sendChunk(admin, batch, result);
   }
 
   return result;
 }
 
+async function sendChunk(
+  admin: SupabaseClient,
+  batch: readonly PushMessage[],
+  result: SendPushResult,
+): Promise<void> {
+  let tickets: ExpoTicket[];
+  try {
+    const response = await fetch(EXPO_SEND_URL, {
+      method: 'POST',
+      headers: expoHeaders(),
+      body: JSON.stringify(batch),
+    });
+    const payload = (await response.json()) as { data?: ExpoTicket[]; errors?: unknown };
+    if (!response.ok || !Array.isArray(payload.data)) {
+      // SAFETY: a token from ANOTHER Expo project (anyone can mint a real one
+      // and register it) fails the whole request for every stranger sharing
+      // it. Resend each project's tokens on their own (audit run 2, lead 5).
+      const groups = splitByProject(batch, payload.errors);
+      if (groups) {
+        console.error('[notifications] batch mixed Expo projects, resending per project');
+        for (const group of groups) await sendChunk(admin, group, result);
+        return;
+      }
+      // Request-level failure (TOO_MANY_REQUESTS, UNAUTHORIZED, …). Nothing
+      // in this chunk was accepted; the post is still visible in-app.
+      console.error('[notifications] expo send rejected the batch', response.status);
+      result.rejected += batch.length;
+      return;
+    }
+    tickets = payload.data;
+  } catch (err) {
+    console.error('[notifications] expo send failed', (err as Error).message);
+    result.rejected += batch.length;
+    return;
+  }
+
+  // Tickets map POSITIONALLY onto the messages we sent, which is the only
+  // way to know whose token a failure belongs to.
+  const pending: { ticket_id: string; token: string }[] = [];
+  const dead: string[] = [];
+  tickets.forEach((ticket, index) => {
+    const token = batch[index]?.to;
+    if (ticket.status === 'ok' && ticket.id) {
+      result.accepted += 1;
+      if (token) pending.push({ ticket_id: ticket.id, token });
+      return;
+    }
+    result.rejected += 1;
+    // DeviceNotRegistered can arrive HERE as well as in the receipt — the
+    // app was uninstalled and Expo already knows.
+    if (ticket.details?.error === 'DeviceNotRegistered' && token) dead.push(token);
+    else if (ticket.status === 'error') {
+      console.error('[notifications] push ticket error', ticket.details?.error ?? 'unknown');
+    }
+  });
+
+  if (pending.length > 0) {
+    const { error } = await admin.from('push_receipts').upsert(pending, {
+      onConflict: 'ticket_id',
+    });
+    // A parking failure costs us the ability to prune later, nothing more.
+    if (error) console.error('[notifications] could not park tickets', error.message);
+  }
+  result.pruned += await pruneTokens(admin, dead);
+}
+
+/**
+ * PUSH_TOO_MANY_EXPERIENCE_IDS carries `details`: { "@owner/project": [tokens] }.
+ * Returns the batch split into those groups (plus one for any token Expo did
+ * not name), or null when this is some other failure. Only splits into 2+
+ * non-empty groups, so every resend is strictly smaller and the recursion ends.
+ */
+function splitByProject(batch: readonly PushMessage[], errors: unknown): PushMessage[][] | null {
+  const mixed = Array.isArray(errors)
+    ? errors.find((e) => e?.code === 'PUSH_TOO_MANY_EXPERIENCE_IDS')
+    : undefined;
+  const details = mixed?.details;
+  if (!details || typeof details !== 'object') return null;
+
+  const projectOf = new Map<string, string>();
+  for (const [project, tokens] of Object.entries(details as Record<string, unknown>)) {
+    if (Array.isArray(tokens)) for (const t of tokens) projectOf.set(String(t), project);
+  }
+  const groups = new Map<string, PushMessage[]>();
+  for (const message of batch) {
+    const key = projectOf.get(message.to) ?? '';
+    groups.set(key, [...(groups.get(key) ?? []), message]);
+  }
+  return groups.size > 1 ? [...groups.values()] : null;
+}
+
 /** Supabase `.in()` goes in the URL, so a large audience 414s without this. */
 const MAX_IDS_PER_QUERY = 200;
+/** register_push_token keeps 10 tokens per user, so 100 users is at most 1000
+ *  rows — PostgREST's max_rows, past which the tail is cut with NO error. */
+const MAX_USERS_PER_TOKEN_QUERY = 100;
 
 /** The Android channel every notification targets. Must match ALERTS_CHANNEL_ID
  *  in src/features/notifications/lib/pushDevice.ts — Android silently DROPS a
@@ -226,7 +271,7 @@ export async function sendToUsers(
   if (recipients.length === 0) return { accepted: 0, rejected: 0, pruned: 0 };
 
   const messages: PushMessage[] = [];
-  for (const batch of chunk(recipients, MAX_IDS_PER_QUERY)) {
+  for (const batch of chunk(recipients, MAX_USERS_PER_TOKEN_QUERY)) {
     const { data, error } = await admin
       .from('push_tokens')
       .select('token')

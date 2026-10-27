@@ -18,7 +18,7 @@
  *        docs/decisions/ADR-0012-notification-center.md (persist-then-push).
  */
 
-import { notifyUsers, sendToUsers } from '../functions/_shared/push';
+import { notifyUsers, sendExpoPush, sendToUsers } from '../functions/_shared/push';
 
 type RpcResult = { data: unknown; error: { message: string } | null };
 
@@ -224,5 +224,111 @@ describe('⚠️ persist-then-push', () => {
 
     expect(client.insertedUserIds).toEqual(['user-a', 'user-b']);
     expect(client.tokenQueriedIds).toEqual(['user-a']);
+  });
+});
+
+describe('⚠️ a token from another Expo project', () => {
+  // Audit run 2, lead 5. Anyone can mint a REAL ExponentPushToken in their own
+  // Expo project and register it; Expo then fails the WHOLE request it shares
+  // with strangers' tokens (PUSH_TOO_MANY_EXPERIENCE_IDS). Before this, every
+  // alert fan-out that account joined silenced up to 99 other people.
+  const FOREIGN = 'ExponentPushToken[foreign]';
+  const OURS = ['ExponentPushToken[a]', 'ExponentPushToken[b]', 'ExponentPushToken[c]'];
+
+  function sendClient() {
+    return {
+      rpc: jest.fn().mockResolvedValue({ data: null, error: null }),
+      from: jest.fn(() => ({ upsert: jest.fn().mockResolvedValue({ error: null }) })),
+    };
+  }
+
+  function fakeExpo() {
+    const bodies: string[][] = [];
+    global.fetch = jest.fn(async (_url: string, init: { body: string }) => {
+      const tokens = (JSON.parse(init.body) as { to: string }[]).map((m) => m.to);
+      bodies.push(tokens);
+      if (tokens.includes(FOREIGN) && tokens.length > 1) {
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({
+            errors: [
+              {
+                code: 'PUSH_TOO_MANY_EXPERIENCE_IDS',
+                details: {
+                  '@olliet97/trackitdown': tokens.filter((t) => t !== FOREIGN),
+                  '@someone/else': [FOREIGN],
+                },
+              },
+            ],
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ data: tokens.map((_, i) => ({ status: 'ok', id: `t-${i}` })) }),
+      };
+    }) as unknown as typeof fetch;
+    return bodies;
+  }
+
+  const message = (to: string) => ({ to, title: 'A car', body: 'near you', data: {} });
+
+  // expoHeaders reads Deno.env; without this every send throws before fetch.
+  beforeEach(() => {
+    (globalThis as { Deno?: unknown }).Deno = { env: { get: () => undefined } };
+  });
+  afterEach(() => {
+    delete (globalThis as { Deno?: unknown }).Deno;
+  });
+
+  it('⚠️ resends each project on its own, so the strangers still get the push', async () => {
+    const bodies = fakeExpo();
+
+    const result = await sendExpoPush(sendClient() as never, [
+      message(OURS[0]),
+      message(FOREIGN),
+      ...OURS.slice(1).map(message),
+    ]);
+
+    expect(result.accepted).toBe(4);
+    expect(result.rejected).toBe(0);
+    expect(bodies.slice(1)).toEqual([OURS, [FOREIGN]]);
+  });
+
+  it('any other request failure still rejects the chunk without resending', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: async () => ({ errors: [{ code: 'TOO_MANY_REQUESTS' }] }),
+    }) as unknown as typeof fetch;
+
+    const result = await sendExpoPush(sendClient() as never, OURS.map(message));
+
+    expect(result).toEqual({ accepted: 0, rejected: 3, pruned: 0 });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('looks tokens up 100 users at a time — 10 each stays inside max_rows', async () => {
+    const many = Array.from({ length: 150 }, (_, i) => `user-${i}`);
+    const client = fakeClient({ data: many, error: null });
+    const sizes: number[] = [];
+    const from = client.from.getMockImplementation()!;
+    client.from.mockImplementation((table: string) => {
+      const real = from(table);
+      if (table !== 'push_tokens') return real;
+      return {
+        select: () => ({
+          in: (col: string, ids: string[]) => {
+            sizes.push(ids.length);
+            return real.select().in(col, ids);
+          },
+        }),
+      };
+    });
+
+    await sendToUsers(client as never, many, CONTENT);
+
+    expect(sizes).toEqual([100, 50]);
   });
 });
