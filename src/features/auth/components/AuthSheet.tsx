@@ -32,7 +32,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 import { createLogger, isValidEmail } from '@/shared/lib';
 import { motion, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
-import { BottomSheet, Button, TextField, type BottomSheetRef } from '@/shared/ui';
+import { Avatar, BottomSheet, Button, TextField, type BottomSheetRef } from '@/shared/ui';
 
 import {
   AuthActionError,
@@ -80,7 +80,7 @@ const MIN_CODE_LENGTH = 6;
  *  otherwise changes in silence. */
 const STEP_ANNOUNCEMENTS: Partial<Record<Step, string>> = {
   otp: 'Enter the code we emailed you.',
-  profile: 'What should we call you?',
+  profile: 'Nice to meet you. What’s your first name?',
 };
 /** The sheet's title once they're signed in — "Log in to …" would be stale. */
 const WELCOME_TITLE = 'Welcome to Trackitdown';
@@ -550,12 +550,14 @@ function ProfileStep({ initialFirstName = '' }: { initialFirstName?: string }) {
 
   return (
     <View style={styles.step}>
+      {/* How others will see them, filling in as they type (2026-10-27). */}
+      <View style={styles.preview}>
+        <Avatar name={firstName} size="lg" testID="profile-preview" />
+      </View>
       <Text style={styles.heading} accessibilityRole="header">
-        What should we call you?
+        Nice to meet you
       </Text>
-      <Text style={styles.body}>
-        Your first name is what other people see. That’s all we need to get you started.
-      </Text>
+      <Text style={styles.body}>Others only see your first name.</Text>
       <TextField
         label="First name"
         autoComplete="given-name"
@@ -577,6 +579,9 @@ function ProfileStep({ initialFirstName = '' }: { initialFirstName?: string }) {
 const makeStyles = (c: Palette) => StyleSheet.create({
   step: {
     gap: spacing.lg,
+  },
+  preview: {
+    alignItems: 'center',
   },
   heading: {
     ...typography.heading,
