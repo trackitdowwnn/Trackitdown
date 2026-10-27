@@ -18,9 +18,10 @@
  */
 
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { fetchPostDetail } from '@/features/vehicles';
 import { successHaptic } from '@/shared/lib/haptics';
 import { spacing } from '@/shared/theme';
 import { EmptyState, ErrorState, FullscreenLoader, Screen, useToast } from '@/shared/ui';
@@ -29,15 +30,18 @@ import { WizardScreen } from '@/shared/wizard';
 import { addVehicle, updateVehicle } from '../api/garageApi';
 import { useMyVehicles } from '../hooks/useMyVehicles';
 import { ADD_VEHICLE_INITIAL_ANSWERS, buildAddVehicleFlow } from '../lib/addVehicleFlow';
-import { toAnswers } from '../lib/vehicleAnswers';
+import { postToAnswers, toAnswers } from '../lib/vehicleAnswers';
 import type { AddVehicleAnswers } from '../types';
 
 export interface AddVehicleScreenProps {
   /** Present = edit that saved car; absent = add a new one. */
   vehicleId?: string;
+  /** Add a NEW car starting from this (recovered) listing's details — the
+   *  "save it to My cars" offer after a recovery (2026-10-27). */
+  fromPostId?: string;
 }
 
-export function AddVehicleScreen({ vehicleId }: AddVehicleScreenProps) {
+export function AddVehicleScreen({ vehicleId, fromPostId }: AddVehicleScreenProps) {
   const router = useRouter();
   const toast = useToast();
   const { status, vehicles, retry } = useMyVehicles();
@@ -46,14 +50,36 @@ export function AddVehicleScreen({ vehicleId }: AddVehicleScreenProps) {
 
   const existing = vehicleId ? vehicles.find((v) => v.id === vehicleId) : undefined;
 
+  // undefined = still reading the listing; null = no seed. A failed read falls
+  // back to a blank form: adding a car is never destructive, unlike edit mode.
+  const [postAnswers, setPostAnswers] = useState<AddVehicleAnswers | null | undefined>(
+    fromPostId ? undefined : null,
+  );
+  useEffect(() => {
+    if (!fromPostId) return;
+    let live = true;
+    fetchPostDetail(fromPostId)
+      .then((result) => {
+        if (live) setPostAnswers(result.kind === 'visible' ? postToAnswers(result.post) : null);
+      })
+      .catch(() => {
+        if (live) setPostAnswers(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [fromPostId]);
+
   // Edit mode waits for the garage to load before seeding, so the wizard is
   // never mounted with empty answers and then re-seeded underneath the user.
+  // The same holds for a listing seed.
   const initialAnswers = useMemo(
-    () => (existing ? toAnswers(existing) : ADD_VEHICLE_INITIAL_ANSWERS),
-    [existing],
+    () =>
+      existing ? toAnswers(existing) : (postAnswers ?? ADD_VEHICLE_INITIAL_ANSWERS),
+    [existing, postAnswers],
   );
 
-  if (vehicleId && status === 'loading') {
+  if ((vehicleId && status === 'loading') || postAnswers === undefined) {
     return <FullscreenLoader visible />;
   }
 

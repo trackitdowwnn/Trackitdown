@@ -48,6 +48,10 @@ export function SaveYourCarSheet() {
   const sheetRef = useRef<BottomSheetRef>(null);
 
   const signedIn = session.status === 'signedIn';
+  // A listing just closed as recovered (first-login welcome, 2026-10-27): the
+  // car is back and they have just seen why a fast report matters. Its own
+  // moment, so it does not defer to the once-flag the wizard exit spent.
+  const recoveredPostId = intent?.source === 'recovered' ? intent.postId : null;
   // Only ask the garage anything once there IS an intent — this is mounted for
   // the whole app lifetime and must cost nothing the rest of the time.
   const savedCar = useHasSavedCar({ enabled: intent !== null && signedIn });
@@ -98,10 +102,11 @@ export function SaveYourCarSheet() {
     if (alreadyOffered === null || savedCar === 'unknown') {
       return; // still resolving — hold rather than flash
     }
-    if (alreadyOffered) {
+    if (alreadyOffered && recoveredPostId === null) {
       suppress('already_offered');
       return;
     }
+    // Also covers a listing started FROM My cars: that car is already saved.
     if (savedCar === 'some') {
       suppress('already_has_car');
       return;
@@ -120,7 +125,7 @@ export function SaveYourCarSheet() {
     // and it also silences the Explore card — the same offer, asked twice, is a
     // nag.
     void markGarageNudgeOffered();
-    log.info('garage_nudge_shown', { surface: 'exit_sheet' });
+    log.info('garage_nudge_shown', { surface: 'exit_sheet', source: intent.source });
 
     // The wizard route is a slide_from_bottom dismissal in flight right now;
     // presenting a modal into that transition drops the animation. Wait for the
@@ -129,14 +134,20 @@ export function SaveYourCarSheet() {
       sheetRef.current?.open();
     });
     return () => task.cancel();
-  }, [intent, signedIn, alreadyOffered, savedCar, suppress]);
+  }, [intent, signedIn, alreadyOffered, savedCar, suppress, recoveredPostId]);
 
   const onAdd = useCallback(() => {
     log.info('garage_nudge_accepted', { surface: 'exit_sheet' });
     clearSaveCarNudge();
     sheetRef.current?.close();
-    router.push('/add-vehicle');
-  }, [router]);
+    // From a recovery, the wizard starts from the listing's details — the
+    // owner checks them and saves; nothing is saved behind their back.
+    router.push(
+      recoveredPostId
+        ? { pathname: '/add-vehicle', params: { fromPost: recoveredPostId } }
+        : '/add-vehicle',
+    );
+  }, [router, recoveredPostId]);
 
   const onNotNow = useCallback(() => {
     log.info('garage_nudge_dismissed', { surface: 'exit_sheet' });
@@ -147,14 +158,15 @@ export function SaveYourCarSheet() {
   return (
     <BottomSheet
       ref={sheetRef}
-      title="Not reporting one today?"
+      title={recoveredPostId ? 'Glad it’s back' : 'Not reporting one today?'}
       // Covers the swipe and scrim-tap exits too — all three mean "no".
       onDismiss={clearSaveCarNudge}
     >
       <View style={styles.content} testID="garage-exit-nudge">
         <Text style={styles.body}>
-          Save your car now and it takes seconds to report, instead of minutes — we&apos;ll
-          already have the details.
+          {recoveredPostId
+            ? 'Save it to My cars so you can report it in seconds next time.'
+            : 'Save your car now and it takes seconds to report, instead of minutes — we’ll already have the details.'}
         </Text>
         <Button label="Save my car" onPress={onAdd} />
         <Button label="Not now" variant="ghost" onPress={onNotNow} />

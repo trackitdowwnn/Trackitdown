@@ -51,7 +51,7 @@ import { usePostSightings } from '@/features/sightings';
 import { cardFeePence, formatPounds, refundPence } from '@/shared/lib/money';
 import { createLogger } from '@/shared/lib/logger';
 import { radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
-import { Button, EmptyState, Screen, useToast } from '@/shared/ui';
+import { Button, EmptyState, Screen, toastDuration, useToast } from '@/shared/ui';
 
 import { RecoveryError, claimRecovery, refundRecovery, releasePayout } from '../api/recoveryApi';
 import { ExitAttestation } from '../components/ExitAttestation';
@@ -66,6 +66,13 @@ export interface RecoverPostScreenProps {
    * server is authoritative about what actually happens either way.
    */
   bountyPence?: number | null;
+  /**
+   * The car is back (the claim landed). Called once, with how long the
+   * success toast will be on screen, so an offer made after it does not cover
+   * it — the route offers "save it to My cars" (2026-10-27). A callback rather
+   * than an import: garage already imports vehicles, the reverse would cycle.
+   */
+  onRecovered?: (toastMs: number) => void;
 }
 
 /** The sentinel for "nobody helped" — a real answer, not the absence of one. */
@@ -76,7 +83,7 @@ const NO_SPOTTER = '__none__';
 // failures are money failures and both exitCheck catches below report.
 const log = createLogger('vehicles');
 
-export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProps) {
+export function RecoverPostScreen({ postId, bountyPence, onRecovered }: RecoverPostScreenProps) {
   // ADR-0014: no bounty means no refund to get back and no payout to send.
   const noReward = bountyPence === null;
   const styles = useThemedStyles(makeStyles);
@@ -96,6 +103,16 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
   } | null>(null);
   const claimedRef = useRef(false);
 
+  /** Every SUCCESS ending: the toast, onRecovered (once), then back. */
+  const done = useCallback(
+    (message: string) => {
+      toast.show(message);
+      onRecovered?.(toastDuration(message, 'success'));
+      router.back();
+    },
+    [onRecovered, router, toast],
+  );
+
   /** The no-spotter ending, shared by the plain path and the attested one. */
   const finishNoSpotter = useCallback(
     async (attestedSightingIds?: string[]) => {
@@ -108,8 +125,7 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
         // is no longer recovery_claimed) and show the owner an error toast for
         // a recovery that in fact succeeded.
         if (claim.nextStep === 'done') {
-          toast.show('Glad you got it back. Your listing is closed.');
-          router.back();
+          done('Glad you got it back. Your listing is closed.');
           return;
         }
       }
@@ -120,17 +136,16 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
         const when = Number.isNaN(date.getTime())
           ? 'the 72-hour window'
           : date.toLocaleString('en-GB', { weekday: 'long', hour: 'numeric', minute: '2-digit' });
-        toast.show(
+        done(
           `Glad you got it back. Your refund is sent after ${when}, unless a sighting is contested.`,
         );
       } else {
-        toast.show(
+        done(
           `Glad you got it back. ${formatPounds(refund.refundedPence)} is on its way back to you.`,
         );
       }
-      router.back();
     },
-    [postId, router, toast],
+    [done, postId],
   );
 
   const submit = useCallback(async () => {
@@ -204,8 +219,7 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
         // so the gap DOMAIN.md records as closed stayed open on the client.
         // Fire-and-forget, as on the bounty path below.
         notifyCredited(postId);
-        toast.show('They’re credited. The recovery is added to their spotter record.');
-        router.back();
+        done('They’re credited. The recovery is added to their spotter record.');
         return;
       }
 
@@ -220,9 +234,10 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
       // they genuinely earned it. Fire-and-forget; the claim RPC behind it
       // re-verifies this caller owns the post and sends once, ever.
       notifyCredited(postId);
+      let message: string;
       try {
         const payout = await releasePayout(postId);
-        toast.show(
+        message =
           payout.status === 'paid' && payout.transferPence !== null
             ? `Sent. ${formatPounds(payout.transferPence)} is on its way to them.`
             : payout.status === 'held_for_review'
@@ -237,18 +252,16 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
                 // "Automatically" became TRUE on 2026-08-04: the webhook (and
                 // the account-creation path) release the moment the payee is
                 // payable, through the same gated core as the manual retry.
-                'They’re credited. We’ll send the reward automatically once they’ve added their bank details.',
-        );
+                'They’re credited. We’ll send the reward automatically once they’ve added their bank details.';
       } catch (payoutError) {
         // The credit stands; only the transfer is outstanding, and it can be
         // retried from the listing. Surfaced calmly, not as an error toast.
-        toast.show(
+        message =
           payoutError instanceof RecoveryError
             ? payoutError.message
-            : 'They’re credited. You can send the reward from your listing.',
-        );
+            : 'They’re credited. You can send the reward from your listing.';
       }
-      router.back();
+      done(message);
     } catch (error) {
       toast.show(
         error instanceof RecoveryError ? error.message : 'Something went wrong. Please try again.',
@@ -257,7 +270,7 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
     } finally {
       setSubmitting(false);
     }
-  }, [finishNoSpotter, noReward, postId, router, selected, submitting, toast]);
+  }, [done, finishNoSpotter, noReward, postId, selected, submitting, toast]);
 
   /** The attested no-spotter ending — the attestation screen's confirm. */
   const submitAttested = useCallback(

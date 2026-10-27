@@ -18,11 +18,12 @@
 
 import { useSyncExternalStore } from 'react';
 
-/** Where the offer came from. One source today; kept as a field so the funnel
- *  logs can tell surfaces apart if a second ever appears. */
-export interface SaveCarNudgeIntent {
-  source: 'post_a_car_abandoned';
-}
+/** Where the offer came from: the report wizard left without posting, or a
+ *  listing just closed as recovered (first-login welcome, 2026-10-27) — which
+ *  carries the post, so the add-car wizard can start from its details. */
+export type SaveCarNudgeIntent =
+  | { source: 'post_a_car_abandoned' }
+  | { source: 'recovered'; postId: string };
 
 let pending: SaveCarNudgeIntent | null = null;
 const subscribers = new Set<() => void>();
@@ -42,8 +43,10 @@ function getSnapshot(): SaveCarNudgeIntent | null {
  *  be (signed in, no saved car, never offered before) — the caller only reports
  *  that the moment happened. A second request simply replaces the first; it
  *  never queues, because two identical offers is one offer. */
-export function requestSaveCarNudge(): void {
-  pending = { source: 'post_a_car_abandoned' };
+export function requestSaveCarNudge(
+  intent: SaveCarNudgeIntent = { source: 'post_a_car_abandoned' },
+): void {
+  pending = intent;
   notify();
 }
 

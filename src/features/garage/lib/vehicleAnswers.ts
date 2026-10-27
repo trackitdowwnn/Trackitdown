@@ -19,6 +19,8 @@
  *        src/features/garage/api/garageApi.ts (the save path).
  */
 
+import type { PostDetail } from '@/features/vehicles';
+
 import type { AddVehicleAnswers, SavedVehicle } from '../types';
 
 /** Minimum photos create_post demands (PHOTO_COUNT). A saved car below this is
@@ -46,6 +48,32 @@ export function toAnswers(vehicle: SavedVehicle): AddVehicleAnswers {
     })),
     photos: vehicle.photos.map((photo) => ({ uri: photo.url, ...KEPT_PHOTO_DIMS })),
     nickname: vehicle.nickname ?? '',
+  };
+}
+
+/**
+ * A recovered listing as NEW-car answers — the "save it to My cars" offer
+ * starts the add wizard here, and the owner checks every step before saving.
+ * Its photos are the owner's own uploads, kept as they are (garageApi skips
+ * re-uploading a remote photo). No nickname: the listing never had one. The
+ * plate is prefilled but NOT marked as scan-confirmed, so its step still asks.
+ */
+export function postToAnswers(post: PostDetail): AddVehicleAnswers {
+  return {
+    plate: post.plate ?? '',
+    make: post.make,
+    model: post.model,
+    colour: post.colour,
+    colourNote: '',
+    colourFinish: post.colourFinish ?? null,
+    year: post.year ?? null,
+    bodyType: post.bodyType ?? null,
+    distinctiveFeatures: post.distinctiveFeatures.map((feature) => ({
+      photo: { uri: feature.photoUrl, ...KEPT_PHOTO_DIMS },
+      description: feature.description,
+    })),
+    photos: post.photos.map((photo) => ({ uri: photo.uri, ...KEPT_PHOTO_DIMS })),
+    nickname: '',
   };
 }
 
