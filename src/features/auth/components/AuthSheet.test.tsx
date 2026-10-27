@@ -11,7 +11,7 @@
  *        docs/TESTING.md.
  */
 
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { Keyboard, Platform } from 'react-native';
 
 import type { AuthStanding } from '../hooks/useAuthStanding';
@@ -195,7 +195,7 @@ describe('AuthSheet', () => {
     });
 
     await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
-    expect(screen.queryByText('What should we call you?')).toBeNull();
+    expect(screen.queryByText('Nice to meet you')).toBeNull();
     expect(consumePendingIntent()).toBeNull(); // consumed, not still pending
   });
 
@@ -263,12 +263,16 @@ describe('AuthSheet', () => {
       setMockStanding('incomplete');
     });
 
-    await waitFor(() => expect(screen.getByText('What should we call you?')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Nice to meet you')).toBeTruthy());
     expect(run).not.toHaveBeenCalled(); // the ordering under test
 
     await act(async () => {
       fireEvent.changeText(screen.getByLabelText('First name'), 'Sam');
     });
+    // The preview is how others will see them: it fills in as they type.
+    // Decorative, so it is hidden from the accessibility tree.
+    const preview = screen.getByTestId('profile-preview', { includeHiddenElements: true });
+    expect(within(preview).getByText('S', { includeHiddenElements: true })).toBeTruthy();
     await act(async () => {
       fireEvent.press(screen.getByText('Get started'));
     });
@@ -288,7 +292,7 @@ describe('AuthSheet', () => {
     await act(async () => {
       setPendingIntent({ context: 'edit_profile', run: jest.fn() });
     });
-    await waitFor(() => expect(screen.getByText('What should we call you?')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Nice to meet you')).toBeTruthy());
     expect(screen.queryByLabelText('Email')).toBeNull();
   });
 
@@ -341,7 +345,7 @@ describe('Continue with Google (2026-10-15)', () => {
     return screen;
   }
 
-  it('a NEW user from Google: "What should we call you?" starts with their first name', async () => {
+  it('a NEW user from Google: "Nice to meet you" starts with their first name', async () => {
     mockSignInWithGoogle.mockResolvedValue({ cancelled: false, userId: 'u1', firstName: 'Sam' });
     const screen = await openSheet();
     await act(async () => {
@@ -351,7 +355,7 @@ describe('Continue with Google (2026-10-15)', () => {
     await act(async () => {
       setMockStanding('incomplete');
     });
-    await waitFor(() => expect(screen.getByText('What should we call you?')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Nice to meet you')).toBeTruthy());
     expect(screen.getByLabelText('First name').props.value).toBe('Sam');
 
     // Still theirs to confirm: one tap.
@@ -408,7 +412,7 @@ describe('Sign in with Apple — Android takes the web flow (2026-10-15)', () =>
     await act(async () => {
       setMockStanding('incomplete');
     });
-    await waitFor(() => expect(screen.getByText('What should we call you?')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Nice to meet you')).toBeTruthy());
     expect(screen.getByLabelText('First name').props.value).toBe('Sam');
   });
 
@@ -558,7 +562,7 @@ describe('sign-in best-practice pass (2026-10-15)', () => {
     await act(async () => {
       setMockStanding('incomplete');
     });
-    await waitFor(() => expect(screen.getByText('What should we call you?')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Nice to meet you')).toBeTruthy());
     expect(screen.getByText('Welcome to Trackitdown')).toBeTruthy();
     expect(screen.queryByText('Log in to post your car')).toBeNull();
   });

@@ -371,8 +371,9 @@ hourly budget). Raise it in the dashboard only if beta feedback needs it.
      `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`, and its reversed form in
      `GOOGLE_IOS_URL_SCHEME`, which turns on the config plugin in
      `app.config.ts`.
-   - **First name:** a new user from Google finds "What should we call you?"
-     already filled with their Google first name. It's still theirs to change.
+   - **First name:** a new user from Google finds the name step ("Nice to
+     meet you", with their initial in a circle above it) already filled with
+     their Google first name. It's still theirs to change.
 3. **Apple** needs a new build (its entitlement comes from the plugin).
    - **Android: Apple's web flow (built 2026-10-15; switched OFF until set
      up).** Apple has no Android sign-in kit, so Android uses Supabase OAuth:
