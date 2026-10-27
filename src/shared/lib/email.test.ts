@@ -2,7 +2,7 @@
  * WHAT:  Tests for isValidEmail — the gate the auth flow uses to enable
  *        "Continue".
  * WHY:   A wrong verdict either blocks a real user or fires an OTP request at a
- *        malformed address (wasting the tight 2/hour send budget), so the
+ *        malformed address (wasting the hourly send budget), so the
  *        accept/reject boundary is pinned.
  * LINKS: src/shared/lib/email.ts, docs/TESTING.md.
  */

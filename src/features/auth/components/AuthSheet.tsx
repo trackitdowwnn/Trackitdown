@@ -446,7 +446,7 @@ function OtpStep({
 
   const handleResend = async () => {
     // Guard the async window: canResend stays true during the request, so a
-    // double-tap would fire two sends against the tight 2/hour budget.
+    // double-tap would fire two sends against the hourly send budget.
     if (resending) return;
     setResending(true);
     setErrorText(null);

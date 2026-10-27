@@ -2,8 +2,8 @@
  * WHAT:  useResendCountdown — a one-shot countdown for the "Resend code" button:
  *        starts at `seconds`, ticks to 0, then `canResend` is true; `restart()`
  *        begins it again (after a resend).
- * WHY:   The verify screen must throttle resends (and the OTP send budget is a
- *        tight 2/hour), so the button is disabled with a live "Resend in 42s"
+ * WHY:   The verify screen must throttle resends (and the OTP send budget is
+ *        hourly), so the button is disabled with a live "Resend in 42s"
  *        label. Kept as a pure hook so the cooldown logic is tested without a
  *        screen (docs/TESTING.md: behaviour over implementation).
  * LINKS: src/features/auth/components/AuthSheet.tsx (consumer).
