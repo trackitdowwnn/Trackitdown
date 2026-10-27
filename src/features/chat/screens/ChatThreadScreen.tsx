@@ -38,10 +38,12 @@
 
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
+import { BellOff } from 'lucide-react-native';
 import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   StyleSheet,
   Text,
@@ -56,6 +58,7 @@ import Animated, {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useSession } from '@/features/auth';
+import { useDevicePermission } from '@/features/permissions';
 // Type-only: erased at runtime, so it does NOT create the require cycle the
 // deferred import below exists to avoid.
 import type { PublicProfileSheetProps } from '@/features/profile';
@@ -74,6 +77,7 @@ import {
   Button,
   EmptyState,
   ErrorState,
+  NudgeRow,
   useToast,
   type BottomSheetRef,
 } from '@/shared/ui';
@@ -100,6 +104,7 @@ import {
   separatorAbove,
   type ChatListItem,
 } from '../lib/messageGroups';
+import { hasDismissedNotifyNudge, markNotifyNudgeDismissed } from '../lib/notifyNudgeStorage';
 import { quickRepliesFor, shouldShowQuickReplies } from '../lib/quickReplies';
 import { MAX_MESSAGE_LENGTH, type ChatMessage } from '../types';
 
@@ -160,6 +165,28 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
   const blockSheetRef = useRef<BottomSheetRef>(null);
   const blockInFlight = useRef(false);
   const toast = useToast();
+
+  // "Turn on notifications to hear back" — ONLY for someone the OS will never
+  // prompt again (blocked), once they have said something, and until they
+  // dismiss it. Everyone else is still asked by the startup requests
+  // (first-login welcome, 2026-10-27).
+  const notifyPermission = useDevicePermission('notifications');
+  const notifyBlocked =
+    notifyPermission.status?.state === 'denied' && notifyPermission.status.canAskAgain === false;
+  const [notifyNudgeDismissed, setNotifyNudgeDismissed] = useState(true);
+  useEffect(() => {
+    let live = true;
+    void hasDismissedNotifyNudge().then((dismissed) => {
+      if (live) setNotifyNudgeDismissed(dismissed);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const iHaveSpoken =
+    outgoing.length > 0 ||
+    messages.some((m) => m.kind === 'user' && m.senderId === (session.userId ?? ''));
+  const showNotifyNudge = notifyBlocked && iHaveSpoken && !notifyNudgeDismissed;
 
   const items = useMemo(
     () => buildChatList(messages, outgoing, session.userId ?? ''),
@@ -517,6 +544,19 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
                     onPick={setDraft}
                   />
                 </Animated.View>
+              ) : null}
+              {showNotifyNudge ? (
+                <NudgeRow
+                  icon={BellOff}
+                  title="Turn on notifications to hear back"
+                  body="They’re off in your phone’s Settings"
+                  onPress={() => void Linking.openSettings()}
+                  onDismiss={() => {
+                    setNotifyNudgeDismissed(true);
+                    void markNotifyNudgeDismissed();
+                  }}
+                  testID="notify-nudge"
+                />
               ) : null}
               <MessageInputBar
                 value={draft}
