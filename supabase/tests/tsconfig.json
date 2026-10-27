@@ -22,7 +22,8 @@
     "      untypechecked and the reason is now written down. refundEscrow.test.ts",
     "      (2026-10-05) imports Deno code the same way and is excluded likewise,",
     "      as is payoutAccountState.test.ts (2026-10-13), and",
-    "      applyPayoutAccountState.test.ts (2026-10-14).",
+    "      applyPayoutAccountState.test.ts (2026-10-14), and",
+    "      deletePost.test.ts (2026-10-27).",
     "RUN:  npm run typecheck (which runs this too), or npm run typecheck:tests."
   ],
   "extends": "../../tsconfig.json",
@@ -35,6 +36,7 @@
     "push.test.ts",
     "refundEscrow.test.ts",
     "payoutAccountState.test.ts",
-    "applyPayoutAccountState.test.ts"
+    "applyPayoutAccountState.test.ts",
+    "deletePost.test.ts"
   ]
 }
