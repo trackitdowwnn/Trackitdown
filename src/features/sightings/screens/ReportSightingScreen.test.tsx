@@ -103,6 +103,11 @@ jest.mock('react-native-safe-area-context', () =>
   require('react-native-safe-area-context/jest/mock').default,
 );
 
+const mockRequestAlertNudge = jest.fn();
+jest.mock('@/features/notifications', () => ({
+  requestAlertNudge: (...args: unknown[]) => mockRequestAlertNudge(...args),
+}));
+
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
 let mockCanGoBack = true;
@@ -217,6 +222,18 @@ describe('ReportSightingScreen', () => {
 
       expect(view.getByText('If your sighting leads to the recovery, you’ll receive the £200 reward.')).toBeTruthy();
       expect(view.queryByText(/£500/)).toBeNull();
+    });
+
+    it('Done offers an alert area (the sheet decides whether to show it) and leaves', async () => {
+      const view = await renderSent();
+      expect(mockRequestAlertNudge).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await fireEvent.press(view.getByText('Done'));
+      });
+
+      expect(mockRequestAlertNudge).toHaveBeenCalledWith('sighting_sent');
+      expect(mockBack).toHaveBeenCalledTimes(1);
     });
 
     it('a fee listing (null, not ended) gets the no-cash-reward line', async () => {

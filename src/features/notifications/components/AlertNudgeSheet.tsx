@@ -138,7 +138,7 @@ export function AlertNudgeSheet() {
     // Marked the moment it PRESENTS, not on the user's answer: the flag means
     // "we asked". So this appears at most once per install however they respond.
     void markAlertNudgeOffered();
-    log.info('alert_nudge_shown', { surface: 'exit_sheet' });
+    log.info('alert_nudge_shown', { surface: 'exit_sheet', source: intent.source });
 
     // The post route's back navigation is still animating; presenting into that
     // transition drops the animation. Wait for it to settle.

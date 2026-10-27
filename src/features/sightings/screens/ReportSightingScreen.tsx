@@ -36,6 +36,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatPounds } from '@/shared/lib';
 import { successHaptic } from '@/shared/lib/haptics';
 import { createLogger } from '@/shared/lib/logger';
+import { requestAlertNudge } from '@/features/notifications';
 import {
   motion,
   radii,
@@ -190,7 +191,13 @@ export function ReportSightingScreen({ postId, source, bountyPence }: ReportSigh
         // unnamed line; only "no cash reward" (an under-promise) survives.
         bountyPence={phase.reward ? phase.reward.bountyPence : bountyPence === null ? null : undefined}
         rewardEnded={phase.reward?.rewardEnded ?? false}
-        onDone={leave}
+        onDone={() => {
+          // The first-login welcome's "ask later": a first report is the
+          // moment to offer an alert area. The sheet decides (signed in, no
+          // alert yet, never offered) and opens over where they land.
+          requestAlertNudge('sighting_sent');
+          leave();
+        }}
       />
     );
   }

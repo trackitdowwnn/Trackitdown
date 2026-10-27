@@ -39,6 +39,7 @@ import {
   Bell,
   Binoculars,
   Bug,
+  Camera,
   Car,
   Download,
   FileText,
@@ -51,7 +52,7 @@ import {
   SlidersHorizontal,
   Trash2,
 } from 'lucide-react-native';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -69,6 +70,7 @@ import {
   EmptyState,
   ListRow,
   ListRowGroup,
+  NudgeRow,
   useTabBadges,
   useToast,
 } from '@/shared/ui';
@@ -86,6 +88,7 @@ import { legalHref } from '@/shared/lib';
 import { PAYOUTS_ENABLED, SUPPORT_EMAIL, supportEmailIsReachable } from '../config';
 import { useMyProfile } from '../hooks/useMyProfile';
 import { DEV_MOCK_PROFILE } from '../lib/devMockProfile';
+import { hasDismissedPhotoNudge, markPhotoNudgeDismissed } from '../lib/photoNudgeStorage';
 import type { MyProfile } from '../types';
 
 export function ProfileScreen() {
@@ -194,6 +197,19 @@ function LoadedProfile({
   // read the answer is served from the shared cache (a visit to /my-cars primes
   // it for free).
   const savedCar = useHasSavedCar({ enabled: true });
+  // The photo is asked for here, later and refusably — never at sign-in
+  // (first-login welcome, 2026-10-27). Hidden until the flag is read.
+  const [photoNudgeDismissed, setPhotoNudgeDismissed] = useState(true);
+  useEffect(() => {
+    let live = true;
+    void hasDismissedPhotoNudge().then((dismissed) => {
+      if (live) setPhotoNudgeDismissed(dismissed);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const showPhotoNudge = !profile.avatarUrl && !photoNudgeDismissed && !devPreview;
   // Both Settings rows summarise the same zone, so the row says what is
   // actually true rather than a static label: an unset zone and a paused one
   // are different answers, and "Coming soon" was neither.
@@ -303,6 +319,22 @@ function LoadedProfile({
         </Text>
 
         <ProfileHeroCard profile={profile} onPress={() => router.push('/edit-profile')} />
+
+        {showPhotoNudge ? (
+          <NudgeRow
+            icon={Camera}
+            title="Add a photo"
+            body="Shown next to your first name"
+            onPress={() => router.push('/edit-profile')}
+            onDismiss={() => {
+              setPhotoNudgeDismissed(true);
+              void markPhotoNudgeDismissed();
+            }}
+            // The scroll already pads at 24.
+            gutter="none"
+            testID="photo-nudge"
+          />
+        ) : null}
 
         {/* Everything reputational (stat strip, highlights, badges, next
             goal) lives one push away — the root stays shallow. */}
