@@ -17,6 +17,7 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { Linking } from 'react-native';
 
 import { SAFETY_NOTICE_TITLE } from '@/shared/ui';
 
@@ -68,10 +69,29 @@ jest.mock('../hooks/useThreadMeta', () => ({
   useThreadMeta: () => mockUseThreadMeta(),
 }));
 
+// Notifications default to GRANTED and the row to dismissed, so every other
+// test sees the thread as before; the blocked-notifications tests turn them on.
+let mockNotifyStatus: { state: string; canAskAgain: boolean } | null = {
+  state: 'granted',
+  canAskAgain: true,
+};
+jest.mock('@/features/permissions', () => ({
+  useDevicePermission: () => ({ status: mockNotifyStatus, request: jest.fn(), refresh: jest.fn() }),
+}));
+let mockNotifyNudgeDismissed = true;
+const mockMarkNotifyNudgeDismissed = jest.fn();
+jest.mock('../lib/notifyNudgeStorage', () => ({
+  hasDismissedNotifyNudge: () => Promise.resolve(mockNotifyNudgeDismissed),
+  markNotifyNudgeDismissed: () => mockMarkNotifyNudgeDismissed(),
+}));
+
+let mockMessages: unknown[] = [];
 jest.mock('../hooks/useThreadMessages', () => ({
   useThreadMessages: () => ({
     status: 'ready',
-    messages: [],
+    get messages() {
+      return mockMessages;
+    },
     outgoing: [],
     hasOlder: false,
     sendError: null,
@@ -89,6 +109,9 @@ jest.mock('../hooks/useThreadPeer', () => ({
 beforeEach(() => {
   jest.clearAllMocks();
   mockUseThreadMeta.mockReturnValue({ status: 'error', thread: null, retry: mockRetry });
+  mockNotifyStatus = { state: 'granted', canAskAgain: true };
+  mockNotifyNudgeDismissed = true;
+  mockMessages = [];
 });
 
 describe('⚠️ when the thread’s details fail to load', () => {
@@ -148,6 +171,63 @@ describe('a healthy thread', () => {
         other: { firstName: 'Sam' },
       },
       retry: mockRetry,
+    });
+  });
+
+  describe('notifications blocked (first-login welcome, asked later)', () => {
+    const mine = {
+      id: 'm1',
+      threadId: 't1',
+      senderId: 'me',
+      kind: 'user',
+      content: 'I saw it on Elm Road',
+      createdAt: '2026-07-15T10:00:00Z',
+    };
+    const renderThread = async () => {
+      const view = await act(async () => render(<ChatThreadScreen threadId="t1" />));
+      await act(async () => {}); // the once-flag read
+      return view;
+    };
+
+    beforeEach(() => {
+      mockNotifyStatus = { state: 'denied', canAskAgain: false };
+      mockNotifyNudgeDismissed = false;
+      mockMessages = [mine];
+    });
+
+    it('once they have spoken, offers Settings — the only route left', async () => {
+      const openSettings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
+      const view = await renderThread();
+
+      await act(async () => {
+        await fireEvent.press(view.getByTestId('notify-nudge'));
+      });
+      expect(openSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it('is not shown before they have said anything', async () => {
+      mockMessages = [];
+      const view = await renderThread();
+      expect(view.queryByTestId('notify-nudge')).toBeNull();
+    });
+
+    it('is not shown while the OS can still ask (the startup prompts do that)', async () => {
+      mockNotifyStatus = { state: 'denied', canAskAgain: true };
+      const view = await renderThread();
+      expect(view.queryByTestId('notify-nudge')).toBeNull();
+    });
+
+    it('dismissing hides it and remembers; a past refusal keeps it hidden', async () => {
+      const view = await renderThread();
+      await act(async () => {
+        await fireEvent.press(view.getByLabelText('Dismiss'));
+      });
+      expect(view.queryByTestId('notify-nudge')).toBeNull();
+      expect(mockMarkNotifyNudgeDismissed).toHaveBeenCalledTimes(1);
+
+      mockNotifyNudgeDismissed = true;
+      const again = await renderThread();
+      expect(again.queryByTestId('notify-nudge')).toBeNull();
     });
   });
 
