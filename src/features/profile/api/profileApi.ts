@@ -75,7 +75,7 @@ export async function fetchMyProfile(userId: string): Promise<MyProfile> {
     id: data.id,
     firstName: data.first_name,
     displayName: data.display_name,
-    avatarUrl: avatarUrlFromPath(data.avatar_path, data.updated_at),
+    avatarUrl: await avatarUrlFromPath(data.avatar_path),
     createdAt: data.created_at,
     counters: countersFromRow(data),
   };

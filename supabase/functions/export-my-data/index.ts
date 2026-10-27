@@ -369,8 +369,9 @@ async function gather(admin: Admin, user: AuthUser): Promise<DataExportRaw> {
   }
 
   const avatarPath = profile?.avatar_path as string | null | undefined;
+  // Signed like the other photos: the avatars bucket goes private (audit run 2, lead 2).
   const avatarUrl = avatarPath
-    ? admin.storage.from('avatars').getPublicUrl(avatarPath).data.publicUrl
+    ? ((await signAll(admin, 'avatars', [avatarPath])).get(avatarPath) ?? null)
     : null;
 
   // A payment can match twice (paid on a listing they own AND received);
