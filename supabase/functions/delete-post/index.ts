@@ -104,25 +104,42 @@ Deno.serve(async (request) => {
     );
   }
 
-  // --- Cancel stray uncaptured intents AT STRIPE, recording what we WATCHED die
-  // Only the never-captured rows: the settled ones (refunded / collected /
-  // released) are detached by the RPC and their intents are terminal at
-  // Stripe — cancelling those would error to no purpose. A 'held' row means
-  // money still in escrow; the RPC refuses the delete outright, so it is not
-  // touched here either.
-  const { data: ledger, error: ledgerError } = await admin
-    .from('payments')
-    .select('stripe_payment_intent_id, status')
-    .eq('post_id', postId)
-    .in('status', ['requires_payment', 'failed']);
+  const deletePost = async (proven: string[]) =>
+    (
+      await admin.rpc('delete_cancelled_post', {
+        p_post_id: postId,
+        p_owner_id: userId,
+        p_cancelled_intent_ids: proven,
+      })
+    ).error;
 
-  if (ledgerError) {
-    console.error('[posts] ledger read failed', ledgerError.message);
-    return errorResponse('LOOKUP_FAILED', 'We couldn’t delete that post. Please try again.', 500);
-  }
-
+  // --- Ask first, with no evidence ---------------------------------------------
+  // The RPC refuses for money, holds, disputes and reviews BEFORE it looks at
+  // any intent, and a refusal rolls back. So a delete that cannot happen costs
+  // no Stripe calls — before this, every retry during a 72-hour hold
+  // re-cancelled every abandoned intent on the post (audit run 2, lead 6). A
+  // post with no stray rows is simply deleted here.
   const cancelled: string[] = [];
-  if ((ledger ?? []).length > 0) {
+  let deleteError = await deletePost([]);
+
+  if (deleteError?.message?.includes('INTENT_NOT_CANCELLED')) {
+    // --- Cancel stray uncaptured intents AT STRIPE, recording what we WATCHED die
+    // Only the never-captured rows: the settled ones (refunded / collected /
+    // released) are detached by the RPC and their intents are terminal at
+    // Stripe — cancelling those would error to no purpose. A 'held' row means
+    // money still in escrow; the RPC refuses the delete outright, so it is not
+    // touched here either.
+    const { data: ledger, error: ledgerError } = await admin
+      .from('payments')
+      .select('stripe_payment_intent_id, status')
+      .eq('post_id', postId)
+      .in('status', ['requires_payment', 'failed']);
+
+    if (ledgerError) {
+      console.error('[posts] ledger read failed', ledgerError.message);
+      return errorResponse('LOOKUP_FAILED', 'We couldn’t delete that post. Please try again.', 500);
+    }
+
     const stripe = createStripeClient();
     for (const row of ledger ?? []) {
       const intentId = row.stripe_payment_intent_id as string;
@@ -149,14 +166,10 @@ Deno.serve(async (request) => {
         }
       }
     }
-  }
 
-  // --- Delete, with the evidence ----------------------------------------------
-  const { error: deleteError } = await admin.rpc('delete_cancelled_post', {
-    p_post_id: postId,
-    p_owner_id: userId,
-    p_cancelled_intent_ids: cancelled,
-  });
+    // --- Delete, with the evidence --------------------------------------------
+    deleteError = await deletePost(cancelled);
+  }
 
   if (deleteError) {
     const message = deleteError.message ?? '';
