@@ -114,7 +114,7 @@ describe('requestEmailOtp', () => {
     mockSignInWithOtp.mockResolvedValue({ error: { status: 429, code: 'over_email_send_rate_limit' } });
     await expect(requestEmailOtp('jane@example.com')).rejects.toMatchObject({
       code: 'OTP_RATE_LIMIT',
-      // Time-honest copy: the budget is 2/hour, so never promise "a minute".
+      // Time-honest copy: the budget is hourly, so never promise "a minute".
       message: expect.stringContaining('try again later'),
     });
   });

@@ -266,8 +266,11 @@ re-auth, alert radius (→ notifications), account deletion (→ profile).
 
 **Email OTP (works today with the defaults)** — `supabase/config.toml` already
 provisions it: `otp_length = 6`, `otp_expiry = 900`, `enable_confirmations =
-false`. Local dev uses **Inbucket** (no real email). Production needs **custom
-SMTP** — a Phase 5 task; Supabase's default sender is fine for dev/beta.
+false`. Local dev uses **Inbucket** (no real email). Production sends through
+**custom SMTP — Resend, from `noreply@trackitdown.co.uk`** (Dashboard →
+Authentication → Emails → SMTP Settings; confirmed on 2026-10-27). Turning it
+off falls back to Supabase's shared sender and its ~2 emails/hour for the
+whole project — never do that with real users.
 Dashboard (hosted): set the email OTP template + confirm the OTP length/expiry.
 
 > **6 digits / 15 minutes since 2026-10-16** (were 8 / 60 — the sign-in
@@ -329,13 +332,15 @@ from `docs/DESIGN_SYSTEM.md` with a token→hex map in the file header). It is
    word "code" near the digits (it does: "Your login code" / "Enter this code");
    don't reword that away.
 3. **Check it doesn't land in spam** (Gmail + iCloud/Outlook if you can). On the
-   default Supabase sender some filtering is expected — this is the concrete
-   argument for the Phase 5 custom-SMTP move onto our own verified domain.
+   own verified domain (custom SMTP above) filtering should be rare — if it
+   is not, check the domain's DKIM/DMARC in Resend → Domains first.
 
-**Rate limits** — `email_sent = 2/hour` (kept deliberately tight). The 60s
-resend and testing hit this fast; the UI shows "Too many codes requested —
-please try again later" (time-honest: never promise "a minute" against an
-hourly budget). Raise it in the dashboard only if beta feedback needs it.
+**Rate limits** — hosted: **30 emails/hour** (Dashboard → Authentication →
+Rate Limits, raised from 2 on 2026-10-27). Locally `email_sent = 2` in
+`config.toml`. Resend's FREE plan caps sends at ~100/day — move to Pro before
+launch. When a limit is hit the UI shows "Too many codes requested — please
+try again later" (time-honest: never promise "a minute" against an hourly
+budget).
 
 **Apple + Google (code-complete; inert until you do this)**
 1. **Apple** — Apple Developer: enable "Sign in with Apple" for the app id;
