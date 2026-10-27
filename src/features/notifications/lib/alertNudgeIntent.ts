@@ -19,10 +19,10 @@
 
 import { useSyncExternalStore } from 'react';
 
-/** Why the offer is being made. One source today; kept as a field so the funnel
- *  logs can tell surfaces apart if a second ever appears. */
+/** Why the offer is being made, so the funnel logs can tell surfaces apart:
+ *  a third listing opened, or a first sighting just sent (2026-10-27). */
 export interface AlertNudgeIntent {
-  source: 'post_views';
+  source: 'post_views' | 'sighting_sent';
 }
 
 let pending: AlertNudgeIntent | null = null;
@@ -43,8 +43,8 @@ function getSnapshot(): AlertNudgeIntent | null {
  *  be (signed in, no alert yet, never offered before) — the caller only reports
  *  that the moment happened. A second request replaces the first; it never
  *  queues, because two identical offers is one offer. */
-export function requestAlertNudge(): void {
-  pending = { source: 'post_views' };
+export function requestAlertNudge(source: AlertNudgeIntent['source'] = 'post_views'): void {
+  pending = { source };
   notify();
 }
 

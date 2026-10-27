@@ -160,6 +160,15 @@ jest.mock('@/features/payments', () => ({
   }),
 }));
 
+// Defaults to DISMISSED so every other test sees the screen as before; the
+// photo row's own tests turn it on.
+let mockPhotoNudgeDismissed = true;
+const mockMarkPhotoNudgeDismissed = jest.fn();
+jest.mock('../lib/photoNudgeStorage', () => ({
+  hasDismissedPhotoNudge: () => Promise.resolve(mockPhotoNudgeDismissed),
+  markPhotoNudgeDismissed: () => mockMarkPhotoNudgeDismissed(),
+}));
+
 const profile = {
   id: 'user-1',
   firstName: 'Ollie',
@@ -174,7 +183,53 @@ beforeEach(() => {
   mockProfileState = { status: 'ready', profile, refresh: jest.fn() };
   mockAlertsState = { status: 'ready', alerts: [], refresh: jest.fn() };
   mockPayoutsRelevant = true;
+  mockPhotoNudgeDismissed = true;
   mockSignOut.mockResolvedValue(undefined);
+});
+
+describe('the photo row (asked later, never at sign-in)', () => {
+  const renderLoaded = async () => {
+    const view = await render(<ProfileScreen />);
+    await act(async () => {}); // the once-flag read
+    return view;
+  };
+
+  it('offers a photo when there is none, and opens Edit profile', async () => {
+    mockPhotoNudgeDismissed = false;
+    const view = await renderLoaded();
+
+    await act(async () => {
+      await fireEvent.press(view.getByTestId('photo-nudge'));
+    });
+    expect(mockPush).toHaveBeenCalledWith('/edit-profile');
+  });
+
+  it('dismissing hides it and remembers the refusal', async () => {
+    mockPhotoNudgeDismissed = false;
+    const view = await renderLoaded();
+
+    await act(async () => {
+      await fireEvent.press(view.getByLabelText('Dismiss'));
+    });
+    expect(view.queryByTestId('photo-nudge')).toBeNull();
+    expect(mockMarkPhotoNudgeDismissed).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not shown once they have a photo', async () => {
+    mockPhotoNudgeDismissed = false;
+    mockProfileState = {
+      status: 'ready',
+      profile: { ...profile, avatarUrl: 'https://example.test/a.jpg' },
+      refresh: jest.fn(),
+    };
+    const view = await renderLoaded();
+    expect(view.queryByTestId('photo-nudge')).toBeNull();
+  });
+
+  it('is not shown once refused before', async () => {
+    const view = await renderLoaded();
+    expect(view.queryByTestId('photo-nudge')).toBeNull();
+  });
 });
 
 describe('signed out', () => {

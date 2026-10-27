@@ -47,6 +47,9 @@ export { fetchUnreadNotificationCount } from './api/notificationsApi';
 // deps are React, the api layer and useSession — imported by MODULE path, not
 // the auth barrel, precisely to keep this file within the budget below.
 export { useMyAlerts, invalidateMyAlerts, type MyAlertsState } from './hooks/useMyAlerts';
+// A plain in-memory store (React only), so it is light enough for the barrel:
+// the sighting flow raises the alert-area offer after a first report.
+export { requestAlertNudge } from './lib/alertNudgeIntent';
 // (`useAlertReach` was exported here until 2026-09-03. Its one consumer — the
 // wizard's bounty step — was replaced by useBountyGuidance, which answers the
 // same question without a round trip per drag, and nothing has imported the
