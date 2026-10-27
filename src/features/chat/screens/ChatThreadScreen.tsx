@@ -63,6 +63,7 @@ import { useDevicePermission } from '@/features/permissions';
 // deferred import below exists to avoid.
 import type { PublicProfileSheetProps } from '@/features/profile';
 import { useAndroidKeyboardHeight } from '@/shared/hooks';
+import { createLogger } from '@/shared/lib/logger';
 import {
   motion,
   radii,
@@ -107,6 +108,8 @@ import {
 import { hasDismissedNotifyNudge, markNotifyNudgeDismissed } from '../lib/notifyNudgeStorage';
 import { quickRepliesFor, shouldShowQuickReplies } from '../lib/quickReplies';
 import { MAX_MESSAGE_LENGTH, type ChatMessage } from '../types';
+
+const log = createLogger('chat');
 
 export interface ChatThreadScreenProps {
   threadId: string;
@@ -550,7 +553,10 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
                   icon={BellOff}
                   title="Turn on notifications to hear back"
                   body="They’re off in your phone’s Settings"
-                  onPress={() => void Linking.openSettings()}
+                  onPress={() => {
+                    // The only route left for a blocked user — a failure must leave a trace.
+                    Linking.openSettings().catch(() => log.warn('open_settings_failed'));
+                  }}
                   onDismiss={() => {
                     setNotifyNudgeDismissed(true);
                     void markNotifyNudgeDismissed();

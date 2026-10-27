@@ -398,21 +398,42 @@ describe('found it another way', () => {
 });
 
 describe('onRecovered (the "save it to My cars" offer)', () => {
-  it('fires once on success, with how long the toast stays up', async () => {
-    mockClaim.mockResolvedValue({ nextStep: 'payout', creditedSightingId: 'sighting-1' });
+  // EVERY success ending, because each used to call toast + back itself: one
+  // that drifted back to that would silently lose the offer.
+  it.each<[string, string, number | null | undefined, () => void]>([
+    ['credited, payout sent', 'credit-sighting-1', undefined, () => {
+      mockClaim.mockResolvedValue({ nextStep: 'payout', creditedSightingId: 'sighting-1' });
+      mockRelease.mockResolvedValue({ status: 'paid', transferPence: 25000 });
+    }],
+    ['credited, payout failed (the credit stands)', 'credit-sighting-1', undefined, () => {
+      mockClaim.mockResolvedValue({ nextStep: 'payout', creditedSightingId: 'sighting-1' });
+      mockRelease.mockRejectedValue(new Error('network'));
+    }],
+    ['credited on a no-reward listing', 'credit-sighting-1', null, () => {
+      mockClaim.mockResolvedValue({ nextStep: 'done', creditedSightingId: 'sighting-1' });
+    }],
+    ['found another way, refunded', 'credit-none', undefined, () => {}],
+    ['found another way, refund held', 'credit-none', undefined, () => {
+      mockRefund.mockResolvedValue({ held: true, refundAfter: '2026-11-01T10:00:00Z' });
+    }],
+    ['found another way, no-reward listing', 'credit-none', null, () => {
+      mockClaim.mockResolvedValue({ nextStep: 'done', creditedSightingId: null });
+    }],
+  ])('%s: fires once, with how long the toast stays up', async (_name, option, bounty, arrange) => {
+    arrange();
     const onRecovered = jest.fn();
     const { getByText, getByTestId } = await act(async () =>
-      render(<RecoverPostScreen postId="p1" onRecovered={onRecovered} />),
+      render(<RecoverPostScreen postId="p1" bountyPence={bounty} onRecovered={onRecovered} />),
     );
 
     await act(async () => {
-      fireEvent.press(getByTestId('credit-sighting-1'));
+      fireEvent.press(getByTestId(option));
     });
     await act(async () => {
       fireEvent.press(getByText('Confirm'));
     });
 
-    await waitFor(() => expect(mockBack).toHaveBeenCalled());
+    await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
     expect(onRecovered).toHaveBeenCalledTimes(1);
     expect(onRecovered.mock.calls[0][0]).toBeGreaterThan(0);
   });

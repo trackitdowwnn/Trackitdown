@@ -23,6 +23,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { fetchPostDetail } from '@/features/vehicles';
 import { successHaptic } from '@/shared/lib/haptics';
+import { createLogger } from '@/shared/lib/logger';
 import { spacing } from '@/shared/theme';
 import { EmptyState, ErrorState, FullscreenLoader, Screen, useToast } from '@/shared/ui';
 import { WizardScreen } from '@/shared/wizard';
@@ -32,6 +33,9 @@ import { useMyVehicles } from '../hooks/useMyVehicles';
 import { ADD_VEHICLE_INITIAL_ANSWERS, buildAddVehicleFlow } from '../lib/addVehicleFlow';
 import { postToAnswers, toAnswers } from '../lib/vehicleAnswers';
 import type { AddVehicleAnswers } from '../types';
+
+// Ids and reasons only — never a plate (docs/LOGGING.md).
+const log = createLogger('garage');
 
 export interface AddVehicleScreenProps {
   /** Present = edit that saved car; absent = add a new one. */
@@ -58,17 +62,23 @@ export function AddVehicleScreen({ vehicleId, fromPostId }: AddVehicleScreenProp
   useEffect(() => {
     if (!fromPostId) return;
     let live = true;
+    // Not silent: the owner was promised their car's details, so say so.
+    const fallBack = (reason: string) => {
+      if (!live) return;
+      log.warn('save_car_seed_failed', { reason });
+      toast.show('Couldn’t load your car’s details.', 'error');
+      setPostAnswers(null);
+    };
     fetchPostDetail(fromPostId)
       .then((result) => {
-        if (live) setPostAnswers(result.kind === 'visible' ? postToAnswers(result.post) : null);
+        if (result.kind !== 'visible') return fallBack(result.kind);
+        if (live) setPostAnswers(postToAnswers(result.post));
       })
-      .catch(() => {
-        if (live) setPostAnswers(null);
-      });
+      .catch(() => fallBack('fetch_failed'));
     return () => {
       live = false;
     };
-  }, [fromPostId]);
+  }, [fromPostId, toast]);
 
   // Edit mode waits for the garage to load before seeding, so the wizard is
   // never mounted with empty answers and then re-seeded underneath the user.

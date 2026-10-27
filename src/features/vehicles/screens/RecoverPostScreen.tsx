@@ -255,7 +255,12 @@ export function RecoverPostScreen({ postId, bountyPence, onRecovered }: RecoverP
                 'They’re credited. We’ll send the reward automatically once they’ve added their bank details.';
       } catch (payoutError) {
         // The credit stands; only the transfer is outstanding, and it can be
-        // retried from the listing. Surfaced calmly, not as an error toast.
+        // retried from the listing. Surfaced calmly, not as an error toast —
+        // but a money failure must leave a trace (2026-10-27 review).
+        log.warn('release_payout failed after credit', {
+          postId,
+          code: payoutError instanceof RecoveryError ? payoutError.code : 'UNKNOWN',
+        });
         message =
           payoutError instanceof RecoveryError
             ? payoutError.message

@@ -1,7 +1,8 @@
 /**
  * WHAT:  SaveYourCarSheet — the offer made when someone opens the post-a-car
- *        wizard and leaves WITHOUT posting, having no saved car. Mounted once at
- *        the app root, driven entirely by the exit-nudge intent store.
+ *        wizard and leaves WITHOUT posting, or (since 2026-10-27) has just
+ *        marked a listing recovered — either way having no saved car. Mounted
+ *        once at the app root, driven entirely by the exit-nudge intent store.
  * WHY:   Backing out of the report flow is the clearest signal in the app that
  *        someone is exploring rather than in trouble — the perfect moment to
  *        offer the garage. The mirror image (prompting when they TAP report) was
@@ -21,7 +22,8 @@
  *        cold start for a check it doesn't need.
  * LINKS: src/features/garage/lib/exitNudgeIntent.ts (the store);
  *        src/features/garage/lib/garageNudgeStorage.ts (the shared once-only flag);
- *        src/app/post-a-car.tsx (the only place the intent is raised);
+ *        the two places the intent is raised: StartReportScreen.tsx (the
+ *        wizard's onAbandon) and src/app/recover-post.tsx (after a recovery);
  *        src/features/auth/components/AuthSheet.tsx (the root-mounted pattern).
  */
 
@@ -138,7 +140,8 @@ export function SaveYourCarSheet() {
 
   const onAdd = useCallback(() => {
     log.info('garage_nudge_accepted', { surface: 'exit_sheet' });
-    clearSaveCarNudge();
+    // close() fires onDismiss, which clears the intent AFTER the slide-down —
+    // clearing it first flipped the copy to the wizard-exit words mid-close.
     sheetRef.current?.close();
     // From a recovery, the wizard starts from the listing's details — the
     // owner checks them and saves; nothing is saved behind their back.
@@ -151,8 +154,8 @@ export function SaveYourCarSheet() {
 
   const onNotNow = useCallback(() => {
     log.info('garage_nudge_dismissed', { surface: 'exit_sheet' });
-    clearSaveCarNudge();
-    sheetRef.current?.close();
+    sheetRef.current?.close(); // onDismiss clears the intent, as above
+
   }, []);
 
   return (

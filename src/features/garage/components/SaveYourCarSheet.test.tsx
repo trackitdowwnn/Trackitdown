@@ -201,6 +201,21 @@ describe('after a recovery (first-login welcome, asked later)', () => {
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/add-vehicle', params: { fromPost: 'p1' } });
   });
 
+  // The 2026-10-27 review: the intent used to be cleared BEFORE close(), so the
+  // sheet slid down reading "Not reporting one today?". close() fires
+  // onDismiss, which clears it once the sheet is gone.
+  it('keeps its own words while it closes', async () => {
+    const { getByTestId, getByText, queryByText } = await mountRecovered();
+
+    await act(async () => {
+      fireEvent.press(getByTestId('btn-Not now'));
+    });
+
+    expect(mockClose).toHaveBeenCalled();
+    expect(getByText('Save it to My cars so you can report it in seconds next time.')).toBeTruthy();
+    expect(queryByText(/Save your car now/)).toBeNull();
+  });
+
   it('stays silent when they already have a saved car (a listing from My cars has one)', async () => {
     mockSavedCar = 'some';
     await mountRecovered();

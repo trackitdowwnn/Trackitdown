@@ -17,9 +17,9 @@
  *        owners managing their own theft.
  *
  *        Lives in notifications and is called from the route so that
- *        features/vehicles never imports features/notifications — exactly why
- *        src/app/post-a-car.tsx, not the wizard screen, raises the garage
- *        intent.
+ *        features/vehicles never imports features/notifications — the same
+ *        reason the post-a-car wizard reports its exit through an onAbandon
+ *        callback rather than raising the garage intent itself.
  * LINKS: ../lib/alertNudgeStorage.ts (the persisted count + the once-only flag);
  *        ../lib/alertNudgeIntent.ts (what the third view raises);
  *        src/app/post/[id].tsx (the only caller).

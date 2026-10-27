@@ -14,7 +14,9 @@
  *        which is the nag this whole design is avoiding.
  * LINKS: src/features/garage/lib/exitNudgeIntent.ts (the shape this copies);
  *        ../components/AlertNudgeSheet.tsx (the consumer);
- *        ../hooks/useCountPostViewForAlertNudge.ts (the only setter).
+ *        the setters: ../hooks/useCountPostViewForAlertNudge.ts (third
+ *        listing) and sightings/screens/ReportSightingScreen.tsx (Done on
+ *        "Report sent").
  */
 
 import { useSyncExternalStore } from 'react';

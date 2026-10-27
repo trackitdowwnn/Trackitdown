@@ -16,6 +16,7 @@
 
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 
 import {
   expoDevicePermissions,
@@ -29,7 +30,7 @@ export interface DevicePermissionState {
   /** Fires the OS dialog. Resolves to the resulting status, which is also
    *  written to `status` — callers can await it to branch immediately. */
   request: () => Promise<PermissionStatus>;
-  /** Silent re-check (focus already does this; exposed for explicit refreshes). */
+  /** Silent re-check (focus and returning to the app already do this). */
   refresh: () => void;
 }
 
@@ -51,13 +52,22 @@ export function useDevicePermission(kind: PermissionKind): DevicePermissionState
     });
   }, [kind]);
 
-  // Re-check whenever the screen regains focus — the user may have changed the
-  // permission in the OS Settings app while we were backgrounded.
+  // Re-check whenever the screen regains focus (another screen may have asked).
   useFocusEffect(
     useCallback(() => {
       refresh();
     }, [refresh]),
   );
+
+  // ⚠️ AND when the app comes back to the foreground. Returning from the OS
+  // Settings app fires no navigation focus, so a permission turned on there
+  // stayed "off" on screen until the user navigated away (2026-10-27 review).
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active') refresh();
+    });
+    return () => subscription.remove();
+  }, [refresh]);
 
   const request = useCallback(async () => {
     const next = await expoDevicePermissions.request(kind);

@@ -1,7 +1,8 @@
 /**
  * WHAT:  AlertNudgeSheet — the one-time offer to set an alert area, made after
- *        someone finishes their third listing. Mounted once at the app root,
- *        driven entirely by the alert-nudge intent store.
+ *        someone finishes their third listing or (since 2026-10-27) taps Done
+ *        on their first "Report sent". Mounted once at the app root, driven
+ *        entirely by the alert-nudge intent store.
  * WHY:   Setting an alert area is the app's core loop — nobody is notified about
  *        anything until one exists — and a quiet feed row is easy to scroll
  *        past. This spends one interruption, once per install, at a moment the
@@ -9,9 +10,10 @@
  *        near them.
  *
  *        Deliberately NOT on a timer. A clock does not know what someone is
- *        doing; three post exits do. It fires as they LEAVE the third listing,
- *        so the sheet opens over the feed rather than over the thing they just
- *        tapped (garage/README.md: "fires on EXIT, never on entry").
+ *        doing; three post exits do. It fires as they LEAVE the third listing
+ *        (or the sent report), so the sheet opens over where they land rather
+ *        than over the thing they just tapped (garage/README.md: "fires on
+ *        EXIT, never on entry").
  *
  *        Mounted at the root, like SaveYourCarSheet, because the post route
  *        unmounts as they back out and cannot host its own sheet.
