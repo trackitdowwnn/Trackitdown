@@ -397,6 +397,47 @@ describe('found it another way', () => {
   });
 });
 
+describe('onRecovered (the "save it to My cars" offer)', () => {
+  it('fires once on success, with how long the toast stays up', async () => {
+    mockClaim.mockResolvedValue({ nextStep: 'payout', creditedSightingId: 'sighting-1' });
+    const onRecovered = jest.fn();
+    const { getByText, getByTestId } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" onRecovered={onRecovered} />),
+    );
+
+    await act(async () => {
+      fireEvent.press(getByTestId('credit-sighting-1'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Confirm'));
+    });
+
+    await waitFor(() => expect(mockBack).toHaveBeenCalled());
+    expect(onRecovered).toHaveBeenCalledTimes(1);
+    expect(onRecovered.mock.calls[0][0]).toBeGreaterThan(0);
+  });
+
+  it('does not fire when the claim is refused', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- reaching the mocked class
+    const { RecoveryError } = require('../api/recoveryApi');
+    mockClaim.mockRejectedValue(new RecoveryError('Not live.', 'POST_NOT_ACTIVE'));
+    const onRecovered = jest.fn();
+    const { getByText, getByTestId } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" onRecovered={onRecovered} />),
+    );
+
+    await act(async () => {
+      fireEvent.press(getByTestId('credit-none'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Confirm'));
+    });
+
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith('Not live.', 'error'));
+    expect(onRecovered).not.toHaveBeenCalled();
+  });
+});
+
 describe('when the server refuses', () => {
   it('shows the server’s reason rather than a generic failure', async () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- reaching the mocked class

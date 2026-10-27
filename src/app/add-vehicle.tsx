@@ -4,10 +4,17 @@
  * WHY:   Route files stay thin (docs/ARCHITECTURE.md rule 3). No payments
  *        provider here, unlike post-a-car: saving a car to the garage charges
  *        nothing and touches no money state.
+ *        `?fromPost=<id>` starts the new car from a recovered listing's details.
  * LINKS: src/features/garage/screens/AddVehicleScreen.tsx;
- *        src/features/garage/screens/MyCarsScreen.tsx (the CTA that pushes this).
+ *        src/features/garage/screens/MyCarsScreen.tsx (the CTA that pushes this);
+ *        src/features/garage/components/SaveYourCarSheet.tsx (the ?fromPost one).
  */
+
+import { useLocalSearchParams } from 'expo-router';
 
 import { AddVehicleScreen } from '@/features/garage';
 
-export default AddVehicleScreen;
+export default function AddVehicleRoute() {
+  const { fromPost } = useLocalSearchParams<{ fromPost?: string }>();
+  return <AddVehicleScreen fromPostId={fromPost} />;
+}

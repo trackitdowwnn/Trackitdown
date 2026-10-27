@@ -173,3 +173,37 @@ describe('the two ways out', () => {
     expect(mockClose).toHaveBeenCalled();
   });
 });
+
+describe('after a recovery (first-login welcome, asked later)', () => {
+  const mountRecovered = async () => {
+    const utils = await act(async () => render(<SaveYourCarSheet />));
+    await act(async () => {
+      requestSaveCarNudge({ source: 'recovered', postId: 'p1' });
+    });
+    return utils;
+  };
+
+  it('asks in its own words, even if the wizard exit already spent the once-flag', async () => {
+    mockHasOffered.mockResolvedValue(true);
+    const { getByText } = await mountRecovered();
+
+    expect(mockOpen).toHaveBeenCalledTimes(1);
+    expect(getByText('Save it to My cars so you can report it in seconds next time.')).toBeTruthy();
+  });
+
+  it('"Save my car" starts the add wizard from the listing', async () => {
+    const { getByTestId } = await mountRecovered();
+
+    await act(async () => {
+      fireEvent.press(getByTestId('btn-Save my car'));
+    });
+
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/add-vehicle', params: { fromPost: 'p1' } });
+  });
+
+  it('stays silent when they already have a saved car (a listing from My cars has one)', async () => {
+    mockSavedCar = 'some';
+    await mountRecovered();
+    expect(mockOpen).not.toHaveBeenCalled();
+  });
+});

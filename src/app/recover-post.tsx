@@ -17,6 +17,7 @@
 
 import { useLocalSearchParams } from 'expo-router';
 
+import { requestSaveCarNudge } from '@/features/garage';
 import { RecoverPostScreen } from '@/features/vehicles';
 import { NO_BOUNTY_PARAM } from '@/shared/lib';
 
@@ -27,5 +28,16 @@ export default function RecoverPostRoute() {
   // which keeps the pre-2026-08-20 bounty copy (the conservative default).
   const bountyPence =
     bounty === NO_BOUNTY_PARAM ? null : Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-  return <RecoverPostScreen postId={postId} bountyPence={bountyPence} />;
+  return (
+    <RecoverPostScreen
+      postId={postId}
+      bountyPence={bountyPence}
+      // "Save it to My cars", once the success toast has been read. A module
+      // store, so the timer outlives this route (it has gone back by then);
+      // the sheet decides whether to ask (signed in, no saved car).
+      onRecovered={(toastMs) =>
+        setTimeout(() => requestSaveCarNudge({ source: 'recovered', postId }), toastMs)
+      }
+    />
+  );
 }

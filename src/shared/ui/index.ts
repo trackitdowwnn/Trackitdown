@@ -42,7 +42,7 @@ export {
   type ProgressStepsProps,
 } from './ProgressSteps';
 export { StatBand, type StatBandCell } from './StatBand';
-export { ToastProvider, useToast, useOptionalToast, type ToastKind } from './Toast';
+export { ToastProvider, toastDuration, useToast, useOptionalToast, type ToastKind } from './Toast';
 export {
   BottomSheet,
   SHEET_GUTTER,

@@ -12,8 +12,11 @@
  */
 
 import type { SavedVehicle } from '../types';
+import type { PostDetail } from '@/features/vehicles';
+
 import {
   hasEnoughPhotosToPost,
+  postToAnswers,
   toAnswers,
   vehicleDisplayName,
   vehicleSummaryLine,
@@ -137,5 +140,52 @@ describe('vehicleDisplayName', () => {
 
   it('falls back to make + model, ignoring a blank nickname', () => {
     expect(vehicleDisplayName(vehicle({ nickname: '   ' }))).toBe('BMW 320d');
+  });
+});
+
+describe('postToAnswers (a recovered listing → a new saved car)', () => {
+  const post = {
+    plate: 'AB12 CDE',
+    make: 'BMW',
+    model: '320d',
+    colour: 'Blue',
+    colourFinish: 'metallic',
+    year: 2019,
+    bodyType: 'Saloon',
+    photos: [{ uri: 'https://x.supabase.co/storage/v1/object/public/post-photos/u1/a-0.jpg' }],
+    distinctiveFeatures: [
+      { photoUrl: 'https://x.supabase.co/storage/v1/object/public/post-photos/u1/mark-b-0.jpg', description: 'Dent' },
+    ],
+  } as unknown as PostDetail;
+
+  it('carries the car and keeps the already-uploaded photos as they are', () => {
+    const answers = postToAnswers(post);
+    expect(answers).toMatchObject({
+      plate: 'AB12 CDE',
+      make: 'BMW',
+      model: '320d',
+      colour: 'Blue',
+      colourFinish: 'metallic',
+      year: 2019,
+      bodyType: 'Saloon',
+      nickname: '',
+    });
+    expect(answers.photos.map((p) => p.uri)).toEqual([post.photos[0].uri]);
+    expect(answers.distinctiveFeatures).toEqual([
+      expect.objectContaining({ description: 'Dent', photo: expect.objectContaining({ uri: post.distinctiveFeatures[0].photoUrl }) }),
+    ]);
+    // The plate still gets its step — it was never confirmed by a scan.
+    expect(answers.plateFromScan).toBeUndefined();
+  });
+
+  it('a plate-less listing gives an empty plate, and missing extras stay empty', () => {
+    const answers = postToAnswers({
+      ...post,
+      plate: null,
+      year: undefined,
+      bodyType: undefined,
+      colourFinish: undefined,
+    } as unknown as PostDetail);
+    expect(answers).toMatchObject({ plate: '', year: null, bodyType: null, colourFinish: null });
   });
 });
