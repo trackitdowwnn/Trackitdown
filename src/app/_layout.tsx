@@ -29,21 +29,30 @@ import {
   Stack,
   ThemeProvider as NavigationThemeProvider,
   useSegments,
+  type ErrorBoundaryProps,
 } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { useCallback, useEffect, useMemo } from 'react';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, StyleSheet, useColorScheme, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { installCrashHandlers, reportCrash } from '@/shared/lib/crashReporting';
 import { markStartup } from '@/shared/lib/startupTrace';
 import { useApplyUpdateOnLaunch } from '@/shared/lib/useApplyUpdateOnLaunch';
 // Direct path, not the shared/lib barrel: the barrel is imported by a large
 // share of the tree and its tests, and this module reaches AppState, the
 // Supabase client and expo-constants. Same call as ThemeProvider below.
 import { installTelemetrySink } from '@/shared/lib/telemetry';
-import { usePalette, useThemeControls, useThemeReady, type Palette } from '@/shared/theme';
+import {
+  paletteFor,
+  usePalette,
+  useThemeControls,
+  useThemeReady,
+  type Palette,
+} from '@/shared/theme';
+import { PaletteContext } from '@/shared/theme/paletteContext';
 // Direct path, not the theme barrel: this module reaches AsyncStorage and
 // Appearance, and the barrel is imported by ~139 files and nearly every test —
 // exporting it from there made 91 suites fail to load on a null AsyncStorage.
@@ -58,7 +67,7 @@ import { SaveYourCarSheet } from '@/features/garage';
 import { AlertNudgeSheet } from '@/features/notifications/components/AlertNudgeSheet';
 import { NotificationsHost } from '@/features/notifications/components/NotificationsHost';
 import { CollectionPickerSheet } from '@/features/watchlist';
-import { ToastProvider } from '@/shared/ui';
+import { ErrorState, ToastProvider } from '@/shared/ui';
 
 // Platform-native screen transitions (motion audit): iOS gets the horizontal
 // push + edge swipe-back users expect; Android gets Material's fade-through.
@@ -88,6 +97,30 @@ void SplashScreen.preventAutoHideAsync().catch(() => {});
 // — are exactly the ones a funnel needs, and an effect would miss them.
 // Idempotent, so Fast Refresh does not mint a second session.
 installTelemetrySink();
+// After the sink, so a crash during startup is sent too (docs/logging-decisions.md).
+installCrashHandlers();
+
+/**
+ * Whatever throws while rendering lands here instead of a blank or red screen,
+ * and is reported as `app_crash` (src/shared/lib/crashReporting.ts).
+ *
+ * ⚠️ IT RENDERS IN PLACE OF THIS LAYOUT, so none of the layout's providers
+ * exist here: the palette comes from the system scheme directly, and the copy
+ * is ErrorState's own ("Something went wrong" / "Try again").
+ */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  const palette = paletteFor(useColorScheme() === 'dark' ? 'dark' : 'light');
+  useEffect(() => {
+    void reportCrash('render', error);
+  }, [error]);
+  return (
+    <PaletteContext.Provider value={palette}>
+      <View style={[styles.boundary, { backgroundColor: palette.background }]}>
+        <ErrorState onRetry={() => void retry()} />
+      </View>
+    </PaletteContext.Provider>
+  );
+}
 
 /**
  * The navigator's own theme, built from OUR tokens rather than handed
@@ -279,5 +312,9 @@ function RootLayoutContent() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+  },
+  boundary: {
+    flex: 1,
+    justifyContent: 'center',
   },
 });

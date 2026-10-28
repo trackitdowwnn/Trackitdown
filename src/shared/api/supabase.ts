@@ -18,6 +18,8 @@ import 'react-native-url-polyfill/auto';
 import { createClient, type SupportedStorage } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 
+import { createTracedFetch } from './tracedFetch';
+
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -42,6 +44,9 @@ const secureStoreAdapter: SupportedStorage = {
 };
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  // Edge Function calls carry a traceparent and log the server's request id
+  // when they fail (docs/logging-decisions.md); everything else passes through.
+  global: { fetch: createTracedFetch() },
   auth: {
     storage: secureStoreAdapter,
     autoRefreshToken: true,
