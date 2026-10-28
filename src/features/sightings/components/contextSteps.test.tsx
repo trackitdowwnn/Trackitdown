@@ -115,7 +115,7 @@ async function renderStep(Step: ComponentType<StepProps>, initial?: Answers) {
 
 async function press(element: Parameters<typeof fireEvent.press>[0]) {
   await act(async () => {
-    fireEvent.press(element);
+    await fireEvent.press(element);
   });
 }
 
@@ -423,7 +423,11 @@ describe('what damage can you see?', () => {
   const noteField = (view: View) => view.getByLabelText('Anything else?');
   const type = async (view: View, text: string) => {
     await act(async () => {
-      fireEvent.changeText(noteField(view), text);
+      await fireEvent.changeText(noteField(view), text);
+    });
+    // Its own act: the effect that starts the float runs when the act above ends.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250)); // the label's 200ms float
     });
   };
 
@@ -524,7 +528,11 @@ describe('what’s missing?', () => {
   const noteField = (view: View) => view.getByLabelText('Anything else?');
   const type = async (view: View, text: string) => {
     await act(async () => {
-      fireEvent.changeText(noteField(view), text);
+      await fireEvent.changeText(noteField(view), text);
+    });
+    // Its own act: the effect that starts the float runs when the act above ends.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250)); // the label's 200ms float
     });
   };
 
@@ -595,7 +603,11 @@ describe('the note', () => {
     // The counter is hidden from screen readers on purpose (TextField).
     expect(view.getByText('0/500', { includeHiddenElements: true })).toBeTruthy();
     await act(async () => {
-      fireEvent.changeText(view.getByLabelText('Your note'), 'Two men loading it');
+      await fireEvent.changeText(view.getByLabelText('Your note'), 'Two men loading it');
+    });
+    // Its own act: the effect that starts the float runs when the act above ends.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250)); // the label's 200ms float
     });
     expect(latest.note).toBe('Two men loading it');
     expect(view.getByText('18/500', { includeHiddenElements: true })).toBeTruthy();

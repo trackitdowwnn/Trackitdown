@@ -34,7 +34,7 @@ describe('BankDetailsForm', () => {
   it('types the sort code’s dashes for them, as the wizard does', async () => {
     const { view } = await renderForm();
     await act(async () => {
-      fireEvent.changeText(view.getByTestId('bank-sort-code'), '108800');
+      await fireEvent.changeText(view.getByTestId('bank-sort-code'), '108800');
     });
     expect(view.getByTestId('bank-sort-code').props.value).toBe('10-88-00');
   });
@@ -42,10 +42,10 @@ describe('BankDetailsForm', () => {
   it('says a short sort code is wrong on leaving the field — not only after "Save"', async () => {
     const { view } = await renderForm();
     await act(async () => {
-      fireEvent.changeText(view.getByTestId('bank-sort-code'), '1088');
+      await fireEvent.changeText(view.getByTestId('bank-sort-code'), '1088');
     });
     await act(async () => {
-      fireEvent(view.getByTestId('bank-sort-code'), 'blur');
+      await fireEvent(view.getByTestId('bank-sort-code'), 'blur');
     });
     expect(view.getByText('A sort code is 6 digits')).toBeTruthy();
   });
@@ -53,7 +53,7 @@ describe('BankDetailsForm', () => {
   it('an untouched field is not an error yet', async () => {
     const { view } = await renderForm();
     await act(async () => {
-      fireEvent(view.getByTestId('bank-account-number'), 'blur');
+      await fireEvent(view.getByTestId('bank-account-number'), 'blur');
     });
     expect(view.queryByText('An account number is 8 digits')).toBeNull();
   });
@@ -61,12 +61,12 @@ describe('BankDetailsForm', () => {
   it('⚠️ hands on digits only, whatever was typed', async () => {
     const { view, onSubmit } = await renderForm();
     await act(async () => {
-      fireEvent.changeText(view.getByTestId('bank-sort-code'), '108800');
-      fireEvent.changeText(view.getByTestId('bank-account-number'), '0001 2345');
-      fireEvent.changeText(view.getByTestId('bank-confirm-account-number'), '00012345');
+      await fireEvent.changeText(view.getByTestId('bank-sort-code'), '108800');
+      await fireEvent.changeText(view.getByTestId('bank-account-number'), '0001 2345');
+      await fireEvent.changeText(view.getByTestId('bank-confirm-account-number'), '00012345');
     });
     await act(async () => {
-      fireEvent.press(view.getByText('Save new account'));
+      await fireEvent.press(view.getByText('Save new account'));
     });
     expect(onSubmit).toHaveBeenCalledWith({ sortCode: '108800', accountNumber: '00012345' });
   });

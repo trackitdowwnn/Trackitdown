@@ -174,7 +174,7 @@ const waitForSubmitArm = () =>
 /** Press the primary/labelled button. */
 async function press(view: Awaited<ReturnType<typeof render>>, name: string | RegExp) {
   await act(async () => {
-    fireEvent.press(view.getByRole('button', { name }));
+    await fireEvent.press(view.getByRole('button', { name }));
   });
 }
 
@@ -243,7 +243,7 @@ describe('WizardScreen wiring', () => {
     expect(next.props.accessibilityState).toMatchObject({ disabled: true });
 
     await act(async () => {
-      fireEvent.press(view.getByTestId('fill-name'));
+      await fireEvent.press(view.getByTestId('fill-name'));
     });
     expect(
       view.getByRole('button', { name: 'Next' }).props.accessibilityState,
@@ -265,7 +265,7 @@ describe('WizardScreen wiring', () => {
 
     // …but the step's own Skip affordance advances anyway.
     await act(async () => {
-      fireEvent.press(view.getByTestId('skip-name'));
+      await fireEvent.press(view.getByTestId('skip-name'));
     });
     expect(view.getByText('Your preferences')).toBeTruthy();
   });
@@ -274,12 +274,12 @@ describe('WizardScreen wiring', () => {
     const { view } = await renderWizard();
     await press(view, 'Get started');
     await act(async () => {
-      fireEvent.press(view.getByTestId('fill-name'));
+      await fireEvent.press(view.getByTestId('fill-name'));
     });
     await press(view, 'Next');
     await press(view, 'Continue');
     await act(async () => {
-      fireEvent.press(view.getByTestId('fill-colour'));
+      await fireEvent.press(view.getByTestId('fill-colour'));
     });
     await press(view, 'Next');
 
@@ -310,12 +310,12 @@ describe('WizardScreen wiring', () => {
 
     await press(view, 'Get started');
     await act(async () => {
-      fireEvent.press(view.getByTestId('fill-name'));
+      await fireEvent.press(view.getByTestId('fill-name'));
     });
     await press(view, 'Next');
     await press(view, 'Continue');
     await act(async () => {
-      fireEvent.press(view.getByTestId('fill-colour'));
+      await fireEvent.press(view.getByTestId('fill-colour'));
     });
     announce.mockClear();
     await press(view, 'Next');
@@ -362,7 +362,7 @@ describe('WizardScreen wiring', () => {
       const { view } = await renderWizard();
       await press(view, 'Get started');
       await act(async () => {
-        fireEvent.press(view.getByTestId('fill-name'));
+        await fireEvent.press(view.getByTestId('fill-name'));
       });
       expect(addSpy.mock.calls.filter(([event]) => event === 'hardwareBackPress')).toHaveLength(1);
     } finally {
@@ -376,7 +376,7 @@ describe('WizardScreen wiring', () => {
 
     await press(view, 'Get started');
     await act(async () => {
-      fireEvent.press(view.getByTestId('fill-name'));
+      await fireEvent.press(view.getByTestId('fill-name'));
     });
     await press(view, 'Exit');
 
@@ -522,7 +522,7 @@ describe('the progress bar', () => {
     const view = await render(<WizardScreen flow={onePhase} onExit={jest.fn()} onComplete={jest.fn()} />);
     expect(view.getByLabelText('Step 1 of 3')).toBeTruthy();
     await act(async () => {
-      fireEvent.press(view.getByTestId('fill-name'));
+      await fireEvent.press(view.getByTestId('fill-name'));
     });
     await press(view, 'Next');
     expect(view.getByLabelText('Step 2 of 3')).toBeTruthy();
@@ -532,18 +532,18 @@ describe('the progress bar', () => {
     const { view } = await renderWizard();
     await press(view, 'Get started');
     await act(async () => {
-      fireEvent.press(view.getByTestId('fill-name'));
+      await fireEvent.press(view.getByTestId('fill-name'));
     });
     await press(view, 'Next');
     await press(view, 'Continue');
     await act(async () => {
-      fireEvent.press(view.getByTestId('fill-colour'));
+      await fireEvent.press(view.getByTestId('fill-colour'));
     });
     await press(view, 'Next'); // review
     const onReview = view.getByLabelText('Review').props.accessibilityValue;
 
     await act(async () => {
-      fireEvent.press(view.getAllByRole('button', { name: /^Edit/ })[0]);
+      await fireEvent.press(view.getAllByRole('button', { name: /^Edit/ })[0]);
     });
     expect(view.getByText("What's your name?")).toBeTruthy(); // on the spur
     expect(view.getByLabelText('Review').props.accessibilityValue).toEqual(onReview);
@@ -705,13 +705,13 @@ describe('moving between screens', () => {
       const { view } = await renderWizard();
       await press(view, 'Get started');
       await act(async () => {
-        fireEvent.press(view.getByTestId('fill-name'));
+        await fireEvent.press(view.getByTestId('fill-name'));
       });
       await waitOutTheMove();
       const next = view.getByRole('button', { name: 'Next' });
       await act(async () => {
-        fireEvent.press(next);
-        fireEvent.press(next);
+        await fireEvent.press(next);
+        await fireEvent.press(next);
       });
       // Phase 2's intro, not past it.
       expect(view.getByText('Your preferences')).toBeTruthy();
@@ -866,7 +866,7 @@ describe('step-launched edit spurs', () => {
       <WizardScreen flow={speedFlow} onExit={onExit} onComplete={onComplete} />,
     );
     await act(async () => {
-      fireEvent.press(view.getByTestId('fill-name'));
+      await fireEvent.press(view.getByTestId('fill-name'));
     });
     await press(view, 'Continue');
     expect(view.getByText('Check and send')).toBeTruthy();
@@ -876,7 +876,7 @@ describe('step-launched edit spurs', () => {
   it('Edit jumps to the step, the CTA reads Done, and Done returns to the check', async () => {
     const { view } = await renderSpurFlow();
     await act(async () => {
-      fireEvent.press(view.getByTestId('edit-name'));
+      await fireEvent.press(view.getByTestId('edit-name'));
     });
     expect(view.getByText("What's your name?")).toBeTruthy();
     expect(view.getByRole('button', { name: 'Done' })).toBeTruthy();
@@ -889,7 +889,7 @@ describe('step-launched edit spurs', () => {
   it('takes the first step id that exists from a list', async () => {
     const { view } = await renderSpurFlow();
     await act(async () => {
-      fireEvent.press(view.getByTestId('edit-unknown'));
+      await fireEvent.press(view.getByTestId('edit-unknown'));
     });
     expect(view.getByText("What's your name?")).toBeTruthy();
   });
@@ -897,7 +897,7 @@ describe('step-launched edit spurs', () => {
   it('⚠️ shows Back on a spur into the FIRST screen, and Back cancels the edit', async () => {
     const { view } = await renderSpurFlow();
     await act(async () => {
-      fireEvent.press(view.getByTestId('edit-name'));
+      await fireEvent.press(view.getByTestId('edit-name'));
     });
     await press(view, 'Back');
     expect(view.getByText('Check and send')).toBeTruthy();
@@ -916,7 +916,7 @@ describe('step-launched edit spurs', () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     const { view, onExit } = await renderSpurFlow();
     await act(async () => {
-      fireEvent.press(view.getByTestId('edit-name'));
+      await fireEvent.press(view.getByTestId('edit-name'));
     });
 
     await act(async () => {
@@ -930,7 +930,7 @@ describe('step-launched edit spurs', () => {
   it('offers no editStep while on a spur (no spur from a spur)', async () => {
     const { view } = await renderSpurFlow();
     await act(async () => {
-      fireEvent.press(view.getByTestId('edit-name'));
+      await fireEvent.press(view.getByTestId('edit-name'));
     });
     expect(view.getByText('no-edit')).toBeTruthy();
   });
@@ -952,11 +952,16 @@ describe('step-launched edit spurs', () => {
     );
     const { view } = await renderSpurFlow(onComplete);
     await waitForSubmitArm();
-    await press(view, 'Send report');
+    // Not awaited: the press settles only when the send does. The macrotask
+    // lets its own act() close before this one does.
+    await act(async () => {
+      void fireEvent.press(view.getByRole('button', { name: 'Send report' }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     expect(view.getByText('busy')).toBeTruthy();
 
     await act(async () => {
-      fireEvent.press(view.getByTestId('edit-name'));
+      await fireEvent.press(view.getByTestId('edit-name'));
     });
     expect(view.getByText('Check and send')).toBeTruthy();
     await act(async () => {
@@ -974,7 +979,7 @@ describe('step-launched edit spurs', () => {
     );
     expect(view.queryByText('Only the owner sees this.')).toBeNull();
     await act(async () => {
-      fireEvent.press(view.getByTestId('fill-name'));
+      await fireEvent.press(view.getByTestId('fill-name'));
     });
     await press(view, 'Continue');
     expect(view.getByText('Only the owner sees this.')).toBeTruthy();
@@ -994,7 +999,7 @@ describe('step-launched edit spurs', () => {
       <WizardScreen flow={speedFlow} onExit={jest.fn()} onComplete={jest.fn()} />,
     );
     await act(async () => {
-      fireEvent.press(view.getByTestId('fill-name'));
+      await fireEvent.press(view.getByTestId('fill-name'));
     });
     await press(view, 'Continue');
     expect(
@@ -1028,7 +1033,7 @@ describe('step-launched edit spurs', () => {
     expect(title.props.minimumFontScale).toBeGreaterThan(0.5);
 
     await act(async () => {
-      fireEvent.press(view.getByTestId('fill-name'));
+      await fireEvent.press(view.getByTestId('fill-name'));
     });
     await press(view, 'Continue');
     const next = view.getByRole('header', { name: 'Check and send' });
@@ -1107,7 +1112,7 @@ describe('a step that claims Next — wiring', () => {
     );
     await press(view, 'Get started');
     await act(async () => {
-      fireEvent.press(view.getByTestId('fill-name'));
+      await fireEvent.press(view.getByTestId('fill-name'));
     });
 
     await press(view, 'Next');
@@ -1124,7 +1129,7 @@ describe('a step that claims Next — wiring', () => {
     );
     await press(view, 'Get started');
     await act(async () => {
-      fireEvent.press(view.getByTestId('fill-name'));
+      await fireEvent.press(view.getByTestId('fill-name'));
     });
     expect(typeof given[given.length - 1]).toBe('function');
 
@@ -1148,7 +1153,7 @@ describe('a step that claims Next — wiring', () => {
     );
     await press(view, 'Get started');
     await act(async () => {
-      fireEvent.press(view.getByTestId('fill-name'));
+      await fireEvent.press(view.getByTestId('fill-name'));
     });
     await press(view, 'Next');
     await act(async () => lastProceed?.());
@@ -1166,7 +1171,7 @@ describe('a step that claims Next — wiring', () => {
     await press(view, 'Get started');
     expect(view.getByRole('button', { name: 'Next' }).props.accessibilityHint).toBeUndefined();
     await act(async () => {
-      fireEvent.press(view.getByTestId('fill-name'));
+      await fireEvent.press(view.getByTestId('fill-name'));
     });
     expect(view.getByRole('button', { name: 'Next' }).props.accessibilityHint).toBe(
       'Asks one more thing',

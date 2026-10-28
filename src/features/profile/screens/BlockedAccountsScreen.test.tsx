@@ -17,7 +17,7 @@
  *        docs/decisions/ADR-0017-user-blocking.md.
  */
 
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import { BlockedAccountsScreen } from './BlockedAccountsScreen';
 
@@ -94,7 +94,7 @@ describe('unblocking', () => {
   it('calls the server with that account, and drops the row', async () => {
     const { findByText, queryByText } = await render(<BlockedAccountsScreen />);
 
-    fireEvent.press(await findByText('Unblock'));
+    await fireEvent.press(await findByText('Unblock'));
 
     await waitFor(() => expect(mockUnblock).toHaveBeenCalledWith(account().id));
     await waitFor(() => expect(queryByText('Sam')).toBeNull());
@@ -107,7 +107,7 @@ describe('unblocking', () => {
     mockUnblock.mockRejectedValue(new Error('We couldn’t unblock that account.'));
     const { findByText } = await render(<BlockedAccountsScreen />);
 
-    fireEvent.press(await findByText('Unblock'));
+    await fireEvent.press(await findByText('Unblock'));
 
     await waitFor(() => expect(mockToast).toHaveBeenCalled());
     expect(await findByText('Sam')).toBeTruthy();
@@ -119,10 +119,13 @@ describe('unblocking', () => {
     const { findByText } = await render(<BlockedAccountsScreen />);
 
     const button = await findByText('Unblock');
-    fireEvent.press(button);
-    fireEvent.press(button);
+    // One act: both taps land before any re-render, as a fast double tap does.
+    await act(async () => {
+      await fireEvent.press(button);
+      await fireEvent.press(button);
+    });
 
     expect(mockUnblock).toHaveBeenCalledTimes(1);
-    release();
+    await act(async () => release());
   });
 });

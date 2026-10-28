@@ -83,7 +83,7 @@ describe('PostSectionEditor', () => {
     const onSaved = jest.fn();
     const { getByTestId } = await renderEditor({ onSave, onSaved });
 
-    fireEvent.press(getByTestId('btn-Save'));
+    await fireEvent.press(getByTestId('btn-Save'));
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
     expect(onSave).toHaveBeenCalledTimes(1);
@@ -97,7 +97,7 @@ describe('PostSectionEditor', () => {
     const onSaved = jest.fn();
     const { getByTestId, getByText } = await renderEditor({ onSave, onSaved });
 
-    fireEvent.press(getByTestId('btn-Save'));
+    await fireEvent.press(getByTestId('btn-Save'));
 
     await waitFor(() => expect(getByText('This post can no longer be edited.')).toBeTruthy());
     expect(onSaved).not.toHaveBeenCalled(); // stays open for retry
@@ -108,7 +108,7 @@ describe('PostSectionEditor', () => {
     const onSave = jest.fn(async () => {});
     const { getByTestId } = await renderEditor({ onSave, canSave: false });
 
-    fireEvent.press(getByTestId('btn-Save'));
+    await fireEvent.press(getByTestId('btn-Save'));
 
     expect(onSave).not.toHaveBeenCalled();
   });
@@ -138,7 +138,7 @@ describe('PostSectionEditor', () => {
       const onSaved = jest.fn();
       const { getByTestId } = await renderEditor({ onSave, onSaved }, 'sheet');
 
-      fireEvent.press(getByTestId('btn-Save'));
+      await fireEvent.press(getByTestId('btn-Save'));
 
       await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
       expect(mockToastShow).toHaveBeenCalledWith('Changes saved', 'success');

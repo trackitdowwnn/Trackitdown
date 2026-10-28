@@ -11,7 +11,6 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { InteractionManager } from 'react-native';
 
 import { SaveYourCarSheet } from './SaveYourCarSheet';
 import { clearSaveCarNudge, requestSaveCarNudge } from '../lib/exitNudgeIntent';
@@ -61,11 +60,19 @@ jest.mock('@/shared/lib/logger', () => ({
 }));
 
 
+/** The open is deferred a tick (fake timers hold it): let it run. */
+const flushDeferred = async () => {
+  await act(async () => {
+    jest.runOnlyPendingTimers();
+  });
+};
+
 const mountWithIntent = async () => {
   const utils = await act(async () => render(<SaveYourCarSheet />));
   await act(async () => {
     requestSaveCarNudge();
   });
+  await flushDeferred();
   return utils;
 };
 
@@ -75,16 +82,11 @@ beforeEach(() => {
   mockSession = { status: 'signedIn', userId: 'u1' };
   mockSavedCar = 'none';
   mockHasOffered.mockResolvedValue(false);
-  // The real one defers the present past the wizard's slide-down dismissal;
-  // run it inline so the tests can observe the outcome.
-  jest
-    .spyOn(InteractionManager, 'runAfterInteractions')
-    .mockImplementation((task) => {
-      if (typeof task === 'function') {
-        task();
-      }
-      return { cancel: jest.fn(), then: jest.fn(), done: jest.fn() } as never;
-    });
+  jest.useFakeTimers();
+});
+
+afterEach(() => {
+  jest.useRealTimers();
 });
 
 describe('when it offers the garage', () => {
@@ -104,6 +106,7 @@ describe('when it offers the garage', () => {
 
   it('stays shut until something actually asks for it', async () => {
     await act(async () => render(<SaveYourCarSheet />));
+    await flushDeferred();
 
     expect(mockOpen).not.toHaveBeenCalled();
   });
@@ -155,7 +158,7 @@ describe('the two ways out', () => {
     const { getByTestId } = await mountWithIntent();
 
     await act(async () => {
-      fireEvent.press(getByTestId('btn-Save my car'));
+      await fireEvent.press(getByTestId('btn-Save my car'));
     });
 
     expect(mockPush).toHaveBeenCalledWith('/add-vehicle');
@@ -166,7 +169,7 @@ describe('the two ways out', () => {
     const { getByTestId } = await mountWithIntent();
 
     await act(async () => {
-      fireEvent.press(getByTestId('btn-Not now'));
+      await fireEvent.press(getByTestId('btn-Not now'));
     });
 
     expect(mockPush).not.toHaveBeenCalled();
@@ -180,6 +183,7 @@ describe('after a recovery (first-login welcome, asked later)', () => {
     await act(async () => {
       requestSaveCarNudge({ source: 'recovered', postId: 'p1' });
     });
+    await flushDeferred();
     return utils;
   };
 
@@ -195,7 +199,7 @@ describe('after a recovery (first-login welcome, asked later)', () => {
     const { getByTestId } = await mountRecovered();
 
     await act(async () => {
-      fireEvent.press(getByTestId('btn-Save my car'));
+      await fireEvent.press(getByTestId('btn-Save my car'));
     });
 
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/add-vehicle', params: { fromPost: 'p1' } });
@@ -208,7 +212,7 @@ describe('after a recovery (first-login welcome, asked later)', () => {
     const { getByTestId, getByText, queryByText } = await mountRecovered();
 
     await act(async () => {
-      fireEvent.press(getByTestId('btn-Not now'));
+      await fireEvent.press(getByTestId('btn-Not now'));
     });
 
     expect(mockClose).toHaveBeenCalled();

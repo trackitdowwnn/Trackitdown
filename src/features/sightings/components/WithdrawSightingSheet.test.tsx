@@ -65,7 +65,7 @@ const setup = async () => {
   };
   const press = async (name: string) => {
     await act(async () => {
-      fireEvent.press(
+      await fireEvent.press(
         view.getByRole(name.startsWith('Take') || name === 'Cancel' ? 'button' : 'radio', {
           name,
         }),
@@ -145,8 +145,8 @@ it('⚠️ takes it back once, however fast the second tap', async () => {
   await s.open();
   const confirm = s.getByRole('button', { name: 'Take it back' });
   await act(async () => {
-    fireEvent.press(confirm);
-    fireEvent.press(confirm);
+    await fireEvent.press(confirm);
+    await fireEvent.press(confirm);
   });
   expect(s.onConfirm).toHaveBeenCalledTimes(1);
 });
@@ -190,7 +190,7 @@ it('offers "Cancel", not "Keep it"', async () => {
 describe('the note "Something else" may carry (2026-10-09)', () => {
   const type = async (s: Awaited<ReturnType<typeof setup>>, text: string) => {
     await act(async () => {
-      fireEvent.changeText(s.getByTestId('withdraw-note'), text);
+      await fireEvent.changeText(s.getByTestId('withdraw-note'), text);
     });
   };
 

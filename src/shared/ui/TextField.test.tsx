@@ -23,7 +23,7 @@ describe('TextField', () => {
       expect(timing).not.toHaveBeenCalled();
 
       await act(async () => {
-        fireEvent(view.getByLabelText('Name'), 'focus');
+        await fireEvent(view.getByLabelText('Name'), 'focus');
       });
       expect(timing).toHaveBeenCalledTimes(1); // the border tint; the label was already up
       await act(async () => view.unmount()); // stops the tint mid-flight
@@ -50,7 +50,10 @@ describe('TextField', () => {
     // The floating label doubles as the placeholder, so the format hint stays
     // hidden until the field is focused, then appears.
     expect(getByTestId('email-input').props.placeholder).toBeUndefined();
-    fireEvent(getByTestId('email-input'), 'focus');
+    await fireEvent(getByTestId('email-input'), 'focus');
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250)); // the 200ms focus animation
+    });
     await waitFor(() =>
       expect(getByTestId('email-input').props.placeholder).toBe('you@example.com'),
     );
@@ -75,7 +78,7 @@ describe('TextField', () => {
     const { getByPlaceholderText } = await render(
       <TextField placeholder="name" value="" onChangeText={onChangeText} />,
     );
-    fireEvent.changeText(getByPlaceholderText('name'), 'Jane');
+    await fireEvent.changeText(getByPlaceholderText('name'), 'Jane');
     expect(onChangeText).toHaveBeenCalledWith('Jane');
   });
 
@@ -86,7 +89,7 @@ describe('TextField', () => {
       <TextField placeholder="name" value="" onChangeText={onChangeText} />,
     );
     await act(async () => {
-      fireEvent.changeText(getByPlaceholderText('name'), `Ja${NUL}ne${NUL}`);
+      await fireEvent.changeText(getByPlaceholderText('name'), `Ja${NUL}ne${NUL}`);
     });
     expect(onChangeText).toHaveBeenLastCalledWith('Jane');
   });
@@ -96,7 +99,7 @@ describe('TextField', () => {
     const { getByPlaceholderText } = await render(
       <TextField variant="plate" placeholder="plate" value="" onChangeText={onChangeText} />,
     );
-    fireEvent.changeText(getByPlaceholderText('plate'), 'ab12cde');
+    await fireEvent.changeText(getByPlaceholderText('plate'), 'ab12cde');
     expect(onChangeText).toHaveBeenCalledWith('AB12CDE');
   });
 
@@ -121,7 +124,7 @@ describe('TextField', () => {
     const { getByPlaceholderText } = await render(
       <TextField placeholder="name" value="" onChangeText={() => {}} onBlur={onBlur} />,
     );
-    fireEvent(getByPlaceholderText('name'), 'blur');
+    await fireEvent(getByPlaceholderText('name'), 'blur');
     expect(onBlur).toHaveBeenCalled();
   });
 
@@ -147,10 +150,10 @@ describe('TextField', () => {
         expect(view.getByTestId('sort-code').props.placeholder).toBe('12-34-56');
 
         await act(async () => {
-          fireEvent(view.getByTestId('sort-code'), 'focus');
+          await fireEvent(view.getByTestId('sort-code'), 'focus');
         });
         await act(async () => {
-          fireEvent.changeText(view.getByTestId('sort-code'), '1');
+          await fireEvent.changeText(view.getByTestId('sort-code'), '1');
         });
         // Only the border tint animates; no label float.
         expect(timing).toHaveBeenCalledTimes(1);

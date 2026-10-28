@@ -61,9 +61,9 @@ const momentumEndAt = (index: number) => ({
 });
 
 /** A real swipe: the finger starts a drag, then the fling settles. */
-const swipeTo = (list: Parameters<typeof fireEvent>[0], index: number) => {
-  fireEvent(list, 'scrollBeginDrag', momentumEndAt(0));
-  fireEvent(list, 'momentumScrollEnd', momentumEndAt(index));
+const swipeTo = async (list: Parameters<typeof fireEvent>[0], index: number) => {
+  await fireEvent(list, 'scrollBeginDrag', momentumEndAt(0));
+  await fireEvent(list, 'momentumScrollEnd', momentumEndAt(index));
 };
 
 const announceSpy = jest.spyOn(AccessibilityInfo, 'announceForAccessibility');
@@ -111,7 +111,7 @@ describe('MapCardPager', () => {
 
     // User swipes to card 1.
     await act(async () => {
-      swipeTo(getByTestId('map-card-pager'), 1);
+      await swipeTo(getByTestId('map-card-pager'), 1);
     });
     expect(onIndexSettled).toHaveBeenCalledTimes(1);
     expect(onIndexSettled).toHaveBeenCalledWith(1);
@@ -126,7 +126,7 @@ describe('MapCardPager', () => {
       />,
     );
     await act(async () => {
-      fireEvent(getByTestId('map-card-pager'), 'momentumScrollEnd', momentumEndAt(1));
+      await fireEvent(getByTestId('map-card-pager'), 'momentumScrollEnd', momentumEndAt(1));
     });
     expect(onIndexSettled).toHaveBeenCalledTimes(1); // still once
   });
@@ -143,7 +143,7 @@ describe('MapCardPager', () => {
     );
 
     await act(async () => {
-      swipeTo(getByTestId('map-card-pager'), 99);
+      await swipeTo(getByTestId('map-card-pager'), 99);
     });
     expect(onIndexSettled).toHaveBeenCalledWith(POSTS.length - 1);
   });
@@ -159,16 +159,16 @@ describe('MapCardPager', () => {
 
     await rerender(<MapCardPager {...props} selectedIndex={2} />);
     await act(async () => {
-      fireEvent(getByTestId('map-card-pager'), 'momentumScrollEnd', momentumEndAt(1));
+      await fireEvent(getByTestId('map-card-pager'), 'momentumScrollEnd', momentumEndAt(1));
     });
     await act(async () => {
-      fireEvent(getByTestId('map-card-pager'), 'momentumScrollEnd', momentumEndAt(2));
+      await fireEvent(getByTestId('map-card-pager'), 'momentumScrollEnd', momentumEndAt(2));
     });
     expect(onIndexSettled).not.toHaveBeenCalled();
 
     // And once the user drags, their settle reports as normal.
     await act(async () => {
-      swipeTo(getByTestId('map-card-pager'), 1);
+      await swipeTo(getByTestId('map-card-pager'), 1);
     });
     expect(onIndexSettled).toHaveBeenCalledWith(1);
   });
@@ -183,7 +183,7 @@ describe('MapCardPager', () => {
     await rerender(<MapCardPager {...props} selectedIndex={0} />);
 
     await act(async () => {
-      fireEvent(getByTestId('map-card-pager'), 'momentumScrollEnd', momentumEndAt(2));
+      await fireEvent(getByTestId('map-card-pager'), 'momentumScrollEnd', momentumEndAt(2));
     });
 
     expect(onIndexSettled).toHaveBeenCalledWith(2);
@@ -200,7 +200,7 @@ describe('MapCardPager', () => {
       // The programmatic scroll never settles on 2 (e.g. it was already there).
       clock.mockReturnValue(now + 5000);
       await act(async () => {
-        fireEvent(getByTestId('map-card-pager'), 'momentumScrollEnd', momentumEndAt(1));
+        await fireEvent(getByTestId('map-card-pager'), 'momentumScrollEnd', momentumEndAt(1));
       });
 
       expect(onIndexSettled).toHaveBeenCalledWith(1);
@@ -234,7 +234,7 @@ describe('MapCardPager', () => {
       // Under reduced motion the mock unmounts immediately; if the list is
       // still up (animated exit), its late settle must not resurrect the card.
       await act(async () => {
-        swipeTo(list, 2);
+        await swipeTo(list, 2);
       });
     }
     expect(onIndexSettled).not.toHaveBeenCalled();

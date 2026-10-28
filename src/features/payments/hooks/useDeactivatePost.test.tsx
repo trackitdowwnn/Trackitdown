@@ -10,7 +10,7 @@
  */
 
 import { FunctionsHttpError } from '@supabase/supabase-js';
-import { renderHook } from '@testing-library/react-native';
+import { act, renderHook } from '@testing-library/react-native';
 
 import { useDeactivatePost } from './useDeactivatePost';
 
@@ -33,7 +33,9 @@ beforeEach(() => jest.clearAllMocks());
 
 async function deactivate() {
   const { result } = await renderHook(() => useDeactivatePost());
-  return result.current.deactivate;
+  // Through act(): the call sets the hook’s state as it runs and settles.
+  return (...args: Parameters<typeof result.current.deactivate>) =>
+    act(() => result.current.deactivate(...args));
 }
 
 describe('useDeactivatePost', () => {

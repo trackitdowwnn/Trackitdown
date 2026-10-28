@@ -29,7 +29,7 @@
 
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { InteractionManager, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth';
 import { createLogger } from '@/shared/lib/logger';
@@ -129,13 +129,13 @@ export function SaveYourCarSheet() {
     void markGarageNudgeOffered();
     log.info('garage_nudge_shown', { surface: 'exit_sheet', source: intent.source });
 
-    // The wizard route is a slide_from_bottom dismissal in flight right now;
-    // presenting a modal into that transition drops the animation. Wait for the
-    // navigation to settle first.
-    const task = InteractionManager.runAfterInteractions(() => {
+    // Opened on the next tick, not in this commit. That is all RN 0.86's
+    // runAfterInteractions did (a deprecation stub): it does NOT wait for the
+    // wizard's slide-down dismissal to finish.
+    const timer = setTimeout(() => {
       sheetRef.current?.open();
-    });
-    return () => task.cancel();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [intent, signedIn, alreadyOffered, savedCar, suppress, recoveredPostId]);
 
   const onAdd = useCallback(() => {

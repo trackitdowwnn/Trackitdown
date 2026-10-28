@@ -259,7 +259,7 @@ describe('what a screen reader hears', () => {
     expect(one.getByTestId('thread-row-t1').props.accessibilityLabel).toContain(
       '1 unread message.',
     );
-    one.unmount();
+    await one.unmount();
 
     const many = await render(<ThreadRow thread={thread({ unreadCount: 4 })} onPress={jest.fn()} />);
     expect(many.getByTestId('thread-row-t1').props.accessibilityLabel).toContain(

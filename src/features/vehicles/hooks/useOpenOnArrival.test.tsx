@@ -9,31 +9,20 @@
  */
 
 import { renderHook } from '@testing-library/react-native';
-import { InteractionManager } from 'react-native';
 
 import { useOpenOnArrival } from './useOpenOnArrival';
 
-type Task = () => void;
-let pending: Task[] = [];
-const cancel = jest.fn();
-
+// Fake timers hold the next-tick defer until settle() lets it run.
 beforeEach(() => {
-  pending = [];
-  cancel.mockClear();
-  jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation(((task: Task) => {
-    pending.push(task);
-    return { cancel, then: jest.fn(), done: jest.fn() };
-  }) as never);
+  jest.useFakeTimers();
 });
 afterEach(() => {
-  jest.restoreAllMocks();
+  jest.useRealTimers();
 });
 
-/** Let the "transition" finish: run whatever was scheduled. */
+/** Let the deferred open run: fire whatever was scheduled. */
 const settle = () => {
-  const tasks = pending;
-  pending = [];
-  tasks.forEach((task) => task());
+  jest.runOnlyPendingTimers();
 };
 
 describe('useOpenOnArrival', () => {
@@ -89,6 +78,8 @@ describe('useOpenOnArrival', () => {
 
     await hook.unmount();
 
-    expect(cancel).toHaveBeenCalled();
+    // Cancelled: once its tick comes, the open does not run.
+    settle();
+    expect(open).not.toHaveBeenCalled();
   });
 });

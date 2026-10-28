@@ -41,7 +41,7 @@ describe('FeedSectionHeader', () => {
     // The defaults must NOT also render — a custom label replaces, never adds.
     expect(view.queryByLabelText('See all — Near you')).toBeNull();
     expect(view.queryByLabelText('Theft figures — Near you')).toBeNull();
-    fireEvent.press(view.getByTestId('stats-custom'));
+    await fireEvent.press(view.getByTestId('stats-custom'));
     expect(onStats).toHaveBeenCalledTimes(1);
     expect(view.getByTestId('stats-custom').props.accessibilityLabel).toBe(
       'Theft figures for your area',
@@ -58,7 +58,7 @@ describe('FeedSectionHeader', () => {
     const onSeeAll = jest.fn();
     const view = await render(<FeedSectionHeader title="Near you" onSeeAll={onSeeAll} />);
     expect(view.getAllByRole('button')).toHaveLength(1);
-    fireEvent.press(view.getByLabelText('See all — Near you'));
+    await fireEvent.press(view.getByLabelText('See all — Near you'));
     expect(onSeeAll).toHaveBeenCalledTimes(1);
     expect(view.queryByLabelText('Theft figures — Near you')).toBeNull();
   });
@@ -67,7 +67,7 @@ describe('FeedSectionHeader', () => {
     const onStats = jest.fn();
     const view = await render(<FeedSectionHeader title="Near you" onStats={onStats} />);
     expect(view.getAllByRole('button')).toHaveLength(1);
-    fireEvent.press(view.getByLabelText('Theft figures — Near you'));
+    await fireEvent.press(view.getByLabelText('Theft figures — Near you'));
     expect(onStats).toHaveBeenCalledTimes(1);
     expect(view.queryByLabelText('See all — Near you')).toBeNull();
   });
@@ -90,11 +90,11 @@ describe('FeedSectionHeader', () => {
     expect(buttons[0].props.accessibilityLabel).toBe('Theft figures — Recently stolen in St Albans');
     expect(buttons[1].props.accessibilityLabel).toBe('See all — Recently stolen in St Albans');
 
-    fireEvent.press(view.getByTestId('stats-st-albans'));
+    await fireEvent.press(view.getByTestId('stats-st-albans'));
     expect(onStats).toHaveBeenCalledTimes(1);
     expect(onSeeAll).not.toHaveBeenCalled();
 
-    fireEvent.press(view.getByLabelText('See all — Recently stolen in St Albans'));
+    await fireEvent.press(view.getByLabelText('See all — Recently stolen in St Albans'));
     expect(onSeeAll).toHaveBeenCalledTimes(1);
     expect(onStats).toHaveBeenCalledTimes(1);
   });

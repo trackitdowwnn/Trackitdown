@@ -14,7 +14,6 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { InteractionManager } from 'react-native';
 
 import { clearAlertNudge, requestAlertNudge } from '../lib/alertNudgeIntent';
 import { AlertNudgeSheet } from './AlertNudgeSheet';
@@ -69,15 +68,13 @@ jest.mock('@/shared/lib/logger', () => ({
   createLogger: () => ({ info: jest.fn(), warn: jest.fn(), debug: jest.fn(), error: jest.fn() }),
 }));
 
-// The real open() is DEFERRED past the back-navigation animation, so the tests
-// must defer it too. Running it inline (the previous harness) made every test
-// pass while the real sheet never opened: inline, open() happens before any
-// cleanup can cancel it.
-let pendingTask: (() => void) | null = null;
+// The real open() is DEFERRED a tick, so the tests must defer it too: fake
+// timers hold it until flushInteractions(). Running it inline (an earlier
+// harness) made every test pass while the real sheet never opened: inline,
+// open() happens before any cleanup can cancel it.
 const flushInteractions = async () => {
   await act(async () => {
-    pendingTask?.();
-    pendingTask = null;
+    jest.runOnlyPendingTimers();
   });
 };
 
@@ -96,20 +93,12 @@ beforeEach(() => {
   mockAlerts = { status: 'ready', alerts: [] };
   mockGarageIntent = null;
   mockHasOffered.mockResolvedValue(false);
-  pendingTask = null;
-  // Capture rather than run: a cancelled task must be observably cancelled.
-  jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((task) => {
-    if (typeof task === 'function') {
-      pendingTask = task;
-    }
-    return {
-      cancel: () => {
-        pendingTask = null;
-      },
-      then: jest.fn(),
-      done: jest.fn(),
-    } as never;
-  });
+  // Held rather than run: a cancelled open must be observably cancelled.
+  jest.useFakeTimers();
+});
+
+afterEach(() => {
+  jest.useRealTimers();
 });
 
 describe('when it offers an alert area', () => {
@@ -121,6 +110,7 @@ describe('when it offers an alert area', () => {
 
   it('stays shut until the third listing actually asks for it', async () => {
     await act(async () => render(<AlertNudgeSheet />));
+    await flushInteractions();
 
     expect(mockOpen).not.toHaveBeenCalled();
   });
@@ -206,7 +196,7 @@ describe('answering it', () => {
     const { getByTestId } = await mountWithIntent();
 
     await act(async () => {
-      fireEvent.press(getByTestId('btn-Set my alert area'));
+      await fireEvent.press(getByTestId('btn-Set my alert area'));
     });
 
     expect(mockPush).toHaveBeenCalledWith('/alerts/new');
@@ -217,7 +207,7 @@ describe('answering it', () => {
     const { getByTestId } = await mountWithIntent();
 
     await act(async () => {
-      fireEvent.press(getByTestId('btn-Not now'));
+      await fireEvent.press(getByTestId('btn-Not now'));
     });
 
     expect(mockPush).not.toHaveBeenCalled();
@@ -228,7 +218,7 @@ describe('answering it', () => {
     const { getByTestId } = await mountWithIntent();
 
     await act(async () => {
-      fireEvent.press(getByTestId('btn-Not now'));
+      await fireEvent.press(getByTestId('btn-Not now'));
     });
 
     expect(mockOpen).toHaveBeenCalledTimes(1);

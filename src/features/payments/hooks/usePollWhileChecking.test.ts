@@ -46,7 +46,9 @@ describe('usePollWhileChecking', () => {
     const check = jest.fn();
     await renderHook(() => usePollWhileChecking(() => true, check, { everyMs: 1000, times: 3 }));
 
-    jest.advanceTimersByTime(60_000);
+    await act(async () => {
+      jest.advanceTimersByTime(60_000);
+    });
     expect(check).toHaveBeenCalledTimes(3);
   });
 
@@ -74,7 +76,9 @@ describe('usePollWhileChecking', () => {
 
     // The status turns to "being checked" under the running timer.
     waiting = true;
-    jest.advanceTimersByTime(5000);
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
     expect(check).toHaveBeenCalledTimes(2);
   });
 

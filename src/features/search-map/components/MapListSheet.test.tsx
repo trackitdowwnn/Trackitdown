@@ -223,7 +223,7 @@ describe('opening itself on entry', () => {
     // Two acts, not one: the rerender's effect only registers its timer when
     // act flushes, so advancing the clock in the same act would run it first.
     await act(async () => {
-      view.rerender(<MapListSheet {...baseProps} status="ready" expandOnEntry />);
+      await view.rerender(<MapListSheet {...baseProps} status="ready" expandOnEntry />);
     });
     await act(async () => {
       jest.advanceTimersByTime(1000);
@@ -236,7 +236,7 @@ describe('opening itself on entry', () => {
   // gated on the search settling rather than fired from mount.
   it('stays at peek while the first search is still running', async () => {
     await act(async () => {
-      render(<MapListSheet {...baseProps} status="loading" expandOnEntry={false} />);
+      await render(<MapListSheet {...baseProps} status="loading" expandOnEntry={false} />);
       jest.advanceTimersByTime(1000);
     });
 
@@ -254,7 +254,7 @@ describe('opening itself on entry', () => {
     mockSnapToIndex.mockClear();
 
     await act(async () => {
-      view.rerender(<MapListSheet {...baseProps} status="ready" expandOnEntry searchId={2} />);
+      await view.rerender(<MapListSheet {...baseProps} status="ready" expandOnEntry searchId={2} />);
       jest.advanceTimersByTime(1000);
     });
 
@@ -264,7 +264,7 @@ describe('opening itself on entry', () => {
   // Someone who has already dragged the sheet has said where they want it.
   it('gives up if the user drags the sheet first', async () => {
     await act(async () => {
-      render(<MapListSheet {...baseProps} status="ready" expandOnEntry />);
+      await render(<MapListSheet {...baseProps} status="ready" expandOnEntry />);
     });
     mockSnapToIndex.mockClear();
 
@@ -288,13 +288,13 @@ describe('opening itself on entry', () => {
 
     // Pin tapped before the beat elapses.
     await act(async () => {
-      view.rerender(<MapListSheet {...baseProps} status="ready" expandOnEntry hidden />);
+      await view.rerender(<MapListSheet {...baseProps} status="ready" expandOnEntry hidden />);
     });
     mockSnapToIndex.mockClear();
 
     // Card dismissed much later.
     await act(async () => {
-      view.rerender(<MapListSheet {...baseProps} status="ready" expandOnEntry hidden={false} />);
+      await view.rerender(<MapListSheet {...baseProps} status="ready" expandOnEntry hidden={false} />);
     });
     await act(async () => {
       jest.advanceTimersByTime(5000);
@@ -309,7 +309,7 @@ describe('opening itself on entry', () => {
   // drag, and treating it as one would disable the feature outright.
   it('is NOT cancelled by the mount settling at peek', async () => {
     await act(async () => {
-      render(<MapListSheet {...baseProps} status="ready" expandOnEntry />);
+      await render(<MapListSheet {...baseProps} status="ready" expandOnEntry />);
     });
 
     await act(async () => {

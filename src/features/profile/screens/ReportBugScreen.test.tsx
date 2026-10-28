@@ -164,11 +164,11 @@ const waitForSubmitArm = () =>
 
 async function walkToReview(view: Awaited<ReturnType<typeof render>>, message: string) {
   await act(async () => {
-    fireEvent.changeText(view.getByTestId('report-bug-message'), message);
+    await fireEvent.changeText(view.getByTestId('report-bug-message'), message);
   });
   for (let step = 0; step < 3; step++) {
     await act(async () => {
-      fireEvent.press(view.getByText('Next'));
+      await fireEvent.press(view.getByText('Next'));
     });
   }
 }
@@ -188,7 +188,7 @@ describe('the fast path', () => {
 
     await waitForSubmitArm();
     await act(async () => {
-      fireEvent.press(view.getByText('Send report'));
+      await fireEvent.press(view.getByText('Send report'));
     });
 
     await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
@@ -215,7 +215,7 @@ describe('the fast path', () => {
 
     await waitForSubmitArm();
     await act(async () => {
-      fireEvent.press(view.getByText('Send report'));
+      await fireEvent.press(view.getByText('Send report'));
     });
 
     await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith('Report submitted'));
@@ -229,7 +229,7 @@ describe('the fast path', () => {
 
     await waitForSubmitArm();
     await act(async () => {
-      fireEvent.press(view.getByText('Send report'));
+      await fireEvent.press(view.getByText('Send report'));
     });
 
     await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
@@ -248,7 +248,7 @@ describe('the fast path', () => {
 
     await waitForSubmitArm();
     await act(async () => {
-      fireEvent.press(view.getByText('Send report'));
+      await fireEvent.press(view.getByText('Send report'));
     });
 
     await waitFor(() => expect(mockNotifyBugReport).toHaveBeenCalled());
@@ -264,7 +264,7 @@ describe('the fast path', () => {
 
     await waitForSubmitArm();
     await act(async () => {
-      fireEvent.press(view.getByText('Send report'));
+      await fireEvent.press(view.getByText('Send report'));
     });
 
     // The report still SAVED and the user is still told so — only the email is
@@ -283,7 +283,7 @@ describe('the fast path', () => {
 
     await waitForSubmitArm();
     await act(async () => {
-      fireEvent.press(view.getByText('Send report'));
+      await fireEvent.press(view.getByText('Send report'));
     });
 
     await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
@@ -299,7 +299,7 @@ describe('the fast path', () => {
 
     await waitForSubmitArm();
     await act(async () => {
-      fireEvent.press(view.getByText('Send report'));
+      await fireEvent.press(view.getByText('Send report'));
     });
 
     await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
@@ -317,7 +317,7 @@ describe('⚠️ the two refusals', () => {
 
     await waitForSubmitArm();
     await act(async () => {
-      fireEvent.press(view.getByText('Send report'));
+      await fireEvent.press(view.getByText('Send report'));
     });
 
     await waitFor(() => expect(mockQuota).toHaveBeenCalled());
@@ -342,7 +342,7 @@ describe('⚠️ the two refusals', () => {
 
     await waitForSubmitArm();
     await act(async () => {
-      fireEvent.press(view.getByText('Send report'));
+      await fireEvent.press(view.getByText('Send report'));
     });
 
     await waitFor(() => expect(mockQuota).toHaveBeenCalled());
@@ -358,10 +358,14 @@ describe('the message minimum', () => {
     const view = await render(<ReportBugScreen />);
 
     await act(async () => {
-      fireEvent.changeText(view.getByTestId('report-bug-message'), 'map broken');
+      await fireEvent.changeText(view.getByTestId('report-bug-message'), 'map broken');
+    });
+    // Its own act: the effect that starts the float runs when the act above ends.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250)); // the label's 200ms float
     });
     await act(async () => {
-      fireEvent.press(view.getByText('Next'));
+      await fireEvent.press(view.getByText('Next'));
     });
 
     // Still on step 1: the screenshots step's warning is nowhere in sight.
@@ -381,13 +385,17 @@ describe('the message minimum', () => {
     expect(counter('At least 20 characters')).toBeTruthy();
 
     await act(async () => {
-      fireEvent.changeText(view.getByTestId('report-bug-message'), 'map broken');
+      await fireEvent.changeText(view.getByTestId('report-bug-message'), 'map broken');
+    });
+    // Its own act: the effect that starts the float runs when the act above ends.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250)); // the label's 200ms float
     });
     // Short: the count AND the shortfall, so a refusing Next is explained.
     expect(counter('2 words · 10 more characters')).toBeTruthy();
 
     await act(async () => {
-      fireEvent.changeText(
+      await fireEvent.changeText(
         view.getByTestId('report-bug-message'),
         'The map went blank when I opened it',
       );
@@ -402,11 +410,11 @@ describe('⚠️ screenshots', () => {
   /** Type a message, Next twice — the screenshots step. */
   async function walkToScreenshots(view: Awaited<ReturnType<typeof render>>) {
     await act(async () => {
-      fireEvent.changeText(view.getByTestId('report-bug-message'), 'Look at this screenshot please');
+      await fireEvent.changeText(view.getByTestId('report-bug-message'), 'Look at this screenshot please');
     });
     for (let step = 0; step < 2; step++) {
       await act(async () => {
-        fireEvent.press(view.getByText('Next'));
+        await fireEvent.press(view.getByText('Next'));
       });
     }
   }
@@ -446,18 +454,18 @@ describe('⚠️ screenshots', () => {
     await walkToScreenshots(view);
 
     await act(async () => {
-      fireEvent.press(view.getByTestId('report-bug-shot-add'));
+      await fireEvent.press(view.getByTestId('report-bug-shot-add'));
     });
     // Indexed testIDs — unindexed, this query threw on the second thumbnail.
     await act(async () => {
-      fireEvent.press(view.getByTestId('report-bug-shot-remove-0'));
+      await fireEvent.press(view.getByTestId('report-bug-shot-remove-0'));
     });
     await act(async () => {
-      fireEvent.press(view.getByText('Next'));
+      await fireEvent.press(view.getByText('Next'));
     });
     await waitForSubmitArm();
     await act(async () => {
-      fireEvent.press(view.getByText('Send report'));
+      await fireEvent.press(view.getByText('Send report'));
     });
 
     await waitFor(() => expect(mockUpload).toHaveBeenCalled());
@@ -476,26 +484,26 @@ describe('what the triage answers carry', () => {
     const view = await render(<ReportBugScreen />);
 
     await act(async () => {
-      fireEvent.changeText(view.getByTestId('report-bug-message'), 'Payments hang on the spinner');
+      await fireEvent.changeText(view.getByTestId('report-bug-message'), 'Payments hang on the spinner');
     });
     await act(async () => {
-      fireEvent.press(view.getByText('Next'));
+      await fireEvent.press(view.getByText('Next'));
     });
     await act(async () => {
-      fireEvent.press(view.getByText('I couldn’t finish something'));
+      await fireEvent.press(view.getByText('I couldn’t finish something'));
     });
     await act(async () => {
-      fireEvent.press(view.getByText('Every time'));
+      await fireEvent.press(view.getByText('Every time'));
     });
     await act(async () => {
-      fireEvent.press(view.getByText('Next'));
+      await fireEvent.press(view.getByText('Next'));
     });
     await act(async () => {
-      fireEvent.press(view.getByText('Next'));
+      await fireEvent.press(view.getByText('Next'));
     });
     await waitForSubmitArm();
     await act(async () => {
-      fireEvent.press(view.getByText('Send report'));
+      await fireEvent.press(view.getByText('Send report'));
     });
 
     await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
@@ -515,7 +523,7 @@ describe('what the triage answers carry', () => {
 
     await waitForSubmitArm();
     await act(async () => {
-      fireEvent.press(view.getByText('Send report'));
+      await fireEvent.press(view.getByText('Send report'));
     });
 
     await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
@@ -530,7 +538,7 @@ describe('what the triage answers carry', () => {
 
     await waitForSubmitArm();
     await act(async () => {
-      fireEvent.press(view.getByText('Send report'));
+      await fireEvent.press(view.getByText('Send report'));
     });
 
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/(tabs)/profile'));
@@ -549,7 +557,7 @@ describe('⚠️ when the send fails', () => {
 
     await waitForSubmitArm();
     await act(async () => {
-      fireEvent.press(view.getByText('Send report'));
+      await fireEvent.press(view.getByText('Send report'));
     });
 
     await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
@@ -574,7 +582,7 @@ describe('⚠️ when the send fails', () => {
 
     await waitForSubmitArm();
     await act(async () => {
-      fireEvent.press(view.getByText('Send report'));
+      await fireEvent.press(view.getByText('Send report'));
     });
 
     await waitFor(() => expect(mockUpload).toHaveBeenCalled());
@@ -592,7 +600,7 @@ describe('⚠️ when the send fails', () => {
 
     await waitForSubmitArm();
     await act(async () => {
-      fireEvent.press(view.getByText('Send report'));
+      await fireEvent.press(view.getByText('Send report'));
     });
 
     await waitFor(() => expect(mockQuota).toHaveBeenCalled());
@@ -626,14 +634,17 @@ describe('⚠️ when the send fails', () => {
     await walkToReview(view, 'The map went blank when I opened it');
 
     await waitForSubmitArm();
+    // Not awaited: the press settles only when the send does. The macrotask
+    // lets its own act() close before this one does.
     await act(async () => {
-      fireEvent.press(view.getByText('Send report'));
+      void fireEvent.press(view.getByText('Send report'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
     await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
 
     // Mid-flight: the X must do nothing at all — the prompt must not even open.
     await act(async () => {
-      fireEvent.press(view.getByLabelText('Exit'));
+      await fireEvent.press(view.getByLabelText('Exit'));
     });
     expect(discard).not.toHaveBeenCalled();
     expect(mockBack).not.toHaveBeenCalled();
