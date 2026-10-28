@@ -72,7 +72,9 @@ export function redact(value: unknown, extraKeys?: RegExp, depth = 0): unknown {
   for (const [key, item] of Object.entries(value)) {
     const sensitive = SENSITIVE_KEY.test(key) || extraKeys?.test(key);
     const isCount = typeof item === 'number' && COUNT_KEY.test(key);
-    out[key] = sensitive && !isCount ? MASK : redact(item, extraKeys, depth + 1);
+    // A yes/no or an absent value can't carry anyone's details (`alertsEmailed: true`).
+    const isFlag = typeof item === 'boolean' || item === null;
+    out[key] = sensitive && !isCount && !isFlag ? MASK : redact(item, extraKeys, depth + 1);
   }
   return out;
 }

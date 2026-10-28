@@ -41,6 +41,14 @@ describe('redact — keys', () => {
     });
   });
 
+  it('keeps a yes/no or null under any key, since neither can hold a value', () => {
+    expect(redact({ deadlineAlertsEmailed: null, hasEmail: true, plateShown: false })).toEqual({
+      deadlineAlertsEmailed: null,
+      hasEmail: true,
+      plateShown: false,
+    });
+  });
+
   it('⚠️ still masks a number that is not a count, and any text under a count name', () => {
     expect(redact({ account_number: 12345678, sortCode: 112233, tokenSent: 'abc' })).toEqual({
       account_number: '[redacted]',
