@@ -44,6 +44,11 @@ import { findConnectAccount } from '../_shared/connectAccount.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
 import { ensureProfile, PRODUCT_DESCRIPTION } from '../_shared/payoutAccountState.ts';
 import { releaseAllPendingFor } from '../_shared/releasePayout.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
+
+const log = createLog('create-payout-account');
 
 /**
  * "Paid into account ending 5678" (2026-10-15, PR7): the last four of the
@@ -66,14 +71,14 @@ async function recordAttachedBank(
       p_last4: attached.last4,
     });
     if (error) {
-      console.warn('[payments] bank last4 record failed', { accountId });
+      log.warn('payments_bank_last4_record_failed', { account_id: accountId });
     }
   } catch {
-    console.warn('[payments] bank last4 record failed', { accountId });
+    log.warn('payments_bank_last4_record_failed', { account_id: accountId });
   }
 }
 
-Deno.serve(async (request) => {
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') {
     return preflightResponse();
   }
@@ -116,7 +121,7 @@ Deno.serve(async (request) => {
   try {
     existing = await findConnectAccount(admin, userId);
   } catch (err) {
-    console.error('[payments] payout account lookup failed', (err as Error).message);
+    log.error('payments_payout_account_lookup_failed', { error: describeError(err) });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t save your details. Please try again.', 500);
   }
 
@@ -136,7 +141,7 @@ Deno.serve(async (request) => {
         external_account: bankToken,
         default_for_currency: true,
       });
-      console.log('[payments] payout bank replaced', { accountId: existing.accountId });
+      log.info('payments_payout_bank_replaced', { account_id: existing.accountId });
       await recordAttachedBank(admin, existing.accountId, attached);
       // So Payouts can tell "a payout failed — add new details" apart from
       // "new details added — resending" (2026-10-14). Best effort: the bank
@@ -145,11 +150,11 @@ Deno.serve(async (request) => {
         p_stripe_account_id: existing.accountId,
       });
       if (stampError) {
-        console.warn('[payments] bank replaced stamp failed', stampError.message);
+        log.warn('payments_bank_replaced_stamp_failed', { error: describeError(stampError) });
       }
       return jsonResponse({ status: 'bank_updated' });
     } catch (err) {
-      console.error('[payments] payout bank replace failed', (err as Error).message);
+      log.error('payments_payout_bank_replace_failed', { error: describeError(err) });
       return errorResponse(
         'DETAILS_REJECTED',
         'Stripe couldn’t accept that bank account. Please check it and try again.',
@@ -176,7 +181,7 @@ Deno.serve(async (request) => {
       });
       await recordAttachedBank(admin, existing.accountId, attached);
     } catch (err) {
-      console.error('[payments] payout bank attach (existing) failed', (err as Error).message);
+      log.error('payments_payout_bank_attach_existing_failed', { error: describeError(err) });
       return errorResponse(
         'DETAILS_REJECTED',
         'Stripe couldn’t accept that bank account. Please check it and try again.',
@@ -184,7 +189,7 @@ Deno.serve(async (request) => {
       );
     }
     await ensureProfile(stripe, existing.accountId);
-    console.log('[payments] payout setup re-run attached bank', { accountId: existing.accountId });
+    log.info('payments_payout_setup_re_run_attached_bank', { account_id: existing.accountId });
     return jsonResponse({ status: 'submitted', payoutsActive: existing.payoutsEnabled });
   }
   if (!hasAccountToken) {
@@ -233,7 +238,7 @@ Deno.serve(async (request) => {
   } catch (err) {
     // Stripe's message can quote rejected identity values — log the type only.
     const failure = err as { type?: string };
-    console.error('[payments] payout account create failed', { type: failure.type ?? 'unknown' });
+    log.error('payments_payout_account_create_failed', { type: failure.type ?? 'unknown' });
     return errorResponse(
       'DETAILS_REJECTED',
       'Stripe couldn’t accept those details. Please check them and try again.',
@@ -252,7 +257,7 @@ Deno.serve(async (request) => {
     p_payouts_enabled: payoutsActive,
   });
   if (recordError) {
-    console.error('[payments] payout account record failed', recordError.message);
+    log.error('payments_payout_account_record_failed', { error: describeError(recordError) });
     return errorResponse('LEDGER_ERROR', 'We couldn’t save your details. Please try again.', 500);
   }
   // Opens the legacy gate column too, so nothing ever routes this account into
@@ -262,7 +267,7 @@ Deno.serve(async (request) => {
     p_stripe_account_id: accountId,
   });
   if (gateError) {
-    console.warn('[payments] payout gate mark failed', gateError.message);
+    log.warn('payments_payout_gate_mark_failed', { error: describeError(gateError) });
   }
 
   // --- The bank ---------------------------------------------------------------
@@ -275,7 +280,7 @@ Deno.serve(async (request) => {
     // The account exists and is recorded; only the bank failed. DETAILS_REJECTED
     // sends the form's bank fields back into edit, and the retry lands in the
     // RE-BANK branch above.
-    console.error('[payments] payout bank attach failed', (err as Error).message);
+    log.error('payments_payout_bank_attach_failed', { error: describeError(err) });
     return errorResponse(
       'DETAILS_REJECTED',
       'Stripe couldn’t accept that bank account. Please check it and try again.',
@@ -292,6 +297,9 @@ Deno.serve(async (request) => {
     await releaseAllPendingFor(admin, stripe, userId);
   }
 
-  console.log('[payments] payout account created', { accountId, payoutsActive });
+  log.info('payments_payout_account_created', {
+    account_id: accountId,
+    payouts_active: payoutsActive,
+  });
   return jsonResponse({ status: 'submitted', payoutsActive });
-});
+}));

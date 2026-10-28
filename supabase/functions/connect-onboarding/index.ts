@@ -48,6 +48,11 @@
 import { createServiceRoleClient, createStripeClient, requireEnv } from '../_shared/clients.ts';
 import { createConnectAccount, findConnectAccount } from '../_shared/connectAccount.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
+
+const log = createLog('connect-onboarding');
 
 /**
  * Where Stripe sends the spotter afterwards.
@@ -67,7 +72,7 @@ const RETURN_BASE = `${requireEnv('SUPABASE_URL')}/functions/v1/connect-return`;
 const RETURN_URL = `${RETURN_BASE}?onboarding=complete`;
 const REFRESH_URL = `${RETURN_BASE}?onboarding=refresh`;
 
-Deno.serve(async (request) => {
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') {
     return preflightResponse();
   }
@@ -94,7 +99,7 @@ Deno.serve(async (request) => {
   try {
     existing = await findConnectAccount(admin, userId);
   } catch (err) {
-    console.error('[payments] connect account lookup failed', (err as Error).message);
+    log.error('payments_connect_account_lookup_failed', { error: describeError(err) });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t start this. Please try again.', 500);
   }
 
@@ -129,17 +134,17 @@ Deno.serve(async (request) => {
           p_payouts_enabled: fresh.payoutsEnabled,
         });
         if (syncError) {
-          console.error('[payments] connect reconcile write failed', syncError.message);
+          log.error('payments_connect_reconcile_write_failed', { error: describeError(syncError) });
         } else {
-          console.log('[payments] connect account reconciled', {
-            accountId,
-            payoutsEnabled: fresh.payoutsEnabled,
+          log.info('payments_connect_account_reconciled', {
+            account_id: accountId,
+            payouts_enabled: fresh.payoutsEnabled,
           });
           existing = { ...existing, ...fresh };
         }
       }
     } catch (err) {
-      console.warn('[payments] connect reconcile read failed', (err as Error).message);
+      log.warn('payments_connect_reconcile_read_failed', { error: describeError(err) });
     }
   }
 
@@ -156,7 +161,7 @@ Deno.serve(async (request) => {
         return_url: RETURN_URL,
         type: 'account_update',
       });
-      console.log('[payments] connect update link issued', { accountId });
+      log.info('payments_connect_update_link_issued', { account_id: accountId });
       return jsonResponse({ status: 'update_available', url: link.url });
     } catch (err) {
       // EXPECTED for legacy Express accounts, not exceptional: Stripe refuses
@@ -167,16 +172,16 @@ Deno.serve(async (request) => {
       // works, login links would fail — there is no dashboard to log into.)
       // Before this branch, the failure fell through to `already_enabled` and
       // the button showed a spinner that went nowhere.
-      console.warn('[payments] connect update link refused', (err as Error).message);
+      log.warn('payments_connect_update_link_refused', { error: describeError(err) });
       try {
         const login = await stripe.accounts.createLoginLink(accountId);
-        console.log('[payments] connect login link issued', { accountId });
+        log.info('payments_connect_login_link_issued', { account_id: accountId });
         return jsonResponse({ status: 'update_available', url: login.url });
       } catch (loginErr) {
         // Falling back to the old answer keeps a working payout account
         // working: failing here would make "manage my details" look like
         // "payouts broke".
-        console.error('[payments] connect login link failed', (loginErr as Error).message);
+        log.error('payments_connect_login_link_failed', { error: describeError(loginErr) });
         return jsonResponse({ status: 'already_enabled' });
       }
     }
@@ -220,7 +225,7 @@ Deno.serve(async (request) => {
       try {
         accountId = await createConnectAccount(stripe, admin, userId);
       } catch (err) {
-        console.error('[payments] connect account create failed', (err as Error).message);
+        log.error('payments_connect_account_create_failed', { error: describeError(err) });
         return errorResponse('STRIPE_ERROR', 'We couldn’t set up payouts. Please try again.', 502);
       }
     }
@@ -229,10 +234,10 @@ Deno.serve(async (request) => {
       p_stripe_account_id: accountId,
     });
     if (skipError) {
-      console.error('[payments] payout prefill skip failed', skipError.message);
+      log.error('payments_payout_prefill_skip_failed', { error: describeError(skipError) });
       return errorResponse('LEDGER_ERROR', 'We couldn’t set up payouts. Please try again.', 500);
     }
-    console.log('[payments] payout prefill skipped', { accountId });
+    log.info('payments_payout_prefill_skipped', { account_id: accountId });
   }
 
   if (!accountId) {
@@ -242,7 +247,7 @@ Deno.serve(async (request) => {
     try {
       accountId = await createConnectAccount(stripe, admin, userId);
     } catch (err) {
-      console.error('[payments] connect account create failed', (err as Error).message);
+      log.error('payments_connect_account_create_failed', { error: describeError(err) });
       return errorResponse('STRIPE_ERROR', 'We couldn’t set up payouts. Please try again.', 502);
     }
   }
@@ -267,13 +272,13 @@ Deno.serve(async (request) => {
       account: accountId,
       components: { account_onboarding: { enabled: true } },
     });
-    console.log('[payments] connect onboarding session issued', { accountId });
+    log.info('payments_connect_onboarding_session_issued', { account_id: accountId });
     return jsonResponse({ status: 'onboarding_session', clientSecret: session.client_secret });
   } catch (err) {
     // The hosted link still works and is still deployed, so a session failure
     // is recoverable rather than terminal: fall back to the browser flow that
     // shipped first. Worse UX, but a spotter who can be paid beats a dead end.
-    console.error('[payments] connect account session failed', (err as Error).message);
+    log.error('payments_connect_account_session_failed', { error: describeError(err) });
     try {
       const link = await stripe.accountLinks.create({
         account: accountId,
@@ -281,11 +286,13 @@ Deno.serve(async (request) => {
         return_url: RETURN_URL,
         type: 'account_onboarding',
       });
-      console.log('[payments] connect onboarding link issued (session fallback)', { accountId });
+      log.info('payments_connect_onboarding_link_issued_session_fallback', {
+        account_id: accountId,
+      });
       return jsonResponse({ status: 'onboarding_required', url: link.url });
     } catch (linkErr) {
-      console.error('[payments] connect account link failed', (linkErr as Error).message);
+      log.error('payments_connect_account_link_failed', { error: describeError(linkErr) });
       return errorResponse('STRIPE_ERROR', 'We couldn’t set up payouts. Please try again.', 502);
     }
   }
-});
+}));

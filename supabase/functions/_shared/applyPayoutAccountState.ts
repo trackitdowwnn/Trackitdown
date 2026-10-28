@@ -30,6 +30,9 @@ import type Stripe from 'npm:stripe@22.4.0';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { readPayoutAccountState, type PayoutAccountState } from './payoutAccountState.ts';
+import { createLog } from './log.ts';
+
+const log = createLog('applyPayoutAccountState');
 
 /** Our row for a payee account, as last recorded. */
 export interface RecordedPayoutAccount {
@@ -70,9 +73,9 @@ export async function applyPayoutAccountState(
       return { ok: false, error: error.message };
     }
     // Flags only — never a name, never a bank detail.
-    console.log('[payments] payout account state recorded', {
-      accountId: recorded.accountId,
-      payoutsEnabled: fresh.payoutsEnabled,
+    log.info('payments_payout_account_state_recorded', {
+      account_id: recorded.accountId,
+      payouts_enabled: fresh.payoutsEnabled,
     });
   }
 
@@ -88,7 +91,7 @@ export async function applyPayoutAccountState(
       });
       if (error) throw new Error(error.message);
     } catch {
-      console.warn('[payments] bank last4 record failed', { accountId: recorded.accountId });
+      log.warn('payments_bank_last4_record_failed', { account_id: recorded.accountId });
     }
   }
 
