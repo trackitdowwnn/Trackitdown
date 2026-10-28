@@ -75,6 +75,7 @@ export const CREATE_POST_ERROR_MESSAGES: Record<string, string> = {
   // Editing is draft-only (server-enforced). A post that has moved past draft
   // (paid → pending_verification, etc.) can no longer be edited.
   POST_NOT_EDITABLE: 'This post can no longer be edited — it’s already been submitted.',
+  PAYMENT_IN_PROGRESS: 'Your payment is already going through.',
   NOT_FOUND: 'We couldn’t find that post.',
 };
 

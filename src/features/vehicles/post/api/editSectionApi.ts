@@ -148,20 +148,36 @@ export async function saveLastSeen(postId: string, input: LastSeenInput): Promis
 /**
  * The listing's price. Draft only — frozen once the charge is taken. MONEY.
  *
- * `null` switches the draft to the NO-REWARD pricing mode (ADR-0014) and the
- * server stamps the fixed listing fee; a number sets a bounty and clears any
- * fee. update_post_bounty always writes BOTH price columns, so the pair cannot
- * drift apart — which is why this stays one function rather than gaining a
- * sibling for the fee.
+ * `null` switches the draft to the NO-REWARD pricing mode (ADR-0014); the fee
+ * is derived from the null bounty when the owner pays.
+ *
+ * The server refuses (PAYMENT_IN_PROGRESS) while a payment on the draft is
+ * open (20261028150000). Usually that is an abandoned payment sheet, so ask
+ * release-draft-intents to cancel it at Stripe and try once more; a payment
+ * that is really going through cannot be cancelled and stays refused.
  */
 export async function saveBounty(
   postId: string,
   bountyAmountPence: number | null,
 ): Promise<void> {
-  await callSectionRpc('update_post_bounty', {
-    p_post_id: postId,
-    p_bounty_amount_pence: bountyAmountPence,
-  });
+  const save = () =>
+    callSectionRpc('update_post_bounty', {
+      p_post_id: postId,
+      p_bounty_amount_pence: bountyAmountPence,
+    });
+  try {
+    await save();
+  } catch (err) {
+    if (!(err instanceof PostSubmissionError) || err.code !== 'PAYMENT_IN_PROGRESS') throw err;
+    const { error } = await supabase.functions.invoke('release-draft-intents', {
+      body: { postId },
+    });
+    if (error) {
+      log.warn('release-draft-intents failed', { postId });
+      throw new PostSubmissionError(SAVE_FALLBACK, 'RELEASE_FAILED');
+    }
+    await save();
+  }
 }
 
 /** The "About this car" free-text description (desc_recognise). Money-neutral →
