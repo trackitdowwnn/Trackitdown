@@ -33,6 +33,22 @@ describe('redact — keys', () => {
     });
   });
 
+  it('keeps a count whose name mentions what it counts', () => {
+    expect(redact({ pushTokensPurged: 3, deadlineAlertsEmailed: 0, token_count: 2 })).toEqual({
+      pushTokensPurged: 3,
+      deadlineAlertsEmailed: 0,
+      token_count: 2,
+    });
+  });
+
+  it('⚠️ still masks a number that is not a count, and any text under a count name', () => {
+    expect(redact({ account_number: 12345678, sortCode: 112233, tokenSent: 'abc' })).toEqual({
+      account_number: '[redacted]',
+      sortCode: '[redacted]',
+      tokenSent: '[redacted]',
+    });
+  });
+
   it('stops at 5 levels rather than walking forever', () => {
     const deep = { a: { b: { c: { d: { e: { f: 1 } } } } } };
     expect(JSON.stringify(redact(deep))).toContain('[too deep]');

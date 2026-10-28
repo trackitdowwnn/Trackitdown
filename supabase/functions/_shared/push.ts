@@ -19,6 +19,10 @@
  */
 
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
+import { createLog } from './log.ts';
+import { describeError } from './redact.ts';
+
+const log = createLog('push');
 
 const EXPO_SEND_URL = 'https://exp.host/--/api/v2/push/send';
 const EXPO_RECEIPTS_URL = 'https://exp.host/--/api/v2/push/getReceipts';
@@ -139,19 +143,19 @@ async function sendChunk(
       // it. Resend each project's tokens on their own (audit run 2, lead 5).
       const groups = splitByProject(batch, payload.errors);
       if (groups) {
-        console.error('[notifications] batch mixed Expo projects, resending per project');
+        log.error('notifications_batch_mixed_expo_projects_resending_per_project');
         for (const group of groups) await sendChunk(admin, group, result);
         return;
       }
       // Request-level failure (TOO_MANY_REQUESTS, UNAUTHORIZED, …). Nothing
       // in this chunk was accepted; the post is still visible in-app.
-      console.error('[notifications] expo send rejected the batch', response.status);
+      log.error('notifications_expo_send_rejected_the_batch', { status: response.status });
       result.rejected += batch.length;
       return;
     }
     tickets = payload.data;
   } catch (err) {
-    console.error('[notifications] expo send failed', (err as Error).message);
+    log.error('notifications_expo_send_failed', { error: describeError(err) });
     result.rejected += batch.length;
     return;
   }
@@ -172,7 +176,7 @@ async function sendChunk(
     // app was uninstalled and Expo already knows.
     if (ticket.details?.error === 'DeviceNotRegistered' && token) dead.push(token);
     else if (ticket.status === 'error') {
-      console.error('[notifications] push ticket error', ticket.details?.error ?? 'unknown');
+      log.error('notifications_push_ticket_error', { code: ticket.details?.error ?? 'unknown' });
     }
   });
 
@@ -181,7 +185,7 @@ async function sendChunk(
       onConflict: 'ticket_id',
     });
     // A parking failure costs us the ability to prune later, nothing more.
-    if (error) console.error('[notifications] could not park tickets', error.message);
+    if (error) log.error('notifications_could_not_park_tickets', { error: describeError(error) });
   }
   result.pruned += await pruneTokens(admin, dead);
 }
@@ -262,10 +266,10 @@ export async function sendToUsers(
     // between "nobody has a token", "everybody muted it" and "the filter is
     // broken" — and the third one is the failure that would otherwise be
     // silent in production.
-    console.log('[notifications] preference filter applied', {
+    log.info('notifications_preference_filter_applied', {
       kind: content.kind,
       audience: unique.length,
-      afterFilter: recipients.length,
+      after_filter: recipients.length,
     });
   }
   if (recipients.length === 0) return { accepted: 0, rejected: 0, pruned: 0 };
@@ -277,7 +281,7 @@ export async function sendToUsers(
       .select('token')
       .in('user_id', batch);
     if (error) {
-      console.error('[notifications] token lookup failed', error.message);
+      log.error('notifications_token_lookup_failed', { error: describeError(error) });
       continue;
     }
     for (const row of data ?? []) {
@@ -339,9 +343,9 @@ export async function notifyUsers(
     })),
   );
   if (error) {
-    console.error('[notifications] feed rows insert failed', {
+    log.error('notifications_feed_rows_insert_failed', {
       kind: content.kind,
-      error: error.message,
+      error: describeError(error),
     });
   }
 
@@ -401,9 +405,9 @@ async function filterByPreference(
     // where a fault silenced people instead of over-notifying them. This also
     // subsumes the null case.
     if (error || !Array.isArray(data)) {
-      console.error('[notifications] preference filter failed, sending to all', {
+      log.error('notifications_preference_filter_failed_sending_to_all', {
         kind,
-        error: error?.message ?? 'unusable result',
+        error: error ? describeError(error) : 'unusable result',
       });
       return [...userIds];
     }
@@ -428,7 +432,7 @@ async function filterByPreference(
             : undefined;
 
       if (typeof id !== 'string') {
-        console.error('[notifications] unexpected push_recipients shape, sending to all', { kind });
+        log.error('notifications_unexpected_push_recipients_shape_sending_to_all', { kind });
         return [...userIds];
       }
       recipients.push(id);
@@ -443,7 +447,7 @@ async function pruneTokens(admin: SupabaseClient, tokens: readonly string[]): Pr
   let pruned = 0;
   for (const token of new Set(tokens)) {
     const { error } = await admin.rpc('prune_push_token', { p_token: token });
-    if (error) console.error('[notifications] token prune failed', error.message);
+    if (error) log.error('notifications_token_prune_failed', { error: describeError(error) });
     else pruned += 1;
   }
   return pruned;
@@ -484,7 +488,7 @@ export async function drainPushReceipts(admin: SupabaseClient): Promise<DrainRec
     .limit(MAX_RECEIPT_IDS_PER_REQUEST);
 
   if (error) {
-    console.error('[notifications] could not read parked tickets', error.message);
+    log.error('notifications_could_not_read_parked_tickets', { error: describeError(error) });
     return result;
   }
   if (!rows || rows.length === 0) return result;
@@ -503,13 +507,13 @@ export async function drainPushReceipts(admin: SupabaseClient): Promise<DrainRec
       });
       const payload = (await response.json()) as { data?: Record<string, ExpoReceipt> };
       if (!response.ok || !payload.data) {
-        console.error('[notifications] expo receipts rejected', response.status);
+        log.error('notifications_expo_receipts_rejected', { status: response.status });
         continue;
       }
       // NOTE: the receipts response is a MAP keyed by ticket id, not an array.
       receipts = payload.data;
     } catch (err) {
-      console.error('[notifications] expo receipts failed', (err as Error).message);
+      log.error('notifications_expo_receipts_failed', { error: describeError(err) });
       continue;
     }
 
@@ -527,7 +531,7 @@ export async function drainPushReceipts(admin: SupabaseClient): Promise<DrainRec
         // MessageTooBig / MessageRateExceeded / MismatchSenderId /
         // InvalidCredentials. All are OUR configuration or payload problems,
         // not the device's — log loudly, prune nothing.
-        console.error('[notifications] push receipt error', reason ?? 'unknown');
+        log.error('notifications_push_receipt_error', { code: reason ?? 'unknown' });
       }
     }
 

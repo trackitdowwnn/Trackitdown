@@ -23,10 +23,15 @@
 import { notifyUsers } from '../_shared/push.ts';
 import { createServiceRoleClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
+
+const log = createLog('notify-sighting');
 
 const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-Deno.serve(async (request) => {
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') return preflightResponse();
   if (request.method !== 'POST') {
     return errorResponse('METHOD_NOT_ALLOWED', 'Use POST.', 405);
@@ -65,7 +70,7 @@ Deno.serve(async (request) => {
       p_actor: actor,
     });
     if (error) {
-      console.error('[notifications] sighting claim failed', error.message);
+      log.error('notifications_sighting_claim_failed', { error: describeError(error) });
       return errorResponse('CLAIM_FAILED', 'Could not claim the sighting.', 500);
     }
     if (!claim?.claimed) {
@@ -93,10 +98,10 @@ Deno.serve(async (request) => {
       collapseKey: `sighting:${claim.post_id as string}`,
     });
 
-    console.log('[notifications] sighting notified', { sent: result.accepted });
+    log.info('notifications_sighting_notified', { sent: result.accepted });
     return jsonResponse({ claimed: true, sent: result.accepted });
   } catch (err) {
-    console.error('[notifications] notify-sighting failed', (err as Error).message);
+    log.error('notifications_notify_sighting_failed', { error: describeError(err) });
     return errorResponse('NOTIFY_FAILED', 'Could not notify the owner.', 500);
   }
-});
+}));

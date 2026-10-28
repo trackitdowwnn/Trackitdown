@@ -24,6 +24,10 @@ const MAX_FRAMES = 15;
 const SENSITIVE_KEY =
   /token|secret|password|passwd|authorization|cookie|key$|email|phone|iban|account_?number|sort_?code|lat$|lng$|latitude|longitude|coord|plate|address|postcode|birth|dob|url|link|content|nickname|note|body/i;
 
+/** A count named after what it counts (`pushTokensPurged`, `alertsEmailed`): a
+ *  NUMBER under one of these is kept, whatever the rest of the key says. */
+const COUNT_KEY = /(count|purged|sent|emailed|removed|skipped|total)$/i;
+
 /** Secret-shaped text, masked wherever it appears in a string. */
 const SECRET_TEXT: [RegExp, string][] = [
   [/eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g, MASK], // JWT
@@ -66,8 +70,9 @@ export function redact(value: unknown, extraKeys?: RegExp, depth = 0): unknown {
 
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value)) {
-    out[key] =
-      SENSITIVE_KEY.test(key) || extraKeys?.test(key) ? MASK : redact(item, extraKeys, depth + 1);
+    const sensitive = SENSITIVE_KEY.test(key) || extraKeys?.test(key);
+    const isCount = typeof item === 'number' && COUNT_KEY.test(key);
+    out[key] = sensitive && !isCount ? MASK : redact(item, extraKeys, depth + 1);
   }
   return out;
 }

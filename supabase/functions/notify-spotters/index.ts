@@ -20,8 +20,13 @@
 import { drainPushReceipts, notifyUsers } from '../_shared/push.ts';
 import { createServiceRoleClient, requireEnv } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
 
-Deno.serve(async (request) => {
+const log = createLog('notify-spotters');
+
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') return preflightResponse();
   if (request.method !== 'POST') {
     return errorResponse('METHOD_NOT_ALLOWED', 'Use POST.', 405);
@@ -48,7 +53,7 @@ Deno.serve(async (request) => {
   // Opportunistic receipt drain (no pg_cron here). Fire-and-forget: it must
   // never delay or fail the alert it is riding along with.
   void drainPushReceipts(admin).catch((err) =>
-    console.error('[notifications] receipt drain failed', (err as Error).message),
+    log.error('notifications_receipt_drain_failed', { error: describeError(err) }),
   );
 
   try {
@@ -58,7 +63,7 @@ Deno.serve(async (request) => {
       p_post_id: postId,
     });
     if (claimError) {
-      console.error('[notifications] claim failed', claimError.message);
+      log.error('notifications_claim_failed', { error: describeError(claimError) });
       return errorResponse('CLAIM_FAILED', 'Could not claim the post.', 500);
     }
     if (!claim?.claimed) {
@@ -70,7 +75,7 @@ Deno.serve(async (request) => {
       p_post_id: postId,
     });
     if (matchError) {
-      console.error('[notifications] match failed', matchError.message);
+      log.error('notifications_match_failed', { error: describeError(matchError) });
       return errorResponse('MATCH_FAILED', 'Could not match alert zones.', 500);
     }
 
@@ -82,7 +87,7 @@ Deno.serve(async (request) => {
     const userIds = ((match?.user_ids ?? []) as string[]).filter((id) => id !== ownerId);
 
     if (userIds.length === 0) {
-      console.log('[notifications] alerts sent', { postId, matched: 0, sent: 0 });
+      log.info('notifications_alerts_sent', { post_id: postId, matched: 0, sent: 0 });
       return jsonResponse({ claimed: true, matched: 0, sent: 0 });
     }
 
@@ -98,15 +103,15 @@ Deno.serve(async (request) => {
     });
 
     // Counts and a post id only. No user ids, no tokens, no locality.
-    console.log('[notifications] alerts sent', {
-      postId,
+    log.info('notifications_alerts_sent', {
+      post_id: postId,
       matched: userIds.length,
       sent: result.accepted,
       pruned: result.pruned,
     });
     return jsonResponse({ claimed: true, matched: userIds.length, sent: result.accepted });
   } catch (err) {
-    console.error('[notifications] notify-spotters failed', (err as Error).message);
+    log.error('notifications_notify_spotters_failed', { error: describeError(err) });
     return errorResponse('NOTIFY_FAILED', 'Could not send spotter alerts.', 500);
   }
-});
+}));

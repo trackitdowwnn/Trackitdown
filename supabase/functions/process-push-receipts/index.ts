@@ -17,8 +17,13 @@
 import { drainPushReceipts } from '../_shared/push.ts';
 import { createServiceRoleClient, requireEnv } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
 
-Deno.serve(async (request) => {
+const log = createLog('process-push-receipts');
+
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') return preflightResponse();
   if (request.method !== 'POST') {
     return errorResponse('METHOD_NOT_ALLOWED', 'Use POST.', 405);
@@ -37,10 +42,10 @@ Deno.serve(async (request) => {
     const admin = createServiceRoleClient();
     const result = await drainPushReceipts(admin);
     // Counts only — never a token, never a user id.
-    console.log('[notifications] receipts drained', result);
+    log.info('notifications_receipts_drained', { ...result });
     return jsonResponse(result);
   } catch (err) {
-    console.error('[notifications] receipt drain failed', (err as Error).message);
+    log.error('notifications_receipt_drain_failed', { error: describeError(err) });
     return errorResponse('DRAIN_FAILED', 'Could not drain push receipts.', 500);
   }
-});
+}));
