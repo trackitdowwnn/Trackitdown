@@ -23,6 +23,7 @@ import {
   installForTests,
   resetTelemetryForTests,
   sanitiseProps,
+  TELEMETRY_KEYS,
   shouldCapture,
 } from './telemetry';
 
@@ -84,11 +85,45 @@ describe('shouldCapture', () => {
 
 describe('sanitiseProps', () => {
   it('keeps scalars', () => {
-    expect(sanitiseProps({ count: 3, ok: true, label: 'hi' })).toEqual({
+    expect(sanitiseProps({ count: 3, enabled: true, code: 'hi' })).toEqual({
       count: 3,
-      ok: true,
-      label: 'hi',
+      enabled: true,
+      code: 'hi',
     });
+  });
+
+  // ⚠️ docs/logging-decisions.md §3: no user id, no post id, no coordinate.
+  it.each([
+    ['userId', { userId: 'abc' }],
+    ['postId', { postId: 'abc' }],
+    ['sightingId', { sightingId: 'abc' }],
+    ['origin (the ~1 km feed point)', { origin: '53.48,-2.24' }],
+    ['message (free text)', { message: 'Invalid value AB12CDE' }],
+    ['a key nobody listed', { label: 'hi' }],
+  ])('drops %s — only allow-listed keys leave the device', (_name, data) => {
+    expect(sanitiseProps(data)).toEqual({});
+  });
+
+  it('drops an id hidden under an allowed key', () => {
+    expect(
+      sanitiseProps({
+        from: '6f9619ff-8b86-d011-b42d-00cf4fc964ff',
+        path: '11111111-1111-1111-1111-111111111111/avatar.jpg',
+        to: 'list',
+      }),
+    ).toEqual({ to: 'list' });
+  });
+
+  it('drops a coordinate hidden under an allowed key, keeps whole timings', () => {
+    expect(sanitiseProps({ index: 53.480759, offset: -2.242631, durationMs: 1234 })).toEqual({
+      durationMs: 1234,
+    });
+  });
+
+  it('never sends PII nested inside an allowed key', () => {
+    expect(
+      sanitiseProps({ details: { userId: 'u1', lat: 51.5 }, flags: [{ email: 'a@b.com' }] }),
+    ).toEqual({});
   });
 
   it.each([
@@ -107,24 +142,33 @@ describe('sanitiseProps', () => {
   it('drops nested values rather than the whole event', () => {
     // The server's trigger REJECTS a nested bag; dropping the field here means
     // a valid event is never lost to a field nobody cared about.
-    expect(sanitiseProps({ ok: true, nested: { a: 1 }, list: [1, 2] })).toEqual({ ok: true });
+    expect(sanitiseProps({ enabled: true, details: { a: 1 }, flags: [1, 2] })).toEqual({
+      enabled: true,
+    });
   });
 
   it('caps at 8 keys', () => {
-    const wide = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`k${i}`, i]));
+    const keys = [...TELEMETRY_KEYS].slice(0, 12);
+    const wide = Object.fromEntries(keys.map((key, i) => [key, i]));
     expect(Object.keys(sanitiseProps(wide))).toHaveLength(8);
   });
 
   it('truncates a long string to 200 characters', () => {
-    expect(sanitiseProps({ note: 'x'.repeat(500) }).note).toHaveLength(200);
+    expect(sanitiseProps({ reason: 'x'.repeat(500) }).reason).toHaveLength(200);
   });
 
   it('drops NaN and Infinity, which are not valid JSON', () => {
-    expect(sanitiseProps({ a: NaN, b: Infinity, c: 1 })).toEqual({ c: 1 });
+    expect(sanitiseProps({ count: NaN, total: Infinity, index: 1 })).toEqual({ index: 1 });
   });
 
   it('drops null and undefined', () => {
-    expect(sanitiseProps({ a: null, b: undefined, c: 'keep' })).toEqual({ c: 'keep' });
+    expect(sanitiseProps({ code: null, reason: undefined, kind: 'keep' })).toEqual({
+      kind: 'keep',
+    });
+  });
+
+  it('allows only keys the server would accept', () => {
+    for (const key of TELEMETRY_KEYS) expect(key).toMatch(/^[a-z][a-zA-Z0-9_]{0,39}$/);
   });
 
   it('returns an empty object for no data', () => {
@@ -206,11 +250,11 @@ describe('capture and flush', () => {
     // nothing can be sent. The newest are the ones nearest whatever went
     // wrong, so those are the ones kept.
     for (let i = 0; i < 250; i++) {
-      captureForTests(entry({ message: `event_${i}`, data: { i } }));
+      captureForTests(entry({ message: `event_${i}`, data: { index: i } }));
     }
     const buffered = bufferedForTests();
     expect(buffered.length).toBeLessThanOrEqual(200);
-    expect(buffered[buffered.length - 1].props).toEqual({ i: 249 });
+    expect(buffered[buffered.length - 1].props).toEqual({ index: 249 });
   });
 
   it('keeps capturing while a flush is in flight', async () => {
