@@ -235,6 +235,13 @@ jobs:
       # Wave 1 is derived rather than listed, so a NEW function is deployed by
       # default instead of being silently forgotten. Defaulting to wave 1 is the
       # safe direction: recording money before initiating it.
+      # Every server log line carries `version` from RELEASE
+      # (docs/logging-decisions.md). Set before the deploy so the new versions
+      # start with it; a deploy that then fails leaves old code reporting the
+      # new SHA, which the run's red status already flags.
+      - name: Stamp the release on the functions
+        run: supabase secrets set RELEASE="$GITHUB_SHA" --project-ref "$PROJECT_REF"
+
       - name: Deploy functions (wave 1 — everything that records money)
         run: |
           set -euo pipefail

@@ -37,8 +37,8 @@ The owner agreed these decisions on 2026-10-28, after a discovery audit and a st
   - `warn`: unexpected but handled, or a retry.
   - `info`: a business event, named in snake_case.
   - `debug`: development detail, never sent anywhere.
-- **Server fields:** `ts` (UTC ISO), `level`, `msg`, `service: "edge"`, `fn`, `env`, `version`, `trace_id`, `span_id`, `request_id`, then the entry's own data.
-- **Server settings:** level from the `LOG_LEVEL` secret (default `info`); version from `RELEASE`, set to the git SHA on deploy.
+- **Server fields:** `ts` (UTC ISO), `level`, `msg`, `service: "edge"`, `fn`, `env`, `version`, `trace_id`, `span_id`, `parent_span_id` (when the caller sent a `traceparent`), `request_id`, then the entry's own data in snake_case (`user_id`, `export_id`). Responses carry the same `x-request-id`.
+- **Server settings:** level from the `LOG_LEVEL` secret (default `info`); version from `RELEASE`, set to the git SHA on deploy; `APP_ENV` (default `production`, `development` prints readable lines instead of JSON); `LOG_REDACT_KEYS`, extra key names to mask.
 - **App settings:** level from `EXPO_PUBLIC_LOG_LEVEL` (default `debug` in dev, `info` in release).
 - **Redaction:**
   - Key names are checked at any depth up to 5 levels, and value patterns are masked too: JWTs, Stripe keys and client secrets, Bearer tokens, emails.
