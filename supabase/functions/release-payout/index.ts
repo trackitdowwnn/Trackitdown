@@ -37,8 +37,13 @@
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
 import { releasePayoutForPost } from '../_shared/releasePayout.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
 
-Deno.serve(async (request) => {
+const log = createLog('release-payout');
+
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') {
     return preflightResponse();
   }
@@ -77,7 +82,7 @@ Deno.serve(async (request) => {
     .maybeSingle();
 
   if (postError) {
-    console.error('[payments] post lookup failed', postError.message);
+    log.error('payments_post_lookup_failed', { error: describeError(postError) });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t finish this. Please try again.', 500);
   }
   if (!post || post.owner_id !== userId) {
@@ -143,4 +148,4 @@ Deno.serve(async (request) => {
           return errorResponse('LOOKUP_FAILED', 'We couldn’t finish this. Please try again.', 500);
       }
   }
-});
+}));

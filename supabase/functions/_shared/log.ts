@@ -13,6 +13,9 @@
  *        NON-BLOCKING AND NEVER THROWS: one console call, nothing awaited, and
  *        a line that cannot be built becomes `log_failed` — logging must never
  *        be the reason a request fails.
+ *        A SHARED module makes its own `createLog('refundEscrow')`: inside a
+ *        request its lines say the calling function in `fn` and itself in
+ *        `module`, so a refund logged from stripe-webhook reads as stripe-webhook.
  *        Mock it by passing `write` (and `env`); nothing touches Deno at import.
  * LINKS: ./redact.ts; ./handler.ts (sets the request context); ./log.test.ts;
  *        docs/logging-decisions.md; docs/LOGGING.md.
@@ -24,6 +27,8 @@ import { extraKeyMatcher, redact } from './redact.ts';
 export type Level = 'debug' | 'info' | 'warn' | 'error';
 export type LogData = Record<string, unknown>;
 export interface Log {
+  /** The function (or shared module) this logger was made for. */
+  readonly name: string;
   debug(msg: string, data?: LogData): void;
   info(msg: string, data?: LogData): void;
   warn(msg: string, data?: LogData): void;
@@ -36,6 +41,8 @@ export interface TraceContext {
   span_id: string;
   parent_span_id?: string;
   request_id: string;
+  /** The function serving the request (set by withHandler). */
+  fn?: string;
 }
 
 const store = new AsyncLocalStorage<TraceContext>();
@@ -53,7 +60,7 @@ type Env = (name: string) => string | undefined;
 type Write = (level: Level, line: string) => void;
 
 const denoEnv: Env = (name) =>
-  (globalThis as { Deno?: { env: { get(n: string): string | undefined } } }).Deno?.env.get(name);
+  (globalThis as { Deno?: { env?: { get(n: string): string | undefined } } }).Deno?.env?.get(name);
 
 const consoleWrite: Write = (level, line) => {
   // The matching console method, so Supabase's log explorer filters by level.
@@ -77,20 +84,22 @@ export function createLog(fn: string, options: { env?: Env; write?: Write } = {}
   const emit = (level: Level, msg: string, data?: LogData) => {
     if (RANK[level] < threshold) return;
     try {
+      const { fn: serving, ...ids } = currentContext() ?? {};
       const base = {
         ts: new Date().toISOString(),
         level,
         msg,
         service: 'edge',
-        fn,
+        fn: serving ?? fn,
+        ...(serving && serving !== fn ? { module: fn } : {}),
         env: environment,
         version,
-        ...currentContext(),
+        ...ids,
       };
       const own = (data ? redact(data, extraKeys) : {}) as LogData;
       if (pretty) {
         const extra = Object.keys(own).length ? ` ${JSON.stringify(own)}` : '';
-        write(level, `${base.ts} ${level.toUpperCase()} [${fn}] ${msg}${extra}`);
+        write(level, `${base.ts} ${level.toUpperCase()} [${base.fn}] ${msg}${extra}`);
         return;
       }
       // The entry's own data can't overwrite a base field.
@@ -106,6 +115,7 @@ export function createLog(fn: string, options: { env?: Env; write?: Write } = {}
   };
 
   return {
+    name: fn,
     debug: (msg, data) => emit('debug', msg, data),
     info: (msg, data) => emit('info', msg, data),
     warn: (msg, data) => emit('warn', msg, data),

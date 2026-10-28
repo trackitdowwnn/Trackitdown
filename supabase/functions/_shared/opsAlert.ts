@@ -1,7 +1,7 @@
 /**
  * WHAT:  The one way server code tells the operator something needs a human:
  *        a plain-text email through Resend (the provider bug reports and auth
- *        OTPs already use), plus a console.error that says ALERT either way.
+ *        OTPs already use), plus an `ops_alert` error line either way.
  * WHY:   Stripe caps funds on the platform balance at 90 days (lead support,
  *        2026-10-05). The sweep can see reward money getting old, and the
  *        webhook can see a refund bounce — but until now both could only write
@@ -17,7 +17,7 @@
  * SAFETY: callers pass ids and states only — never a plate, a name, an email
  *        or an amount tied to a person. The email is a pointer into the
  *        dashboard, not a record of anyone. NEVER THROWS: an alert that fails
- *        must not fail the refund or the sweep that raised it; the console line
+ *        must not fail the refund or the sweep that raised it; the log line
  *        is written first so the alert survives a Resend outage in the logs.
  * LINKS: supabase/functions/notify-bug-report/index.ts (the sender pattern);
  *        supabase/functions/release-held-refunds/index.ts (deadline alerts);
@@ -25,11 +25,16 @@
  *        docs/OPERATIONS.md (what to do when one arrives).
  */
 
+import { createLog } from './log.ts';
+import { describeError } from './redact.ts';
+
+const log = createLog('opsAlert');
+
 const DEFAULT_TO = 'trackitdowwnn@gmail.com';
 const DEFAULT_FROM = 'Trackitdown Alerts <onboarding@resend.dev>';
 
 /**
- * Email the operator. Logs `[ops] ALERT <subject>` FIRST, so the alert exists
+ * Email the operator. Logs `ops_alert` with the subject FIRST, so the alert exists
  * in the function logs even if nothing below works.
  *
  * Destination: OPS_ALERT_TO_ADDRESS, else BUG_REPORT_TO_ADDRESS, else the
@@ -47,11 +52,11 @@ const DEFAULT_FROM = 'Trackitdown Alerts <onboarding@resend.dev>';
  */
 export async function sendOpsAlert(subject: string, lines: readonly string[]): Promise<boolean> {
   const text = lines.join('\n');
-  console.error(`[ops] ALERT ${subject}`, text);
+  log.error('ops_alert', { subject, detail: text });
 
   const apiKey = Deno.env.get('RESEND_API_KEY');
   if (!apiKey) {
-    console.error('[ops] alert not emailed: RESEND_API_KEY is not set');
+    log.error('ops_alert_not_emailed', { reason: 'RESEND_API_KEY is not set' });
     return false;
   }
   const to =
@@ -66,12 +71,12 @@ export async function sendOpsAlert(subject: string, lines: readonly string[]): P
     });
     if (!response.ok) {
       // The status only — a provider error body can quote the payload back.
-      console.error('[ops] alert email failed', response.status);
+      log.error('ops_alert_email_failed', { status: response.status });
       return false;
     }
     return true;
   } catch (err) {
-    console.error('[ops] alert email failed', (err as Error).message);
+    log.error('ops_alert_email_failed', { error: describeError(err) });
     return false;
   }
 }

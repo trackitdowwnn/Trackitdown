@@ -51,8 +51,13 @@
 
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
 
-Deno.serve(async (request) => {
+const log = createLog('create-payment-intent');
+
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') {
     return preflightResponse();
   }
@@ -100,7 +105,7 @@ Deno.serve(async (request) => {
     .maybeSingle();
 
   if (postError) {
-    console.error('[payments] post lookup failed', postError.message);
+    log.error('payments_post_lookup_failed', { error: describeError(postError) });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t start your payment. Please try again.', 500);
   }
   if (!post || post.owner_id !== userId) {
@@ -142,7 +147,7 @@ Deno.serve(async (request) => {
     // Defensive: the table CHECK makes this unreachable. If it ever fires, the
     // post's money columns are inconsistent and the right move is to refuse the
     // charge loudly rather than send Stripe an amount we cannot justify.
-    console.error('[payments] post has no usable price', { postId });
+    log.error('payments_post_has_no_usable_price', { post_id: postId });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t start your payment. Please try again.', 500);
   }
 
@@ -176,7 +181,7 @@ Deno.serve(async (request) => {
         // supersede below still fires; a stray success would land on a 'failed'
         // row, but the amount no longer matches the post so it's out of the
         // normal path. Log and continue rather than block the new charge.
-        console.warn('[payments] stale intent cancel failed', (err as Error).message);
+        log.warn('payments_stale_intent_cancel_failed', { error: describeError(err) });
       }
     }
   }
@@ -220,7 +225,7 @@ Deno.serve(async (request) => {
       });
     }
   } catch (err) {
-    console.error('[payments] PaymentIntent create failed', (err as Error).message);
+    log.error('payments_payment_intent_create_failed', { error: describeError(err) });
     return errorResponse('STRIPE_ERROR', 'We couldn’t start your payment. Please try again.', 502);
   }
 
@@ -249,16 +254,17 @@ Deno.serve(async (request) => {
     // £4.99 design that only ever existed in this repo. A log line naming a
     // function the database has not got is worse than a vague one: it sends the
     // next reader looking for something that was never there.
-    console.error('[payments] record_post_payment_intent failed', recordError.message, {
-      postId,
-      amountPence,
+    log.error('payments_record_post_payment_intent_failed', {
+      error: describeError(recordError),
+      post_id: postId,
+      amount_pence: amountPence,
       mode: isListingFee ? 'listing_fee' : 'bounty_escrow',
     });
     return errorResponse('LEDGER_ERROR', 'We couldn’t start your payment. Please try again.', 500);
   }
 
   return jsonResponse({ clientSecret: paymentIntent.client_secret });
-});
+}));
 
 /** Refusal tokens from reward_charge_context / record_reward_renewal_intent →
  *  the HTTP answer. Copy lives client-side (paymentsApi); these are codes. */
@@ -312,7 +318,7 @@ async function chargeRewardChange(
     if (ctxError.message?.includes('POST_NOT_FOUND')) {
       return errorResponse('POST_NOT_FOUND', 'We couldn’t find that post.', 404);
     }
-    console.error('[payments] reward_charge_context failed', ctxError.message);
+    log.error('payments_reward_charge_context_failed', { error: describeError(ctxError) });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t start your payment. Please try again.', 500);
   }
   const context = ctx as {
@@ -373,7 +379,7 @@ async function chargeRewardChange(
       return errorResponse('PAYMENT_IN_PROGRESS', 'Your payment is already going through.', 409);
     }
   } catch (err) {
-    console.error('[payments] reward change PaymentIntent create failed', (err as Error).message);
+    log.error('payments_reward_change_payment_intent_create_failed', { error: describeError(err) });
     return errorResponse('STRIPE_ERROR', 'We couldn’t start your payment. Please try again.', 502);
   }
 
@@ -391,7 +397,7 @@ async function chargeRewardChange(
     try {
       await stripe.paymentIntents.cancel(paymentIntent.id);
     } catch (err) {
-      console.warn('[payments] refused reward intent cancel failed', (err as Error).message);
+      log.warn('payments_refused_reward_intent_cancel_failed', { error: describeError(err) });
     }
     const code = Object.keys(CHANGE_BLOCK_STATUS).find((c) => recordError.message?.includes(c));
     if (code) {
@@ -400,9 +406,10 @@ async function chargeRewardChange(
     if (recordError.message?.includes('POST_NOT_FOUND')) {
       return errorResponse('POST_NOT_FOUND', 'We couldn’t find that post.', 404);
     }
-    console.error('[payments] record_reward_renewal_intent failed', recordError.message, {
-      postId,
-      amountPence,
+    log.error('payments_record_reward_renewal_intent_failed', {
+      error: describeError(recordError),
+      post_id: postId,
+      amount_pence: amountPence,
       mode: context.mode,
     });
     return errorResponse('LEDGER_ERROR', 'We couldn’t start your payment. Please try again.', 500);
@@ -429,7 +436,7 @@ async function chargeRewardChange(
     .neq('stripe_payment_intent_id', paymentIntent.id)
     .limit(20);
   if (openError) {
-    console.error('[payments] open reward intent lookup failed', openError.message);
+    log.error('payments_open_reward_intent_lookup_failed', { error: describeError(openError) });
   }
   for (const row of openRows ?? []) {
     const intentId = row.stripe_payment_intent_id as string;
@@ -439,7 +446,7 @@ async function chargeRewardChange(
       // Already cancelled (or otherwise terminal) can never be confirmed
       // again, so it is stamped like a success; anything else retries later.
       if ((err as { code?: string }).code !== 'payment_intent_unexpected_state') {
-        console.warn('[payments] stale reward intent cancel failed', (err as Error).message);
+        log.warn('payments_stale_reward_intent_cancel_failed', { error: describeError(err) });
         continue;
       }
     }
@@ -448,10 +455,10 @@ async function chargeRewardChange(
       .update({ stripe_intent_cancelled_at: new Date().toISOString() })
       .eq('stripe_payment_intent_id', intentId);
     if (stampError) {
-      console.warn('[payments] stale reward intent stamp failed', stampError.message);
+      log.warn('payments_stale_reward_intent_stamp_failed', { error: describeError(stampError) });
     }
   }
 
-  console.log('[payments] reward change intent ready', { postId, mode: context.mode });
+  log.info('payments_reward_change_intent_ready', { post_id: postId, mode: context.mode });
   return jsonResponse({ clientSecret: paymentIntent.client_secret });
 }

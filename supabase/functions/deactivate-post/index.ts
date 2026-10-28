@@ -52,12 +52,17 @@ import { createServiceRoleClient, createStripeClient } from '../_shared/clients.
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
 import { refundPayment } from '../_shared/refundEscrow.ts';
 import { gateExitRefund } from '../_shared/refundHold.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
+
+const log = createLog('deactivate-post');
 
 /** The paid states whose escrow can be refunded on deactivation. A draft has no
  *  escrow; a recovered/claimed post's money is already resolved. */
 const REFUNDABLE_STATUSES = ['active', 'pending_verification'];
 
-Deno.serve(async (request) => {
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') {
     return preflightResponse();
   }
@@ -106,7 +111,7 @@ Deno.serve(async (request) => {
     .maybeSingle();
 
   if (postError) {
-    console.error('[payments] post lookup failed', postError.message);
+    log.error('payments_post_lookup_failed', { error: describeError(postError) });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t deactivate your listing. Please try again.', 500);
   }
   if (!post || post.owner_id !== userId) {
@@ -145,21 +150,21 @@ Deno.serve(async (request) => {
       // Should be unreachable for posts created after 20260820110000 — the
       // capture handlers now re-check the amount against the post's price.
       if (cancelError.message?.includes('POST_HAS_BOUNTY')) {
-        console.error('[payments] STRANDED ESCROW on a fee-priced post', { postId });
+        log.error('payments_stranded_escrow_on_a_fee_priced_post', { post_id: postId });
         return errorResponse(
           'ESCROW_NEEDS_REVIEW',
           'Something needs checking on this listing before it can come down. We’re on it — please contact support.',
           409,
         );
       }
-      console.error('[payments] cancel_fee_listing failed', cancelError.message);
+      log.error('payments_cancel_fee_listing_failed', { error: describeError(cancelError) });
       return errorResponse(
         'LOOKUP_FAILED',
         'We couldn’t deactivate your listing. Please try again.',
         500,
       );
     }
-    console.log('[payments] fee listing deactivated (no refund)', { postId });
+    log.info('payments_fee_listing_deactivated_no_refund', { post_id: postId });
     // Same response SHAPE as the refund path so the client needs no new branch:
     // held=false, and a zero refund is the honest number for a non-refundable fee.
     return jsonResponse({ held: false, refundedPence: 0, feePence: 0 });
@@ -198,7 +203,7 @@ Deno.serve(async (request) => {
   }
   if (gate.action === 'held') {
     // The listing is down (the hold delisted it); only the money waits.
-    console.log('[payments] deactivate refund held', { postId, expiresAt: gate.expiresAt });
+    log.info('payments_deactivate_refund_held', { post_id: postId, expires_at: gate.expiresAt });
     return jsonResponse({ held: true, refundAfter: gate.expiresAt });
   }
 
@@ -216,7 +221,7 @@ Deno.serve(async (request) => {
     p_claim_token: claimToken,
   });
   if (claimError) {
-    console.error('[payments] claim_deactivate_refund failed', claimError.message);
+    log.error('payments_claim_deactivate_refund_failed', { error: describeError(claimError) });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t deactivate your listing. Please try again.', 500);
   }
   if (typeof claimedIntent !== 'string') {
@@ -249,7 +254,9 @@ Deno.serve(async (request) => {
       p_claim_token: claimToken,
     });
     if (releaseError) {
-      console.error('[payments] release_reward_end_refund_claim failed', releaseError.message);
+      log.error('payments_release_reward_end_refund_claim_failed', {
+        error: describeError(releaseError),
+      });
     }
   }
   if (outcome.status === 'no_held_payment') {
@@ -275,7 +282,10 @@ Deno.serve(async (request) => {
       // A renewal captured between the read and the record: the refund went to
       // the OLD payment (the webhook records it as superseded) and the listing
       // is still live on the NEW reward. Say so — a retry deactivates that one.
-      console.error('[payments] deactivate raced a renewal', { postId, paymentIntentId });
+      log.error('payments_deactivate_raced_a_renewal', {
+        post_id: postId,
+        payment_intent_id: paymentIntentId,
+      });
       return errorResponse(
         'REWARD_RENEWED',
         'Your reward was just renewed, so your listing is still live. Please try again to take it down.',
@@ -285,10 +295,14 @@ Deno.serve(async (request) => {
     // The refund succeeded but we couldn't record it. Surface a retryable error;
     // the refund idempotency key means a retry reuses the same refund and the RPC
     // is idempotent — and the charge.refunded webhook reconciles regardless.
-    console.error('[payments] mark_post_payment_refunded failed', rpcError.message);
+    log.error('payments_mark_post_payment_refunded_failed', { error: describeError(rpcError) });
     return errorResponse('LEDGER_ERROR', 'Your refund is processing. Please check back shortly.', 500);
   }
 
-  console.log('[payments] listing deactivated + refunded', { postId, refundPence, feePence });
+  log.info('payments_listing_deactivated_refunded', {
+    post_id: postId,
+    refund_pence: refundPence,
+    fee_pence: feePence,
+  });
   return jsonResponse({ held: false, refundedPence: refundPence, feePence });
-});
+}));

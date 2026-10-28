@@ -41,10 +41,15 @@
 
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
+
+const log = createLog('delete-post');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-Deno.serve(async (request) => {
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') {
     return preflightResponse();
   }
@@ -88,7 +93,7 @@ Deno.serve(async (request) => {
     .maybeSingle();
 
   if (postError) {
-    console.error('[posts] delete lookup failed', postError.message);
+    log.error('posts_delete_lookup_failed', { error: describeError(postError) });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t delete that post. Please try again.', 500);
   }
   if (!post || post.owner_id !== userId) {
@@ -136,7 +141,7 @@ Deno.serve(async (request) => {
       .in('status', ['requires_payment', 'failed']);
 
     if (ledgerError) {
-      console.error('[posts] ledger read failed', ledgerError.message);
+      log.error('posts_ledger_read_failed', { error: describeError(ledgerError) });
       return errorResponse('LOOKUP_FAILED', 'We couldn’t delete that post. Please try again.', 500);
     }
 
@@ -158,10 +163,10 @@ Deno.serve(async (request) => {
           // Cannot cancel it and cannot read it — so we cannot prove it is
           // dead. Say nothing about it: the RPC will find its ledger row
           // unnamed and refuse, which is the correct outcome.
-          console.warn('[posts] intent state unknown', {
-            postId,
-            message: (retrieveErr as Error).message,
-            original: (err as Error).message,
+          log.warn('posts_intent_state_unknown', {
+            post_id: postId,
+            error: describeError(retrieveErr),
+            original: describeError(err),
           });
         }
       }
@@ -177,7 +182,7 @@ Deno.serve(async (request) => {
     // The refund is still settling — a hold window open, or escrow mid-refund.
     // Retrying LATER genuinely is the fix, so the copy says when, not "again".
     if (message.includes('MONEY_IN_FLIGHT')) {
-      console.warn('[posts] delete refused — money still settling', { postId });
+      log.warn('posts_delete_refused', { post_id: postId, detail: 'money still settling' });
       return errorResponse(
         'MONEY_IN_FLIGHT',
         'Your refund is still being processed. You can delete this post once it’s done.',
@@ -189,9 +194,10 @@ Deno.serve(async (request) => {
     // intent opened on another device mid-flight. Retrying genuinely is the
     // fix — the next attempt sees and cancels it.
     if (message.includes('INTENT_NOT_CANCELLED')) {
-      console.warn('[posts] delete refused — an intent could not be proven cancelled', {
-        postId,
-        cancelledCount: cancelled.length,
+      log.warn('posts_delete_refused', {
+        post_id: postId,
+        cancelled_count: cancelled.length,
+        detail: 'an intent could not be proven cancelled',
       });
       return errorResponse(
         'INTENT_NOT_CANCELLED',
@@ -202,7 +208,7 @@ Deno.serve(async (request) => {
 
     // Neither of these clears on retry; say what is actually happening.
     if (message.includes('DISPUTE_OPEN')) {
-      console.warn('[posts] delete refused — open dispute', { postId });
+      log.warn('posts_delete_refused', { post_id: postId, detail: 'open dispute' });
       return errorResponse(
         'DISPUTE_OPEN',
         'A sighting on this post is being reviewed, so it can’t be deleted yet.',
@@ -210,7 +216,7 @@ Deno.serve(async (request) => {
       );
     }
     if (message.includes('PAYMENT_REVIEW_OPEN')) {
-      console.error('[posts] delete refused — payout review open', { postId });
+      log.error('posts_delete_refused', { post_id: postId, detail: 'payout review open' });
       return errorResponse(
         'PAYMENT_REVIEW_OPEN',
         'A payment on this post is being reviewed. Contact support and we’ll sort it.',
@@ -229,10 +235,10 @@ Deno.serve(async (request) => {
       return errorResponse('POST_NOT_FOUND', 'We couldn’t find that post.', 404);
     }
 
-    console.error('[posts] delete_cancelled_post failed', message, { postId });
+    log.error('posts_delete_cancelled_post_failed', { message, post_id: postId });
     return errorResponse('DELETE_FAILED', 'We couldn’t delete that post. Please try again.', 500);
   }
 
-  console.log('[posts] cancelled post deleted', { postId, intentsCancelled: cancelled.length });
+  log.info('posts_cancelled_post_deleted', { post_id: postId, intents_cancelled: cancelled.length });
   return jsonResponse({ deleted: true });
-});
+}));

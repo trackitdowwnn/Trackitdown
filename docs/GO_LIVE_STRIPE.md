@@ -77,7 +77,7 @@ Post a **no-reward** listing and pay £5 by **typing your card into the sheet**,
 - [ ] The Stripe live payment `succeeded`, with metadata `kind=listing_fee`.
 - [ ] The platform destination shows the delivery returned **200**.
 - [ ] The post is `active`, and its `payments` row is `listing_fee` / `collected`.
-- [ ] No `[ops] ALERT` in the function logs, and no alert email.
+- [ ] No `ops_alert` in the function logs, and no alert email.
 - [ ] Your bank statement shows `TRACKITDOWN`.
 - [ ] The £5, less Stripe's fee, reaches your Stripe balance. With manual payouts, you send it to your bank yourself.
 

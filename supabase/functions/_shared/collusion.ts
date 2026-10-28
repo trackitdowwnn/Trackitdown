@@ -43,6 +43,10 @@
 
 import type Stripe from 'npm:stripe@22.4.0';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
+import { createLog } from './log.ts';
+import { describeError } from './redact.ts';
+
+const log = createLog('collusion');
 
 export type CollusionVerdict = 'clear' | 'held' | 'error';
 
@@ -109,7 +113,7 @@ export async function collusionGate(
       .eq('post_id', input.postId)
       .maybeSingle();
     if (reviewError) {
-      console.error('[payments] collusion review lookup failed', reviewError.message);
+      log.error('payments_collusion_review_lookup_failed', { error: describeError(reviewError) });
       return 'error';
     }
     if (review) {
@@ -127,7 +131,7 @@ export async function collusionGate(
       { p_user_a: input.ownerId, p_user_b: input.spotterId },
     );
     if (deviceError) {
-      console.error('[payments] collusion device check failed', deviceError.message);
+      log.error('payments_collusion_device_check_failed', { error: describeError(deviceError) });
       return 'error';
     }
     if (sharedDevice === true) {
@@ -140,7 +144,7 @@ export async function collusionGate(
       admin.auth.admin.getUserById(input.spotterId),
     ]);
     if (ownerUser.error || spotterUser.error) {
-      console.error('[payments] collusion email check failed');
+      log.error('payments_collusion_email_check_failed');
       return 'error';
     }
     const ownerEmail = ownerUser.data.user?.email;
@@ -164,7 +168,7 @@ export async function collusionGate(
       .eq('status', 'held')
       .maybeSingle();
     if (heldError) {
-      console.error('[payments] collusion payment lookup failed', heldError.message);
+      log.error('payments_collusion_payment_lookup_failed', { error: describeError(heldError) });
       return 'error';
     }
     if (held) {
@@ -199,10 +203,9 @@ export async function collusionGate(
         .sort((x, y) => String(y.created_at).localeCompare(String(x.created_at)))
         .slice(0, 3);
       if (spotterPaymentsError) {
-        console.error(
-          '[payments] collusion spotter payments lookup failed',
-          spotterPaymentsError.message,
-        );
+        log.error('payments_collusion_spotter_payments_lookup_failed', {
+          error: describeError(spotterPaymentsError),
+        });
         return 'error';
       }
 
@@ -237,18 +240,15 @@ export async function collusionGate(
       p_reasons: reasons,
     });
     if (flagError) {
-      console.error('[payments] collusion flag write failed', flagError.message);
+      log.error('payments_collusion_flag_write_failed', { error: describeError(flagError) });
       return 'error';
     }
     // Machine words only — never emails, tokens, or fingerprints.
-    console.log('[payments] payout flagged for review', {
-      postId: input.postId,
-      reasons,
-    });
+    log.info('payments_payout_flagged_for_review', { post_id: input.postId, reasons });
     return 'held';
   } catch (err) {
     // Includes Stripe retrieve failures. Fail closed — see the header.
-    console.error('[payments] collusion gate failed', (err as Error).message);
+    log.error('payments_collusion_gate_failed', { error: describeError(err) });
     return 'error';
   }
 }

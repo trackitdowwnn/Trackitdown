@@ -45,8 +45,13 @@ import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.
 import { announceRecoveryToWatchers } from '../_shared/recoveryAnnounce.ts';
 import { refundHeldEscrow } from '../_shared/refundEscrow.ts';
 import { gateExitRefund } from '../_shared/refundHold.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
 
-Deno.serve(async (request) => {
+const log = createLog('refund-recovery');
+
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') {
     return preflightResponse();
   }
@@ -92,7 +97,7 @@ Deno.serve(async (request) => {
     .maybeSingle();
 
   if (postError) {
-    console.error('[payments] post lookup failed', postError.message);
+    log.error('payments_post_lookup_failed', { error: describeError(postError) });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t finish this. Please try again.', 500);
   }
   if (!post || post.owner_id !== userId) {
@@ -115,7 +120,7 @@ Deno.serve(async (request) => {
     .eq('status', 'credited');
 
   if (creditedError) {
-    console.error('[payments] credited-sighting check failed', creditedError.message);
+    log.error('payments_credited_sighting_check_failed', { error: describeError(creditedError) });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t finish this. Please try again.', 500);
   }
   if ((creditedCount ?? 0) > 0) {
@@ -157,7 +162,7 @@ Deno.serve(async (request) => {
       : errorResponse('LOOKUP_FAILED', 'We couldn’t finish this. Please try again.', 500);
   }
   if (gate.action === 'held') {
-    console.log('[payments] recovery refund held', { postId, expiresAt: gate.expiresAt });
+    log.info('payments_recovery_refund_held', { post_id: postId, expires_at: gate.expiresAt });
     return jsonResponse({ held: true, refundAfter: gate.expiresAt });
   }
 
@@ -191,20 +196,27 @@ Deno.serve(async (request) => {
       // Unreachable while renewal is refused on a recovery_claimed post (the
       // capture-time check in mark_post_payment_held); logged distinctly so a
       // future path that breaks that rule is visible, not "please try again".
-      console.error('[payments] recovery refund hit a replaced payment', { postId, paymentIntentId });
+      log.error('payments_recovery_refund_hit_a_replaced_payment', {
+        post_id: postId,
+        payment_intent_id: paymentIntentId,
+      });
       return errorResponse('REWARD_RENEWED', 'Your reward changed while this was processing. Please try again.', 409);
     }
     // The refund SUCCEEDED but we couldn't record it. Retryable: the
     // idempotency key reuses the same refund and the RPC never regresses.
-    console.error('[payments] mark_post_recovered_no_spotter failed', rpcError.message);
+    log.error('payments_mark_post_recovered_no_spotter_failed', { error: describeError(rpcError) });
     return errorResponse('LEDGER_ERROR', 'Your refund is processing. Please check back shortly.', 500);
   }
 
-  console.log('[payments] recovery closed with no spotter', { postId, refundPence, feePence });
+  log.info('payments_recovery_closed_with_no_spotter', {
+    post_id: postId,
+    refund_pence: refundPence,
+    fee_pence: feePence,
+  });
 
   // The watchers' announcement — the car went home, however it ended. Best-
   // effort and claim-guarded; never a reason to fail the refund's response.
   await announceRecoveryToWatchers(admin, postId);
 
   return jsonResponse({ held: false, refundedPence: refundPence, feePence });
-});
+}));

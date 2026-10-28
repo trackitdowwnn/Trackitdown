@@ -26,6 +26,10 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { notifyUsers } from './push.ts';
+import { createLog } from './log.ts';
+import { describeError } from './redact.ts';
+
+const log = createLog('refundHold');
 
 export type ExitGateOutcome =
   /** No recent uncredited sightings — refund immediately, as always. */
@@ -63,7 +67,7 @@ export async function gateExitRefund(
     p_owner_id: ownerId,
   });
   if (checkError) {
-    console.error('[payments] exit check failed', checkError.message);
+    log.error('payments_exit_check_failed', { error: describeError(checkError) });
     return { action: 'error', code: 'LOOKUP_FAILED' };
   }
   const requires = Boolean((check as { requiresAttestation?: boolean })?.requiresAttestation);
@@ -94,7 +98,7 @@ export async function gateExitRefund(
       // aged out). The honest answer is the one the owner wanted anyway.
       return { action: 'refund_now' };
     }
-    console.error('[payments] create_refund_hold failed', holdError.message);
+    log.error('payments_create_refund_hold_failed', { error: describeError(holdError) });
     return { action: 'error', code: 'LOOKUP_FAILED' };
   }
 
@@ -118,7 +122,7 @@ export async function gateExitRefund(
         collapseKey: `closed_uncredited:${item.sighting_id}`,
       });
     } catch (err) {
-      console.error('[payments] closed_uncredited push failed', (err as Error).message);
+      log.error('payments_closed_uncredited_push_failed', { error: describeError(err) });
     }
   }
 
