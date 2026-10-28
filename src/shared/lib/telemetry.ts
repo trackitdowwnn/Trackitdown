@@ -80,6 +80,35 @@ const EVENT_NAME = /^[a-z][a-z0-9_]{2,63}$/;
  */
 const DENIED_KEY = /lat|lng|long|coord|plate|email|phone|address|postcode|token|secret|password/i;
 
+/**
+ * ⚠️ THE ALLOW-LIST (docs/logging-decisions.md §3). A key leaves the device only
+ * if it is named here. Denying known-bad keys was not enough: userId, postId
+ * and a ~1 km `origin` all reached the table under names nobody had denied.
+ * Codes, counts, flags and timings only — never an id, a place or free text
+ * (`message` and zod's `firstIssue` can quote the value that failed). Adding a
+ * key is a privacy decision: say why in the PR.
+ */
+export const TELEMETRY_KEYS: ReadonlySet<string> = new Set([
+  'action', 'answered', 'app', 'attempt', 'attempts', 'bytes', 'candidates', 'canAskAgain',
+  'category', 'changed', 'code', 'coldStart', 'context', 'count', 'counted', 'created',
+  'criteriaKeys', 'details', 'distanceMiles', 'durationMs', 'editing', 'enabled', 'error',
+  'face', 'fields', 'flags', 'fn', 'from', 'fromIndex', 'fromPhotos', 'gaveNote',
+  'gaveReason', 'granted', 'hadPref', 'hadTypedPlate', 'hasMissingPartsNote', 'hasNote',
+  'index', 'kind', 'length', 'located', 'marked', 'missingParts', 'mode', 'newUser',
+  'nextStep', 'of', 'offset', 'ota', 'path', 'permissionMs', 'photoCount', 'platform',
+  'positionMs', 'postCounts', 'prefReadMs', 'provider', 'radiusMiles', 'reason', 'result',
+  'returned', 'scope', 'sinceLaunchMs', 'skipped', 'source', 'stage', 'standing', 'state',
+  'status', 'step', 'surface', 'tiles', 'to', 'toIndex', 'total', 'totalMs', 'trigger',
+  'type', 'unsure', 'vehicleCount', 'via', 'watched', 'watches',
+]);
+
+/** An id hidden under an allowed key (`from`, `path`) is still an id. */
+const UUID_IN_VALUE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+/** A coordinate: four or more decimals, within ±180. Timings are whole ms. */
+function looksLikeCoordinate(value: number): boolean {
+  return Math.abs(value) <= 180 && /\.\d{4,}/.test(String(value));
+}
+
 interface QueuedEvent {
   event: string;
   feature: string;
@@ -148,16 +177,16 @@ export function sanitiseProps(
 
   for (const [key, value] of Object.entries(data)) {
     if (Object.keys(out).length >= 8) break;
-    if (DENIED_KEY.test(key)) continue;
-    // The server's key rule. Anything else is dropped rather than renamed:
-    // a mangled key is worse than a missing one when someone reads this back.
-    if (!/^[a-z][a-zA-Z0-9_]{0,39}$/.test(key)) continue;
+    if (!TELEMETRY_KEYS.has(key) || DENIED_KEY.test(key)) continue;
 
-    if (typeof value === 'boolean' || typeof value === 'number') {
+    if (typeof value === 'boolean') {
+      out[key] = value;
+    } else if (typeof value === 'number') {
       // NaN and Infinity are not valid JSON and would fail the insert.
-      if (typeof value === 'number' && !Number.isFinite(value)) continue;
+      if (!Number.isFinite(value) || looksLikeCoordinate(value)) continue;
       out[key] = value;
     } else if (typeof value === 'string') {
+      if (UUID_IN_VALUE.test(value)) continue;
       out[key] = value.length > 200 ? value.slice(0, 200) : value;
     }
     // Objects, arrays, null and undefined are dropped: the trigger rejects
