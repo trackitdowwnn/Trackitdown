@@ -1,7 +1,6 @@
 {
   "enabledPlugins": {
     "expo@claude-plugins-official": true,
-    "stripe@claude-plugins-official": true,
     "ecc@ecc": true
   }
 }
