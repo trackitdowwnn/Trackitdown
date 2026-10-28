@@ -182,35 +182,43 @@ Deno.serve(async (request) => {
   }
 
   // --- Create (or reuse) the escrow PaymentIntent -----------------------------
+  const params = {
+    amount: amountPence,
+    currency: 'gbp',
+    // Capture immediately to the platform balance (ADR-0002 escrow hold — a
+    // manual-capture authorization would expire long before recovery).
+    capture_method: 'automatic' as const,
+    automatic_payment_methods: { enabled: true },
+    // The webhook matches the ledger row by intent id; these are for
+    // dashboard/debugging traceability only and are never read back as
+    // authority. `kind` tells a listing fee from a held reward in the
+    // Stripe dashboard without a join.
+    // ⚠️ 'reward_hold', NOT our ledger's `bounty_escrow` (2026-10-02):
+    // this string is visible to Stripe's reviewers, and "escrow" is a
+    // restricted business category at Stripe. We describe the flow as
+    // charging before the recipient is known, which is what it is. Charges
+    // made before this change still carry the old label; nothing reads it.
+    metadata: { post_id: postId, kind: isListingFee ? 'listing_fee' : 'reward_hold' },
+    receipt_email: receiptEmail,
+  };
   let paymentIntent;
   try {
-    paymentIntent = await stripe.paymentIntents.create(
-      {
-        amount: amountPence,
-        currency: 'gbp',
-        // Capture immediately to the platform balance (ADR-0002 escrow hold — a
-        // manual-capture authorization would expire long before recovery).
-        capture_method: 'automatic',
-        automatic_payment_methods: { enabled: true },
-        // The webhook matches the ledger row by intent id; these are for
-        // dashboard/debugging traceability only and are never read back as
-        // authority. `kind` tells a listing fee from a held reward in the
-        // Stripe dashboard without a join.
-        // ⚠️ 'reward_hold', NOT our ledger's `bounty_escrow` (2026-10-02):
-        // this string is visible to Stripe's reviewers, and "escrow" is a
-        // restricted business category at Stripe. We describe the flow as
-        // charging before the recipient is known, which is what it is. Charges
-        // made before this change still carry the old label; nothing reads it.
-        metadata: { post_id: postId, kind: isListingFee ? 'listing_fee' : 'reward_hold' },
-        receipt_email: receiptEmail,
-      },
-      // Idempotency key = kind + post_id + amount: a retry after a cancelled/
-      // declined sheet returns the SAME PaymentIntent (never double-charged); a
-      // legitimate in-draft price edit changes the amount, so the key differs and
-      // Stripe opens a fresh intent instead of rejecting the changed-amount
-      // replay. See the resolution above for why the kind is part of the key.
-      { idempotencyKey },
-    );
+    // Idempotency key = kind + post_id + amount: a retry after a cancelled/
+    // declined sheet returns the SAME PaymentIntent (never double-charged); a
+    // legitimate in-draft price edit changes the amount, so the key differs and
+    // Stripe opens a fresh intent instead of rejecting the changed-amount
+    // replay. See the resolution above for why the kind is part of the key.
+    paymentIntent = await stripe.paymentIntents.create(params, { idempotencyKey });
+    // ⚠️ A REPLAYED key returns the intent Stripe SAVED. release-draft-intents
+    // (or the stale cancel above) may have cancelled it since, and a cancelled
+    // intent can never be paid — so read its LIVE status and open a fresh one
+    // (the renewal path below does the same).
+    const live = await stripe.paymentIntents.retrieve(paymentIntent.id);
+    if (live.status === 'canceled') {
+      paymentIntent = await stripe.paymentIntents.create(params, {
+        idempotencyKey: `${idempotencyKey}-${crypto.randomUUID()}`,
+      });
+    }
   } catch (err) {
     console.error('[payments] PaymentIntent create failed', (err as Error).message);
     return errorResponse('STRIPE_ERROR', 'We couldn’t start your payment. Please try again.', 502);

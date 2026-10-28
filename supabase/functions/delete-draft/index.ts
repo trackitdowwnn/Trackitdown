@@ -52,6 +52,7 @@
  *        src/features/vehicles/api/draftApi.ts (the client caller).
  */
 
+import { cancelAndProve } from '../_shared/cancelIntents.ts';
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
 
@@ -127,38 +128,13 @@ Deno.serve(async (request) => {
     return errorResponse('LOOKUP_FAILED', 'We couldn’t delete that draft. Please try again.', 500);
   }
 
-  const stripe = createStripeClient();
-  const cancelled: string[] = [];
-
-  for (const row of ledger ?? []) {
-    const intentId = row.stripe_payment_intent_id as string;
-    try {
-      const intent = await stripe.paymentIntents.cancel(intentId);
-      // ⚠️ ONLY push what Stripe CONFIRMS is dead. This list is evidence, and
-      // the RPC treats it as such — a hopeful entry would let a still-live
-      // intent's ledger row be deleted, which is the one outcome this whole
-      // function is arranged to prevent.
-      if (intent.status === 'canceled') cancelled.push(intentId);
-    } catch (err) {
-      // An already-terminal intent cannot be cancelled and does not need to be:
-      // `succeeded` means money moved (the RPC will refuse the delete on the
-      // ledger status anyway), and an already-`canceled` one is dead. Re-read
-      // it and trust only what Stripe says now.
-      try {
-        const current = await stripe.paymentIntents.retrieve(intentId);
-        if (current.status === 'canceled') cancelled.push(intentId);
-      } catch (retrieveErr) {
-        // Cannot cancel it and cannot read it — so we cannot prove it is dead.
-        // Say nothing about it: the RPC will find its ledger row unnamed and
-        // refuse, which is the correct outcome and the reason the proof exists.
-        console.warn('[drafts] intent state unknown', {
-          postId,
-          message: (retrieveErr as Error).message,
-          original: (err as Error).message,
-        });
-      }
-    }
-  }
+  // ⚠️ ONLY what Stripe CONFIRMS is dead — this list is evidence, and the RPC
+  // treats it as such (see _shared/cancelIntents.ts).
+  const cancelled = await cancelAndProve(
+    createStripeClient().paymentIntents,
+    (ledger ?? []).map((row) => row.stripe_payment_intent_id as string),
+    'drafts',
+  );
 
   // --- Delete, with the evidence ----------------------------------------------
   const { error: deleteError } = await admin.rpc('delete_draft_post', {

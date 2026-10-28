@@ -21,9 +21,11 @@ import {
 const mockRpc = jest.fn();
 const mockUpload = jest.fn();
 const mockGetUser = jest.fn();
+const mockInvoke = jest.fn();
 jest.mock('@/shared/api/supabase', () => ({
   supabase: {
     rpc: (...args: unknown[]) => mockRpc(...args),
+    functions: { invoke: (...args: unknown[]) => mockInvoke(...args) },
     auth: { getUser: (...args: unknown[]) => mockGetUser(...args) },
     storage: {
       from: (bucket: string) => ({
@@ -46,6 +48,7 @@ jest.mock('expo-image-manipulator', () => ({
 
 beforeEach(() => {
   mockRpc.mockReset().mockResolvedValue({ error: null });
+  mockInvoke.mockReset().mockResolvedValue({ data: { open: 0 }, error: null });
   mockUpload.mockReset().mockResolvedValue({ error: null });
   mockGetUser.mockReset().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
   (globalThis as { fetch?: unknown }).fetch = jest.fn(async () => ({
@@ -60,6 +63,33 @@ describe('editSectionApi', () => {
       p_post_id: 'p1',
       p_bounty_amount_pence: 40000,
     });
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  // MONEY: an open payment blocks the price; an abandoned one is cleared first.
+  it('saveBounty clears an open payment at the server, then saves', async () => {
+    mockRpc
+      .mockResolvedValueOnce({ error: { message: 'PAYMENT_IN_PROGRESS', code: 'P0001' } })
+      .mockResolvedValueOnce({ error: null });
+    await saveBounty('p1', null);
+    expect(mockInvoke).toHaveBeenCalledWith('release-draft-intents', { body: { postId: 'p1' } });
+    expect(mockRpc).toHaveBeenCalledTimes(2);
+  });
+
+  it('saveBounty says the payment is going through when it cannot be cleared', async () => {
+    mockRpc.mockResolvedValue({ error: { message: 'PAYMENT_IN_PROGRESS', code: 'P0001' } });
+    await expect(saveBounty('p1', 40000)).rejects.toMatchObject({
+      code: 'PAYMENT_IN_PROGRESS',
+      message: 'Your payment is already going through.',
+    });
+    expect(mockRpc).toHaveBeenCalledTimes(2);
+  });
+
+  it('saveBounty does not retry when the release itself fails', async () => {
+    mockRpc.mockResolvedValue({ error: { message: 'PAYMENT_IN_PROGRESS', code: 'P0001' } });
+    mockInvoke.mockResolvedValue({ data: null, error: new Error('boom') });
+    await expect(saveBounty('p1', 40000)).rejects.toMatchObject({ code: 'RELEASE_FAILED' });
+    expect(mockRpc).toHaveBeenCalledTimes(1);
   });
 
   it('saveCarDetails maps colourNote → owner_note (null when blank)', async () => {

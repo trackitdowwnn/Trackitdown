@@ -23,7 +23,7 @@
     "      (2026-10-05) imports Deno code the same way and is excluded likewise,",
     "      as is payoutAccountState.test.ts (2026-10-13), and",
     "      applyPayoutAccountState.test.ts (2026-10-14), and",
-    "      deletePost.test.ts (2026-10-27).",
+    "      deletePost.test.ts (2026-10-27), and cancelIntents.test.ts (2026-10-28).",
     "RUN:  npm run typecheck (which runs this too), or npm run typecheck:tests."
   ],
   "extends": "../../tsconfig.json",
@@ -37,6 +37,7 @@
     "refundEscrow.test.ts",
     "payoutAccountState.test.ts",
     "applyPayoutAccountState.test.ts",
-    "deletePost.test.ts"
+    "deletePost.test.ts",
+    "cancelIntents.test.ts"
   ]
 }
