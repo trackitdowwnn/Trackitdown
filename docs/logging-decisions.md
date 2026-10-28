@@ -42,6 +42,7 @@ The owner agreed these decisions on 2026-10-28, after a discovery audit and a st
 - **App settings:** level from `EXPO_PUBLIC_LOG_LEVEL` (default `debug` in dev, `info` in release).
 - **Redaction:**
   - Key names are checked at any depth up to 5 levels, and value patterns are masked too: JWTs, Stripe keys and client secrets, Bearer tokens, emails.
+  - A number under a count-shaped key (`…Count`, `…Purged`, `…Sent`, `…Emailed`, `…Removed`, `…Skipped`, `…Total`) is kept, so `pushTokensPurged: 3` survives; text under such a key is still masked.
   - A Stripe error's message is never logged, because it can repeat back a rejected bank value. Log its `type`, `code` and `requestId` instead.
 - **Never logged:** the list in `docs/LOGGING.md`, which still applies in full.
 

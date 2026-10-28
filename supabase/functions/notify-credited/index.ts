@@ -27,8 +27,13 @@
 import { notifyUsers } from '../_shared/push.ts';
 import { createServiceRoleClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
 
-Deno.serve(async (request) => {
+const log = createLog('notify-credited');
+
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') return preflightResponse();
   if (request.method !== 'POST') {
     return errorResponse('METHOD_NOT_ALLOWED', 'Use POST.', 405);
@@ -58,7 +63,7 @@ Deno.serve(async (request) => {
       p_actor: actor,
     });
     if (error) {
-      console.error('[notifications] credited claim failed', error.message);
+      log.error('notifications_credited_claim_failed', { error: describeError(error) });
       return errorResponse('CLAIM_FAILED', 'Could not claim the credit.', 500);
     }
     if (!claim?.claimed) {
@@ -85,10 +90,10 @@ Deno.serve(async (request) => {
       collapseKey: `credited:${claim.post_id as string}`,
     });
 
-    console.log('[notifications] credited notified', { sent: result.accepted });
+    log.info('notifications_credited_notified', { sent: result.accepted });
     return jsonResponse({ claimed: true, sent: result.accepted });
   } catch (err) {
-    console.error('[notifications] notify-credited failed', (err as Error).message);
+    log.error('notifications_notify_credited_failed', { error: describeError(err) });
     return errorResponse('NOTIFY_FAILED', 'Could not notify the spotter.', 500);
   }
-});
+}));

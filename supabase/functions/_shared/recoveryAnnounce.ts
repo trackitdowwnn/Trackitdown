@@ -30,6 +30,10 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { notifyUsers } from './push.ts';
+import { createLog } from './log.ts';
+import { describeError } from './redact.ts';
+
+const log = createLog('recoveryAnnounce');
 
 /** "£X on its way" to the spotter whose transfer just went out. */
 export async function announcePayoutSent(admin: SupabaseClient, postId: string): Promise<void> {
@@ -38,7 +42,9 @@ export async function announcePayoutSent(admin: SupabaseClient, postId: string):
       p_post_id: postId,
     });
     if (error || !(claim as { claimed?: boolean })?.claimed) {
-      if (error) console.error('[notifications] payout_sent claim failed', error.message);
+      if (error) log.error('notifications_payout_sent_claim_failed', {
+        error: describeError(error),
+      });
       return;
     }
     const doc = claim as { user_id: string; post_id: string; title: string; body: string };
@@ -50,7 +56,7 @@ export async function announcePayoutSent(admin: SupabaseClient, postId: string):
       collapseKey: `payout_sent:${doc.post_id}`,
     });
   } catch (err) {
-    console.error('[notifications] payout_sent announce failed', (err as Error).message);
+    log.error('notifications_payout_sent_announce_failed', { error: describeError(err) });
   }
 }
 
@@ -66,7 +72,9 @@ export async function announceNotCredited(admin: SupabaseClient, postId: string)
       p_post_id: postId,
     });
     if (error || !(claim as { claimed?: boolean })?.claimed) {
-      if (error) console.error('[notifications] not_credited claim failed', error.message);
+      if (error) log.error('notifications_not_credited_claim_failed', {
+        error: describeError(error),
+      });
       return;
     }
     const doc = claim as { user_ids: string[]; post_id: string; title: string; body: string };
@@ -81,7 +89,7 @@ export async function announceNotCredited(admin: SupabaseClient, postId: string)
       collapseKey: `not_credited:${doc.post_id}`,
     });
   } catch (err) {
-    console.error('[notifications] not_credited announce failed', (err as Error).message);
+    log.error('notifications_not_credited_announce_failed', { error: describeError(err) });
   }
 }
 
@@ -95,7 +103,7 @@ export async function announceRecoveryToWatchers(
       p_post_id: postId,
     });
     if (error || !(claim as { claimed?: boolean })?.claimed) {
-      if (error) console.error('[notifications] recovery claim failed', error.message);
+      if (error) log.error('notifications_recovery_claim_failed', { error: describeError(error) });
       return;
     }
     const doc = claim as { user_ids: string[]; post_id: string; title: string; body: string };
@@ -110,6 +118,6 @@ export async function announceRecoveryToWatchers(
       collapseKey: `recovery:${doc.post_id}`,
     });
   } catch (err) {
-    console.error('[notifications] recovery announce failed', (err as Error).message);
+    log.error('notifications_recovery_announce_failed', { error: describeError(err) });
   }
 }
