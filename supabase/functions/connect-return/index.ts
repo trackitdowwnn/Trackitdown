@@ -30,11 +30,15 @@
  */
 
 import { corsHeaders } from '../_shared/http.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+
+const log = createLog('connect-return');
 
 /** The only two answers Stripe ever sends us back with. */
 const OUTCOMES = new Set(['complete', 'refresh']);
 
-Deno.serve((request) => {
+Deno.serve(withHandler(log, (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -75,9 +79,9 @@ Deno.serve((request) => {
 </body>
 </html>`;
 
-  console.log('[payments] connect return bounced', { outcome });
+  log.info('payments_connect_return_bounced', { outcome });
   return new Response(html, {
     status: 200,
     headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
   });
-});
+}));

@@ -43,6 +43,11 @@
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { createConnectAccount, findConnectAccount } from '../_shared/connectAccount.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
+
+const log = createLog('submit-payout-details');
 
 /** Exactly what the form may send. Anything else is ignored, not trusted. */
 interface PayoutDetailsBody {
@@ -64,7 +69,7 @@ const asTrimmed = (value: unknown): string =>
 /** Digits only — the client formats for humans, Stripe wants the raw number. */
 const asDigits = (value: unknown): string => asTrimmed(value).replace(/\D/g, '');
 
-Deno.serve(async (request) => {
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') {
     return preflightResponse();
   }
@@ -125,7 +130,7 @@ Deno.serve(async (request) => {
   try {
     lookup = await findConnectAccount(admin, userId);
   } catch (err) {
-    console.error('[payments] payout details lookup failed', (err as Error).message);
+    log.error('payments_payout_details_lookup_failed', { error: describeError(err) });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t save your details. Please try again.', 500);
   }
 
@@ -141,7 +146,7 @@ Deno.serve(async (request) => {
     try {
       accountId = await createConnectAccount(stripe, admin, userId);
     } catch (err) {
-      console.error('[payments] payout account create failed', (err as Error).message);
+      log.error('payments_payout_account_create_failed', { error: describeError(err) });
       return errorResponse('STRIPE_ERROR', 'We couldn’t save your details. Please try again.', 502);
     }
   }
@@ -192,7 +197,7 @@ Deno.serve(async (request) => {
     // never reaches the client. The `type` is enough to tell a validation
     // rejection from an outage.
     const failure = err as { type?: string };
-    console.error('[payments] payout details rejected', { type: failure.type ?? 'unknown' });
+    log.error('payments_payout_details_rejected', { type: failure.type ?? 'unknown' });
     return errorResponse(
       'DETAILS_REJECTED',
       'Stripe couldn’t accept those details. Please check them and try again.',
@@ -209,11 +214,11 @@ Deno.serve(async (request) => {
     // The details ARE with Stripe; only our note of it failed. Retrying is safe
     // (the update is a plain overwrite), so this is a retryable error rather
     // than a lie about what happened.
-    console.error('[payments] payout details mark failed', markError.message);
+    log.error('payments_payout_details_mark_failed', { error: describeError(markError) });
     return errorResponse('LEDGER_ERROR', 'Your details are saved. Please check back shortly.', 500);
   }
 
   // Counts and outcomes only. Nothing from the body is ever logged.
-  console.log('[payments] payout details submitted', { accountId });
+  log.info('payments_payout_details_submitted', { account_id: accountId });
   return jsonResponse({ status: 'submitted' });
-});
+}));

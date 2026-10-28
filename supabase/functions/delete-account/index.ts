@@ -59,6 +59,11 @@ import type Stripe from 'npm:stripe@22.4.0';
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
 import { sendOpsAlert } from '../_shared/opsAlert.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
+
+const log = createLog('delete-account');
 
 // What blocks erasure lives in ONE place now: account_deletion_blockers_for
 // (20261023120000) — the app's delete sheet reads the same definition through
@@ -130,7 +135,7 @@ const BUCKETS = [
  * handles segment-2 paths.
  */
 
-Deno.serve(async (request) => {
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') {
     return preflightResponse();
   }
@@ -163,7 +168,7 @@ Deno.serve(async (request) => {
     { p_user_id: userId },
   );
   if (blockersError) {
-    console.error('[profile] blocker check failed', blockersError.message);
+    log.error('profile_blocker_check_failed', { error: describeError(blockersError) });
     return errorResponse(
       'LOOKUP_FAILED',
       'We couldn’t delete your account. Please try again.',
@@ -187,7 +192,7 @@ Deno.serve(async (request) => {
     .eq('profile_id', userId)
     .maybeSingle();
   if (connectError) {
-    console.error('[profile] connect lookup failed', connectError.message);
+    log.error('profile_connect_lookup_failed', { error: describeError(connectError) });
     return errorResponse(
       'LOOKUP_FAILED',
       'We couldn’t delete your account. Please try again.',
@@ -214,7 +219,7 @@ Deno.serve(async (request) => {
       // else is "can't tell", and we don't delete on a guess.
       const code = (err as { code?: string }).code;
       if (code !== 'account_invalid' && code !== 'resource_missing') {
-        console.error('[profile] payout balance check failed', (err as Error).message);
+        log.error('profile_payout_balance_check_failed', { error: describeError(err) });
         return errorResponse(
           'LOOKUP_FAILED',
           'We couldn’t delete your account. Please try again.',
@@ -234,7 +239,7 @@ Deno.serve(async (request) => {
     .eq('posts.owner_id', userId)
     .in('status', ['requires_payment', 'failed']);
   if (straysError) {
-    console.error('[profile] stray-intent read failed', straysError.message);
+    log.error('profile_stray_intent_read_failed', { error: describeError(straysError) });
     return errorResponse(
       'LOOKUP_FAILED',
       'We couldn’t delete your account. Please try again.',
@@ -258,9 +263,9 @@ Deno.serve(async (request) => {
           moved.push(intentId);
         }
       } catch (retrieveErr) {
-        console.warn('[profile] intent state unknown', {
-          message: (retrieveErr as Error).message,
-          original: (err as Error).message,
+        log.warn('profile_intent_state_unknown', {
+          error: describeError(retrieveErr),
+          original: describeError(err),
         });
       }
     }
@@ -283,8 +288,9 @@ Deno.serve(async (request) => {
     if (message.includes('DISPUTE_OPEN')) return blocked('DISPUTE_OPEN');
     if (message.includes('PAYMENT_REVIEW_OPEN')) return blocked('REVIEW_OPEN');
     if (message.includes('INTENT_NOT_CANCELLED')) {
-      console.warn('[profile] deletion refused — an intent could not be proven cancelled', {
-        cancelledCount: cancelled.length,
+      log.warn('profile_deletion_refused', {
+        cancelled_count: cancelled.length,
+        detail: 'an intent could not be proven cancelled',
       });
       if (moved.length > 0) {
         await sendOpsAlert('Account deletion found a payment the ledger missed', [
@@ -299,7 +305,7 @@ Deno.serve(async (request) => {
         409,
       );
     }
-    console.error('[profile] account data deletion failed', message);
+    log.error('profile_account_data_deletion_failed', { message });
     return errorResponse(
       'DELETE_FAILED',
       'We couldn’t delete your account. Please try again.',
@@ -327,9 +333,9 @@ Deno.serve(async (request) => {
       // FAIL CLOSED. Abort before touching auth.users: aborting here is
       // retryable and destroys nothing, whereas proceeding would orphan
       // personal data with no owner left to erase it.
-      console.error('[profile] storage listing failed', {
+      log.error('profile_storage_listing_failed', {
         bucket: bucket.id,
-        message: listError.message,
+        error: describeError(listError),
       });
       return errorResponse(
         'STORAGE_SWEEP_FAILED',
@@ -349,9 +355,9 @@ Deno.serve(async (request) => {
       const chunk = paths.slice(i, i + 100);
       const { error: removeError } = await admin.storage.from(bucket.id).remove(chunk);
       if (removeError) {
-        console.error('[profile] storage remove failed', {
+        log.error('profile_storage_remove_failed', {
           bucket: bucket.id,
-          message: removeError.message,
+          error: describeError(removeError),
         });
         return errorResponse(
           'STORAGE_SWEEP_FAILED',
@@ -379,13 +385,13 @@ Deno.serve(async (request) => {
     .select('id')
     .maybeSingle();
   if (auditError) {
-    console.error('[profile] audit insert failed', auditError.message);
+    log.error('profile_audit_insert_failed', { error: describeError(auditError) });
   }
 
   // --- Delete the account (cascades the rest) ---------------------------------
   const { error: deleteError } = await admin.auth.admin.deleteUser(userId);
   if (deleteError) {
-    console.error('[profile] auth user delete failed', deleteError.message);
+    log.error('profile_auth_user_delete_failed', { error: describeError(deleteError) });
     return errorResponse(
       'DELETE_FAILED',
       'We couldn’t delete your account. Please try again.',
@@ -413,15 +419,15 @@ Deno.serve(async (request) => {
         .update({ stripe_account_closed: closed })
         .eq('id', audit.id);
       if (closeAuditError) {
-        console.error('[profile] audit close update failed', closeAuditError.message);
+        log.error('profile_audit_close_update_failed', { error: describeError(closeAuditError) });
       }
     }
   }
 
   // ids only, never names or emails (docs/LOGGING.md).
-  console.log('[profile] account erased', { userId, removedCount });
+  log.info('profile_account_erased', { user_id: userId, removed_count: removedCount });
   return jsonResponse({ deleted: true, storageObjectsRemoved: removedCount });
-});
+}));
 
 /**
  * Close a payout account. Today's are Accounts v2 (create-payout-account), which
@@ -437,9 +443,9 @@ async function closePayoutAccount(stripe: Stripe, accountId: string): Promise<bo
       const result = await stripe.accounts.del(accountId);
       return result.deleted === true;
     } catch (v1Err) {
-      console.error('[profile] payout account close failed', {
-        v2: (v2Err as Error).message,
-        v1: (v1Err as Error).message,
+      log.error('profile_payout_account_close_failed', {
+        v2: describeError(v2Err),
+        v1: describeError(v1Err),
       });
       return false;
     }

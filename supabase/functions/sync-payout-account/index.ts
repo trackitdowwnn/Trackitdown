@@ -31,8 +31,13 @@ import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.
 import { applyPayoutAccountState } from '../_shared/applyPayoutAccountState.ts';
 import { ensureProfile, readPayoutAccountState } from '../_shared/payoutAccountState.ts';
 import { releaseAllPendingFor } from '../_shared/releasePayout.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
 
-Deno.serve(async (request) => {
+const log = createLog('sync-payout-account');
+
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') {
     return preflightResponse();
   }
@@ -55,7 +60,7 @@ Deno.serve(async (request) => {
   try {
     existing = await findConnectAccount(admin, userId);
   } catch (err) {
-    console.error('[payments] payout sync lookup failed', (err as Error).message);
+    log.error('payments_payout_sync_lookup_failed', { error: describeError(err) });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t check your payouts. Please try again.', 500);
   }
   if (!existing.accountId) {
@@ -66,7 +71,7 @@ Deno.serve(async (request) => {
   const fresh = await readPayoutAccountState(stripe, existing.accountId);
   if (!fresh) {
     // Stripe unreadable: the row stands, and the screen says what it said.
-    console.warn('[payments] payout sync read failed', { accountId: existing.accountId });
+    log.warn('payments_payout_sync_read_failed', { account_id: existing.accountId });
     return jsonResponse({
       status: 'unchanged',
       payoutsEnabled: existing.payoutsEnabled,
@@ -89,7 +94,7 @@ Deno.serve(async (request) => {
     (profileId) => releaseAllPendingFor(admin, stripe, profileId),
   );
   if (!applied.ok) {
-    console.error('[payments] payout sync write failed', applied.error);
+    log.error('payments_payout_sync_write_failed', { error: applied.error });
     return errorResponse('LEDGER_ERROR', 'We couldn’t check your payouts. Please try again.', 500);
   }
 
@@ -99,7 +104,10 @@ Deno.serve(async (request) => {
   // the result.
   if (fresh.needsProfile) {
     const set = await ensureProfile(stripe, existing.accountId);
-    console.log('[payments] payout account description supplied', { accountId: existing.accountId, set });
+    log.info('payments_payout_account_description_supplied', {
+      account_id: existing.accountId,
+      set,
+    });
   }
 
   // `needsBank`: no bank attached — the app asks for one in its own form
@@ -113,4 +121,4 @@ Deno.serve(async (request) => {
     needsBank: fresh.needsBank,
     needsAction: fresh.needsAction,
   });
-});
+}));
