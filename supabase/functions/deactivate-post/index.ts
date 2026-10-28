@@ -208,8 +208,12 @@ Deno.serve(async (request) => {
   // under the spotter (audit run 2, lead 1). The claim re-checks under the
   // lock and, once taken, both refuse with REWARD_ENDING. Idempotent: a retry
   // gets the same payment back.
+  // OWNED by this request (20261028100000): only a claim this call created can
+  // be released by it — never the sweep's, nor an earlier timed-out attempt's.
+  const claimToken = crypto.randomUUID();
   const { data: claimedIntent, error: claimError } = await admin.rpc('claim_deactivate_refund', {
     p_post_id: postId,
+    p_claim_token: claimToken,
   });
   if (claimError) {
     console.error('[payments] claim_deactivate_refund failed', claimError.message);
@@ -242,6 +246,7 @@ Deno.serve(async (request) => {
     // a retry resumes it (refundPayment finds the existing refund).
     const { error: releaseError } = await admin.rpc('release_reward_end_refund_claim', {
       p_payment_intent_id: claimedIntent,
+      p_claim_token: claimToken,
     });
     if (releaseError) {
       console.error('[payments] release_reward_end_refund_claim failed', releaseError.message);

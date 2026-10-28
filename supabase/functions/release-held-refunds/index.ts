@@ -644,9 +644,14 @@ Deno.serve(async (request) => {
       // the post lock first — claim_recovery and begin_payout refuse while it
       // is claimed, and the claim re-asks refunds_due under that lock — so a
       // credit that landed since the read above wins, and is never refunded.
+      // The claim is OWNED by this attempt (20261028100000): only the attempt
+      // that created it may release it, never one that joined a claim another
+      // request — the owner's deactivate, or an earlier run — still holds.
+      const claimToken = crypto.randomUUID();
       if (row.reason === 'reward_end') {
         const { data: claimed, error: claimError } = await admin.rpc('claim_reward_end_refund', {
           p_payment_intent_id: paymentIntentId,
+          p_claim_token: claimToken,
         });
         if (claimError || claimed !== true) {
           if (claimError) {
@@ -678,6 +683,7 @@ Deno.serve(async (request) => {
         if (row.reason === 'reward_end' && outcome.status === 'lookup_failed') {
           const { error: releaseError } = await admin.rpc('release_reward_end_refund_claim', {
             p_payment_intent_id: paymentIntentId,
+            p_claim_token: claimToken,
           });
           if (releaseError) {
             console.error('[payments] reward_end claim release failed', releaseError.message);
