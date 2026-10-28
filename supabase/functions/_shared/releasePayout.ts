@@ -43,6 +43,10 @@ import {
   announcePayoutSent,
   announceRecoveryToWatchers,
 } from './recoveryAnnounce.ts';
+import { createLog } from './log.ts';
+import { describeError } from './redact.ts';
+
+const log = createLog('releasePayout');
 
 /**
  * The canonical split, mirroring `payout_split` in SQL. Integer arithmetic —
@@ -147,7 +151,7 @@ export async function releasePayoutForPost(
     .eq('id', postId)
     .maybeSingle();
   if (postError || !post) {
-    if (postError) console.error('[payments] post lookup failed', postError.message);
+    if (postError) log.error('payments_post_lookup_failed', { error: describeError(postError) });
     return { status: 'error', code: 'LOOKUP_FAILED' };
   }
   if (post.status !== 'recovery_claimed') {
@@ -173,7 +177,7 @@ export async function releasePayoutForPost(
     .eq('status', 'credited')
     .maybeSingle();
   if (creditedError) {
-    console.error('[payments] credited sighting lookup failed', creditedError.message);
+    log.error('payments_credited_sighting_lookup_failed', { error: describeError(creditedError) });
     return { status: 'error', code: 'LOOKUP_FAILED' };
   }
   if (!credited) {
@@ -193,7 +197,7 @@ export async function releasePayoutForPost(
     paymentIntentId: null,
   });
   if (gate === 'held') {
-    console.log('[payments] payout held for review', { postId });
+    log.info('payments_payout_held_for_review', { post_id: postId });
     return { status: 'held_for_review' };
   }
   if (gate === 'error') {
@@ -209,7 +213,7 @@ export async function releasePayoutForPost(
   if (!connect || !connect.payouts_enabled) {
     // NOT an error. The bounty stays in escrow until they are payable; the
     // webhook trigger runs this again at that exact moment.
-    console.log('[payments] payout waiting on payee onboarding', { postId });
+    log.info('payments_payout_waiting_on_payee_onboarding', { post_id: postId });
     return { status: 'awaiting_payee' };
   }
 
@@ -237,7 +241,7 @@ export async function releasePayoutForPost(
     .eq('kind', 'bounty_escrow')
     .maybeSingle();
   if (heldError) {
-    console.error('[payments] held payment lookup failed', heldError.message);
+    log.error('payments_held_payment_lookup_failed', { error: describeError(heldError) });
     return { status: 'error', code: 'LOOKUP_FAILED' };
   }
   if (!held) {
@@ -250,7 +254,10 @@ export async function releasePayoutForPost(
 
   // Defensive: a transfer must be a positive amount no larger than the bounty.
   if (transferPence <= 0 || transferPence > bountyPence) {
-    console.error('[payments] computed transfer out of range', { bountyPence, transferPence });
+    log.error('payments_computed_transfer_out_of_range', {
+      bounty_pence: bountyPence,
+      transfer_pence: transferPence,
+    });
     return { status: 'error', code: 'SPLIT_ERROR' };
   }
 
@@ -267,13 +274,16 @@ export async function releasePayoutForPost(
     const charge = intent.latest_charge;
     chargeGroup = charge && typeof charge !== 'string' ? (charge.transfer_group ?? null) : null;
   } catch (err) {
-    console.error('[payments] reward charge lookup failed', (err as Error).message);
+    log.error('payments_reward_charge_lookup_failed', { error: describeError(err) });
     return { status: 'error', code: 'STRIPE_ERROR' };
   }
   if (!sourceChargeId) {
     // A `held` ledger row whose charge is not a clean success is a ledger/Stripe
     // disagreement — a person must look, never a transfer from other funds.
-    console.error('[payments] held reward has no succeeded charge', { postId, paymentIntentId });
+    log.error('payments_held_reward_has_no_succeeded_charge', {
+      post_id: postId,
+      payment_intent_id: paymentIntentId,
+    });
     return { status: 'error', code: 'STRIPE_ERROR' };
   }
 
@@ -287,14 +297,17 @@ export async function releasePayoutForPost(
   const { error: beginError } = await admin.rpc('begin_payout', { p_post_id: postId });
   if (beginError) {
     if (beginError.message?.includes('PAYOUT_LAPSED')) {
-      console.log('[payments] payout refused — the deadline returned this reward', { postId });
+      log.info('payments_payout_refused', {
+        post_id: postId,
+        detail: 'the deadline returned this reward',
+      });
       return { status: 'error', code: 'PAYOUT_LAPSED' };
     }
     if (beginError.message?.includes('NO_HELD_PAYMENT')) {
       // Settled between the lookup above and the lock: nothing to pay.
       return { status: 'error', code: 'NO_HELD_PAYMENT' };
     }
-    console.error('[payments] begin_payout failed', beginError.message);
+    log.error('payments_begin_payout_failed', { error: describeError(beginError) });
     return { status: 'error', code: 'LOOKUP_FAILED' };
   }
 
@@ -309,7 +322,7 @@ export async function releasePayoutForPost(
       payoutTransferGroups(postId, paymentIntentId, chargeGroup),
     );
     if (existing) {
-      console.log('[payments] payout already at Stripe — recording it', { postId });
+      log.info('payments_payout_already_at_stripe', { post_id: postId, detail: 'recording it' });
     }
     transfer = existing ?? await stripe.transfers.create(
       {
@@ -331,7 +344,7 @@ export async function releasePayoutForPost(
       { idempotencyKey: `post-payout-${postId}` },
     );
   } catch (err) {
-    console.error('[payments] transfer create failed', (err as Error).message);
+    log.error('payments_transfer_create_failed', { error: describeError(err) });
     return { status: 'error', code: 'STRIPE_ERROR' };
   }
 
@@ -346,11 +359,15 @@ export async function releasePayoutForPost(
   if (rpcError) {
     // The transfer SUCCEEDED but we couldn't record it. Retryable: the
     // idempotency key reuses the same transfer and the RPC never regresses.
-    console.error('[payments] mark_recovery_paid failed', rpcError.message);
+    log.error('payments_mark_recovery_paid_failed', { error: describeError(rpcError) });
     return { status: 'error', code: 'LEDGER_ERROR' };
   }
 
-  console.log('[payments] bounty released', { postId, transferPence, feePence });
+  log.info('payments_bounty_released', {
+    post_id: postId,
+    transfer_pence: transferPence,
+    fee_pence: feePence,
+  });
 
   // The news, AFTER the money landed: "on its way" to the spotter, the
   // watchers' recovery announcement, and the ending owed to every OTHER
@@ -387,17 +404,14 @@ export async function releaseAllPendingFor(
       .eq('status', 'credited')
       .eq('posts.status', 'recovery_claimed');
     if (error) {
-      console.error('[payments] pending credit lookup failed', error.message);
+      log.error('payments_pending_credit_lookup_failed', { error: describeError(error) });
       return;
     }
     for (const row of pending ?? []) {
       const outcome = await releasePayoutForPost(admin, stripe, row.post_id as string);
-      console.log('[payments] auto-release attempted', {
-        postId: row.post_id,
-        status: outcome.status,
-      });
+      log.info('payments_auto_release_attempted', { post_id: row.post_id, status: outcome.status });
     }
   } catch (err) {
-    console.error('[payments] auto-release failed', (err as Error).message);
+    log.error('payments_auto_release_failed', { error: describeError(err) });
   }
 }

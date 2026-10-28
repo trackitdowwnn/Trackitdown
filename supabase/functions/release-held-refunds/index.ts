@@ -64,8 +64,13 @@ import { sendOpsAlert } from '../_shared/opsAlert.ts';
 import { payoutTransferGroups, releasePayoutForPost } from '../_shared/releasePayout.ts';
 import { notifyUsers } from '../_shared/push.ts';
 import { announcePayoutSent, announceRecoveryToWatchers } from '../_shared/recoveryAnnounce.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
 
-Deno.serve(async (request) => {
+const log = createLog('release-held-refunds');
+
+Deno.serve(withHandler(log, async (request) => {
   if (request.method !== 'POST') {
     return errorResponse('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
   }
@@ -128,12 +133,12 @@ Deno.serve(async (request) => {
   try {
     const { data: purged, error: purgeError } = await admin.rpc('purge_old_notifications');
     if (purgeError) {
-      console.error('[notifications] purge failed', purgeError.message);
+      log.error('notifications_purge_failed', { error: describeError(purgeError) });
     } else {
       summary.purged = typeof purged === 'number' ? purged : 0;
     }
   } catch (err) {
-    console.error('[notifications] purge failed', (err as Error).message);
+    log.error('notifications_purge_failed', { error: describeError(err) });
   }
 
   // --- Phase 0b: sighting location retention --------------------------------
@@ -158,12 +163,12 @@ Deno.serve(async (request) => {
       'purge_sighting_location_history',
     );
     if (locationError) {
-      console.error('[sightings] location purge failed', locationError.message);
+      log.error('sightings_location_purge_failed', { error: describeError(locationError) });
     } else {
       summary.locationsPurged = typeof locationsPurged === 'number' ? locationsPurged : 0;
     }
   } catch (err) {
-    console.error('[sightings] location purge failed', (err as Error).message);
+    log.error('sightings_location_purge_failed', { error: describeError(err) });
   }
 
   // --- Phase 0b2: retention ---------------------------------------------------
@@ -186,12 +191,12 @@ Deno.serve(async (request) => {
     try {
       const { data: removed, error: analyticsError } = await admin.rpc(rpc);
       if (analyticsError) {
-        console.error('[retention] purge failed', { rpc, message: analyticsError.message });
+        log.error('retention_purge_failed', { rpc, error: describeError(analyticsError) });
       } else {
         summary[key] = typeof removed === 'number' ? removed : 0;
       }
     } catch (err) {
-      console.error('[retention] purge failed', { rpc, message: (err as Error).message });
+      log.error('retention_purge_failed', { rpc, error: describeError(err) });
     }
   }
 
@@ -206,12 +211,12 @@ Deno.serve(async (request) => {
       p_limit: 200,
     });
     if (queueError) {
-      console.error('[storage] unreferenced upload scan failed', queueError.message);
+      log.error('storage_unreferenced_upload_scan_failed', { error: describeError(queueError) });
     } else if (queued) {
-      console.log('[storage] unreferenced uploads queued', { count: queued });
+      log.info('storage_unreferenced_uploads_queued', { count: queued });
     }
   } catch (err) {
-    console.error('[storage] unreferenced upload scan threw', (err as Error).message);
+    log.error('storage_unreferenced_upload_scan_threw', { error: describeError(err) });
   }
 
   // --- Phase 0c: orphaned photo objects -------------------------------------
@@ -239,14 +244,14 @@ Deno.serve(async (request) => {
       p_limit: 100,
     });
     if (claimError) {
-      console.error('[storage] orphan claim failed', claimError.message);
+      log.error('storage_orphan_claim_failed', { error: describeError(claimError) });
     } else {
       const paths = (claimed ?? []) as string[];
       if (paths.length > 0) {
         const { error: removeError } = await admin.storage.from('post-photos').remove(paths);
         if (removeError) {
           // Left queued deliberately — see the claim/forget note above.
-          console.error('[storage] orphan remove failed', removeError.message);
+          log.error('storage_orphan_remove_failed', { error: describeError(removeError) });
         } else {
           const { error: forgetError } = await admin.rpc('forget_orphaned_photos', {
             p_paths: paths,
@@ -255,7 +260,7 @@ Deno.serve(async (request) => {
             // The objects are gone; the queue rows are not. Next run's claim
             // finds them unreferenced again, removes nothing (already absent —
             // `remove` is a no-op on a missing object) and forgets them.
-            console.error('[storage] orphan forget failed', forgetError.message);
+            log.error('storage_orphan_forget_failed', { error: describeError(forgetError) });
           } else {
             summary.photosRemoved = paths.length;
           }
@@ -263,7 +268,7 @@ Deno.serve(async (request) => {
       }
     }
   } catch (err) {
-    console.error('[storage] orphan sweep failed', (err as Error).message);
+    log.error('storage_orphan_sweep_failed', { error: describeError(err) });
   }
 
   // The SIGHTING-photos twin (20260921110000): same claim → remove → forget
@@ -279,14 +284,16 @@ Deno.serve(async (request) => {
       { p_limit: 100 },
     );
     if (sightingClaimError) {
-      console.error('[storage] sighting orphan claim failed', sightingClaimError.message);
+      log.error('storage_sighting_orphan_claim_failed', {
+        error: describeError(sightingClaimError),
+      });
     } else {
       const paths = (claimedSighting ?? []) as string[];
       if (paths.length > 0) {
         const { error: removeError } = await admin.storage.from('sighting-photos').remove(paths);
         if (removeError) {
           // Left queued deliberately — the claim/forget note above.
-          console.error('[storage] sighting orphan remove failed', removeError.message);
+          log.error('storage_sighting_orphan_remove_failed', { error: describeError(removeError) });
         } else {
           const { error: forgetError } = await admin.rpc('forget_orphaned_sighting_photos', {
             p_paths: paths,
@@ -294,7 +301,9 @@ Deno.serve(async (request) => {
           if (forgetError) {
             // Objects gone, queue rows not: next run re-claims, `remove` is a
             // no-op on missing objects, and the forget retries.
-            console.error('[storage] sighting orphan forget failed', forgetError.message);
+            log.error('storage_sighting_orphan_forget_failed', {
+              error: describeError(forgetError),
+            });
           } else {
             summary.sightingPhotosRemoved = paths.length;
           }
@@ -302,7 +311,7 @@ Deno.serve(async (request) => {
       }
     }
   } catch (err) {
-    console.error('[storage] sighting orphan sweep failed', (err as Error).message);
+    log.error('storage_sighting_orphan_sweep_failed', { error: describeError(err) });
   }
 
   // Data exports older than 24 hours (20261023150000): a whole person's data
@@ -314,7 +323,7 @@ Deno.serve(async (request) => {
       { p_limit: 100 },
     );
     if (exportClaimError) {
-      console.error('[storage] export claim failed', exportClaimError.message);
+      log.error('storage_export_claim_failed', { error: describeError(exportClaimError) });
     } else {
       // id is null for a stray file no request row names — removed, nothing
       // to mark.
@@ -333,13 +342,13 @@ Deno.serve(async (request) => {
           );
         if (removeError) {
           // Left unmarked deliberately — retried next hour.
-          console.error('[storage] export remove failed', removeError.message);
+          log.error('storage_export_remove_failed', { error: describeError(removeError) });
         } else {
           const { error: forgetError } = await admin.rpc('forget_data_export', {
             p_ids: rows.map((row) => row.id).filter((id): id is string => id !== null),
           });
           if (forgetError) {
-            console.error('[storage] export forget failed', forgetError.message);
+            log.error('storage_export_forget_failed', { error: describeError(forgetError) });
           } else {
             summary.dataExportsRemoved = rows.length;
           }
@@ -347,7 +356,7 @@ Deno.serve(async (request) => {
       }
     }
   } catch (err) {
-    console.error('[storage] export sweep failed', (err as Error).message);
+    log.error('storage_export_sweep_failed', { error: describeError(err) });
   }
 
   // --- Phase 0d-warn: the warning before the purge ----------------------------
@@ -369,7 +378,7 @@ Deno.serve(async (request) => {
       { p_limit: 200 },
     );
     if (warnError) {
-      console.error('[posts] deletion-warning claim failed', warnError.message);
+      log.error('posts_deletion_warning_claim_failed', { error: describeError(warnError) });
     } else {
       const rows = (warns ?? []) as {
         post_id: string;
@@ -392,12 +401,12 @@ Deno.serve(async (request) => {
           });
           summary.deletionWarningsSent += 1;
         } catch (err) {
-          console.error('[posts] deletion warning send failed', (err as Error).message);
+          log.error('posts_deletion_warning_send_failed', { error: describeError(err) });
         }
       }
     }
   } catch (err) {
-    console.error('[posts] deletion warning sweep failed', (err as Error).message);
+    log.error('posts_deletion_warning_sweep_failed', { error: describeError(err) });
   }
 
   // --- Phase 0d: cancelled-post retention ------------------------------------
@@ -416,19 +425,19 @@ Deno.serve(async (request) => {
       'purge_cancelled_posts',
     );
     if (postsPurgeError) {
-      console.error('[posts] cancelled-post purge failed', postsPurgeError.message);
+      log.error('posts_cancelled_post_purge_failed', { error: describeError(postsPurgeError) });
     } else {
       const doc = purgeResult as { purged?: number; skipped?: number } | null;
       summary.cancelledPostsPurged = typeof doc?.purged === 'number' ? doc.purged : 0;
       summary.cancelledPostsSkipped = typeof doc?.skipped === 'number' ? doc.skipped : 0;
       if (summary.cancelledPostsSkipped > 0) {
-        console.warn('[posts] cancelled-post purge skipped blocked posts', {
+        log.warn('posts_cancelled_post_purge_skipped_blocked_posts', {
           skipped: summary.cancelledPostsSkipped,
         });
       }
     }
   } catch (err) {
-    console.error('[posts] cancelled-post purge failed', (err as Error).message);
+    log.error('posts_cancelled_post_purge_failed', { error: describeError(err) });
   }
 
   // --- Phase 0d2: recovered-listing retention (20261022100000) --------------
@@ -443,19 +452,19 @@ Deno.serve(async (request) => {
   try {
     const { data: oldResult, error: oldPurgeError } = await admin.rpc('purge_old_closed_posts');
     if (oldPurgeError) {
-      console.error('[posts] recovered-listing purge failed', oldPurgeError.message);
+      log.error('posts_recovered_listing_purge_failed', { error: describeError(oldPurgeError) });
     } else {
       const doc = oldResult as { purged?: number; skipped?: number } | null;
       summary.oldClosedPostsPurged = typeof doc?.purged === 'number' ? doc.purged : 0;
       summary.oldClosedPostsSkipped = typeof doc?.skipped === 'number' ? doc.skipped : 0;
       if (summary.oldClosedPostsSkipped > 0) {
-        console.warn('[posts] recovered-listing purge skipped blocked posts', {
+        log.warn('posts_recovered_listing_purge_skipped_blocked_posts', {
           skipped: summary.oldClosedPostsSkipped,
         });
       }
     }
   } catch (err) {
-    console.error('[posts] recovered-listing purge failed', (err as Error).message);
+    log.error('posts_recovered_listing_purge_failed', { error: describeError(err) });
   }
 
   // Second pass: the due listings with a stray intent. Cancel each at Stripe
@@ -471,7 +480,7 @@ Deno.serve(async (request) => {
       { p_limit: 25 },
     );
     if (strayError) {
-      console.error('[posts] stray-intent listing lookup failed', strayError.message);
+      log.error('posts_stray_intent_listing_lookup_failed', { error: describeError(strayError) });
     } else {
       const rows = (strayRows ?? []) as {
         post_id: string;
@@ -491,10 +500,10 @@ Deno.serve(async (request) => {
               const current = await stripe.paymentIntents.retrieve(intentId);
               if (current.status === 'canceled') cancelled.push(intentId);
             } catch (retrieveErr) {
-              console.warn('[posts] stray intent state unknown', {
-                postId: row.post_id,
-                message: (retrieveErr as Error).message,
-                original: (err as Error).message,
+              log.warn('posts_stray_intent_state_unknown', {
+                post_id: row.post_id,
+                error: describeError(retrieveErr),
+                original: describeError(err),
               });
             }
           }
@@ -506,9 +515,9 @@ Deno.serve(async (request) => {
         });
         if (deleteError) {
           summary.oldClosedPostsSkipped += 1;
-          console.warn('[posts] recovered-listing delete refused', {
-            postId: row.post_id,
-            message: deleteError.message,
+          log.warn('posts_recovered_listing_delete_refused', {
+            post_id: row.post_id,
+            error: describeError(deleteError),
           });
         } else {
           summary.oldClosedPostsPurged += 1;
@@ -516,7 +525,7 @@ Deno.serve(async (request) => {
       }
     }
   } catch (err) {
-    console.error('[posts] stray-intent listing purge failed', (err as Error).message);
+    log.error('posts_stray_intent_listing_purge_failed', { error: describeError(err) });
   }
 
   // --- Phase 1-pre: the expiry — rewards past their 60 days (ADR-0020) -------
@@ -545,7 +554,7 @@ Deno.serve(async (request) => {
         p_limit: 50,
       });
       if (expiryError) {
-        console.error('[payments] reward expiry claim failed', expiryError.message);
+        log.error('payments_reward_expiry_claim_failed', { error: describeError(expiryError) });
       }
       for (const item of (expiries ?? []) as {
         post_id: string;
@@ -568,7 +577,7 @@ Deno.serve(async (request) => {
               collapseKey: `closed_uncredited:${spotter.sighting_id}`,
             });
           } catch (err) {
-            console.error('[payments] expiry spotter push failed', (err as Error).message);
+            log.error('payments_expiry_spotter_push_failed', { error: describeError(err) });
           }
         }
         if (item.owner) {
@@ -582,12 +591,12 @@ Deno.serve(async (request) => {
               collapseKey: `reward-ending-${item.post_id}`,
             });
           } catch (err) {
-            console.error('[payments] expiry owner push failed', (err as Error).message);
+            log.error('payments_expiry_owner_push_failed', { error: describeError(err) });
           }
         }
       }
     } catch (err) {
-      console.error('[payments] reward expiry phase failed', (err as Error).message);
+      log.error('payments_reward_expiry_phase_failed', { error: describeError(err) });
     }
   }
 
@@ -606,7 +615,7 @@ Deno.serve(async (request) => {
   // in the loop, which is why both locks stay.
   const { data: due, error: dueError } = await admin.rpc('refunds_due', { p_limit: 50 });
   if (dueError) {
-    console.error('[payments] refunds_due failed', dueError.message);
+    log.error('payments_refunds_due_failed', { error: describeError(dueError) });
   }
   // The reason picks the terminal record — recorded in the ledger, never
   // re-derived: a deactivation cancels, a recovery finishes the recovery, a
@@ -631,9 +640,10 @@ Deno.serve(async (request) => {
     const postId = row.post_id;
     const rpc = TERMINAL_RPC[row.reason];
     if (!rpc) {
-      console.error('[payments] refunds_due returned an unknown reason — skipped', {
-        paymentIntentId,
+      log.error('payments_refunds_due_returned_an_unknown_reason', {
+        payment_intent_id: paymentIntentId,
         reason: row.reason,
+        detail: 'skipped',
       });
       summary.skipped += 1;
       continue;
@@ -655,7 +665,9 @@ Deno.serve(async (request) => {
         });
         if (claimError || claimed !== true) {
           if (claimError) {
-            console.error('[payments] reward_end refund claim failed', claimError.message);
+            log.error('payments_reward_end_refund_claim_failed', {
+              error: describeError(claimError),
+            });
           }
           summary.skipped += 1;
           continue;
@@ -686,7 +698,9 @@ Deno.serve(async (request) => {
             p_claim_token: claimToken,
           });
           if (releaseError) {
-            console.error('[payments] reward_end claim release failed', releaseError.message);
+            log.error('payments_reward_end_claim_release_failed', {
+              error: describeError(releaseError),
+            });
           }
         }
         summary.skipped += 1;
@@ -701,15 +715,15 @@ Deno.serve(async (request) => {
       if (rpcError) {
         // Refund issued, record failed: the idempotency key + never-regress
         // RPC + charge.refunded webhook make the next run safe.
-        console.error('[payments] refund record failed', {
-          paymentIntentId,
+        log.error('payments_refund_record_failed', {
+          payment_intent_id: paymentIntentId,
           reason: row.reason,
-          error: rpcError.message,
+          error: describeError(rpcError),
         });
         summary.skipped += 1;
         continue;
       }
-      console.log('[payments] due refund released', { postId, reason: row.reason });
+      log.info('payments_due_refund_released', { post_id: postId, reason: row.reason });
       summary.refunded += 1;
       if (row.reason === 'recovery' && postId) {
         // The post just became recovered_no_spotter — the watchers hear the
@@ -717,9 +731,9 @@ Deno.serve(async (request) => {
         await announceRecoveryToWatchers(admin, postId);
       }
     } catch (err) {
-      console.error('[payments] refund item failed', {
-        paymentIntentId,
-        error: (err as Error).message,
+      log.error('payments_refund_item_failed', {
+        payment_intent_id: paymentIntentId,
+        error: describeError(err),
       });
       summary.skipped += 1;
     }
@@ -738,7 +752,7 @@ Deno.serve(async (request) => {
       p_limit: 50,
     });
     if (agingError) {
-      console.error('[payments] deadline alert claim failed', agingError.message);
+      log.error('payments_deadline_alert_claim_failed', { error: describeError(agingError) });
     } else if (Array.isArray(aging) && aging.length > 0) {
       summary.deadlineAlerts = aging.length;
       const lines = (aging as Record<string, unknown>[]).map(
@@ -766,12 +780,14 @@ Deno.serve(async (request) => {
           p_payment_ids: (aging as { paymentId: string }[]).map((row) => row.paymentId),
         });
         if (releaseError) {
-          console.error('[payments] deadline alert release failed', releaseError.message);
+          log.error('payments_deadline_alert_release_failed', {
+            error: describeError(releaseError),
+          });
         }
       }
     }
   } catch (err) {
-    console.error('[payments] deadline alerts failed', (err as Error).message);
+    log.error('payments_deadline_alerts_failed', { error: describeError(err) });
   }
 
   // --- Phase 2a: upheld disputes → pay the spotter ---------------------------
@@ -785,21 +801,21 @@ Deno.serve(async (request) => {
     .eq('posts.status', 'recovery_claimed');
 
   if (upheldError) {
-    console.error('[payments] upheld sweep query failed', upheldError.message);
+    log.error('payments_upheld_sweep_query_failed', { error: describeError(upheldError) });
   }
   for (const dispute of upheld ?? []) {
     const postId = dispute.post_id as string;
     try {
       const outcome = await releasePayoutForPost(admin, stripe, postId);
       if (outcome.status === 'paid') {
-        console.log('[payments] upheld dispute paid', { postId });
+        log.info('payments_upheld_dispute_paid', { post_id: postId });
         summary.paid += 1;
       }
     } catch (err) {
       // awaiting_payee is the normal wait; real failures log and retry.
-      console.error('[payments] upheld payout attempt failed', {
-        postId,
-        error: (err as Error).message,
+      log.error('payments_upheld_payout_attempt_failed', {
+        post_id: postId,
+        error: describeError(err),
       });
     }
   }
@@ -838,7 +854,7 @@ Deno.serve(async (request) => {
         p_limit: 100,
       });
       if (reminderError) {
-        console.error('[payments] payout reminder claim failed', reminderError.message);
+        log.error('payments_payout_reminder_claim_failed', { error: describeError(reminderError) });
       }
       for (const row of (reminders ?? []) as { post_id: string; user_id: string; title: string; body: string }[]) {
         try {
@@ -851,11 +867,11 @@ Deno.serve(async (request) => {
           });
           summary.payoutReminders += 1;
         } catch (err) {
-          console.error('[payments] payout reminder send failed', (err as Error).message);
+          log.error('payments_payout_reminder_send_failed', { error: describeError(err) });
         }
       }
     } catch (err) {
-      console.error('[payments] payout reminder phase failed', (err as Error).message);
+      log.error('payments_payout_reminder_phase_failed', { error: describeError(err) });
     }
 
     try {
@@ -863,7 +879,7 @@ Deno.serve(async (request) => {
         p_limit: 50,
       });
       if (workError) {
-        console.error('[payments] payouts_past_deadline failed', workError.message);
+        log.error('payments_payouts_past_deadline_failed', { error: describeError(workError) });
       }
       for (const row of (work ?? []) as { post_id: string; stage: 'lapse' | 'resume' | 'notify' }[]) {
         const postId = row.post_id;
@@ -880,7 +896,9 @@ Deno.serve(async (request) => {
               .eq('status', 'credited')
               .maybeSingle();
             if (creditedError || !credited) {
-              if (creditedError) console.error('[payments] payout deadline sighting read failed', creditedError.message);
+              if (creditedError) log.error('payments_payout_deadline_sighting_read_failed', {
+                error: describeError(creditedError),
+              });
               continue;
             }
             const { data: payee, error: payeeError } = await admin
@@ -889,7 +907,9 @@ Deno.serve(async (request) => {
               .eq('profile_id', credited.spotter_id)
               .maybeSingle();
             if (payeeError) {
-              console.error('[payments] payout deadline payee read failed', payeeError.message);
+              log.error('payments_payout_deadline_payee_read_failed', {
+                error: describeError(payeeError),
+              });
               summary.skipped += 1;
               continue;
             }
@@ -902,7 +922,10 @@ Deno.serve(async (request) => {
                 // may go on. Any other failure: not this run (fail closed).
                 const code = (err as { code?: string }).code;
                 if (code !== 'resource_missing' && code !== 'account_invalid') {
-                  console.error('[payments] payout deadline payee lookup failed', { postId, code });
+                  log.error('payments_payout_deadline_payee_lookup_failed', {
+                    post_id: postId,
+                    code,
+                  });
                   summary.skipped += 1;
                   continue;
                 }
@@ -919,7 +942,9 @@ Deno.serve(async (request) => {
                   p_payouts_enabled: Boolean(account.payouts_enabled),
                 });
                 if (syncError) {
-                  console.error('[payments] payout deadline payee sync failed', syncError.message);
+                  log.error('payments_payout_deadline_payee_sync_failed', {
+                    error: describeError(syncError),
+                  });
                   summary.skipped += 1;
                   continue;
                 }
@@ -945,7 +970,9 @@ Deno.serve(async (request) => {
               p_post_id: postId,
             });
             if (claimError || !claim) {
-              if (claimError) console.error('[payments] payout lapse claim failed', claimError.message);
+              if (claimError) log.error('payments_payout_lapse_claim_failed', {
+                error: describeError(claimError),
+              });
               continue;
             }
             const lapse = claim as { payment_intent_id: string };
@@ -977,7 +1004,9 @@ Deno.serve(async (request) => {
               // re-checks and re-alerts — and still refunds nothing.
               if (sent) {
                 const { error: blockError } = await admin.rpc('block_payout_lapse', { p_post_id: postId });
-                if (blockError) console.error('[payments] payout lapse park failed', blockError.message);
+                if (blockError) log.error('payments_payout_lapse_park_failed', {
+                  error: describeError(blockError),
+                });
               }
               summary.skipped += 1;
               continue;
@@ -990,7 +1019,10 @@ Deno.serve(async (request) => {
             });
             if (outcome.status !== 'refunded') {
               // Still claimed and held: the next run resumes it.
-              console.error('[payments] payout lapse refund not made', { postId, status: outcome.status });
+              log.error('payments_payout_lapse_refund_not_made', {
+                post_id: postId,
+                status: outcome.status,
+              });
               summary.skipped += 1;
               continue;
             }
@@ -1005,7 +1037,9 @@ Deno.serve(async (request) => {
               // Refund issued, record failed: the webhook records it (reconcile
               // routes a claimed lapse here), or the next run resumes, converges
               // on this refund and records it.
-              console.error('[payments] payout lapse record failed', recordError.message);
+              log.error('payments_payout_lapse_record_failed', {
+                error: describeError(recordError),
+              });
               summary.skipped += 1;
               continue;
             }
@@ -1017,7 +1051,9 @@ Deno.serve(async (request) => {
             p_post_id: postId,
           });
           if (noticeError) {
-            console.error('[payments] payout lapse notice claim failed', noticeError.message);
+            log.error('payments_payout_lapse_notice_claim_failed', {
+              error: describeError(noticeError),
+            });
             continue;
           }
           if (!notice) continue;
@@ -1045,18 +1081,21 @@ Deno.serve(async (request) => {
               collapseKey: `payout-lapsed-${postId}`,
             });
           } catch (err) {
-            console.error('[payments] payout lapse push failed', (err as Error).message);
+            log.error('payments_payout_lapse_push_failed', { error: describeError(err) });
           }
           // The listing just became recovered_no_spotter — the watchers hear
           // the car went home. Claim-guarded; a replay announces nothing twice.
           await announceRecoveryToWatchers(admin, postId);
         } catch (err) {
-          console.error('[payments] payout deadline item failed', { postId, error: (err as Error).message });
+          log.error('payments_payout_deadline_item_failed', {
+            post_id: postId,
+            error: describeError(err),
+          });
           summary.skipped += 1;
         }
       }
     } catch (err) {
-      console.error('[payments] payout deadline phase failed', (err as Error).message);
+      log.error('payments_payout_deadline_phase_failed', { error: describeError(err) });
     }
   }
 
@@ -1068,7 +1107,7 @@ Deno.serve(async (request) => {
     .is('outcome_notified_at', null);
 
   if (resolvedError) {
-    console.error('[payments] outcome sweep query failed', resolvedError.message);
+    log.error('payments_outcome_sweep_query_failed', { error: describeError(resolvedError) });
   }
   for (const dispute of resolved ?? []) {
     try {
@@ -1100,9 +1139,9 @@ Deno.serve(async (request) => {
       // The claim is consumed; the push is lost. Acceptable: the dispute
       // screen shows the same truth on next open, and losing a push must
       // never re-run a claim (that way lies double-sends).
-      console.error('[payments] outcome push failed', {
-        disputeId: dispute.id,
-        error: (err as Error).message,
+      log.error('payments_outcome_push_failed', {
+        dispute_id: dispute.id,
+        error: describeError(err),
       });
     }
   }
@@ -1135,7 +1174,7 @@ Deno.serve(async (request) => {
       await announcePayoutSent(admin, payment.post_id as string);
     }
   } catch (err) {
-    console.error('[notifications] announce sweep failed', (err as Error).message);
+    log.error('notifications_announce_sweep_failed', { error: describeError(err) });
   }
 
   // --- Phase 1c: the reward term — notices and reminders (ADR-0020) ---------
@@ -1161,7 +1200,7 @@ Deno.serve(async (request) => {
     try {
       const { data: rows, error: claimError } = await admin.rpc(claim, { p_limit: 200 });
       if (claimError) {
-        console.error('[payments] reward term claim failed', { claim, error: claimError.message });
+        log.error('payments_reward_term_claim_failed', { claim, error: describeError(claimError) });
         continue;
       }
       for (const row of (rows ?? []) as {
@@ -1189,11 +1228,11 @@ Deno.serve(async (request) => {
             summary.rewardReminders += 1;
           }
         } catch (err) {
-          console.error('[payments] reward term send failed', (err as Error).message);
+          log.error('payments_reward_term_send_failed', { error: describeError(err) });
         }
       }
     } catch (err) {
-      console.error('[payments] reward term phase failed', { claim, error: (err as Error).message });
+      log.error('payments_reward_term_phase_failed', { claim, error: describeError(err) });
     }
   }
 
@@ -1223,7 +1262,7 @@ Deno.serve(async (request) => {
       p_limit: 200,
     });
     if (askError) {
-      console.error('[posts] still-missing claim failed', askError.message);
+      log.error('posts_still_missing_claim_failed', { error: describeError(askError) });
     } else {
       const rows = (asks ?? []) as {
         post_id: string;
@@ -1246,12 +1285,12 @@ Deno.serve(async (request) => {
           });
           summary.stillMissingAsked += 1;
         } catch (err) {
-          console.error('[posts] still-missing send failed', (err as Error).message);
+          log.error('posts_still_missing_send_failed', { error: describeError(err) });
         }
       }
     }
   } catch (err) {
-    console.error('[posts] still-missing sweep failed', (err as Error).message);
+    log.error('posts_still_missing_sweep_failed', { error: describeError(err) });
   }
 
   // ⚠️ RECORDED LAST, AND ONLY ON THE WAY OUT. A row in sweep_runs means this
@@ -1276,12 +1315,12 @@ Deno.serve(async (request) => {
   try {
     const { error: recordError } = await admin.rpc('record_sweep_run', { p_summary: summary });
     if (recordError) {
-      console.error('[ops] sweep run not recorded', recordError.message);
+      log.error('ops_sweep_run_not_recorded', { error: describeError(recordError) });
     }
   } catch (err) {
-    console.error('[ops] sweep run not recorded', (err as Error).message);
+    log.error('ops_sweep_run_not_recorded', { error: describeError(err) });
   }
 
-  console.log('[payments] hold sweep done', summary);
+  log.info('payments_hold_sweep_done', { ...summary });
   return jsonResponse(summary);
-});
+}));

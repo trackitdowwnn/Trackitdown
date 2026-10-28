@@ -55,6 +55,10 @@
 
 import type Stripe from 'npm:stripe@22.4.0';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
+import { createLog } from './log.ts';
+import { describeError } from './redact.ts';
+
+const log = createLog('refundEscrow');
 
 /**
  * Typed outcomes instead of thrown errors: every caller maps these to its own
@@ -150,7 +154,7 @@ export async function refundPayment(
     .maybeSingle();
 
   if (paymentError) {
-    console.error('[payments] payment lookup failed', paymentError.message);
+    log.error('payments_payment_lookup_failed', { error: describeError(paymentError) });
     return { status: 'lookup_failed' };
   }
   if (!payment) {
@@ -168,7 +172,10 @@ export async function refundPayment(
   // payment's idempotency key asks Stripe for the same amount.
   const refundPence = refundAmountPence(amountPence, feeAbsorbed);
   if (refundPence === null) {
-    console.error('[payments] computed refund out of range', { amountPence, feeAbsorbed });
+    log.error('payments_computed_refund_out_of_range', {
+      amount_pence: amountPence,
+      fee_absorbed: feeAbsorbed,
+    });
     return { status: 'stripe_error' };
   }
   const feePence = amountPence - refundPence;
@@ -197,10 +204,11 @@ export async function refundPayment(
         // charge.refunded webhook would record it the same way), which takes
         // the payment out of the 75-day alert — so the remainder must be
         // flagged here or it sits on the balance unseen.
-        console.error('[ops] ALERT partial refund recorded — the remainder is still on the platform balance', {
-          paymentIntentId,
-          refundedPence: settled.amount,
-          expectedPence: refundPence,
+        log.error('ops_alert_partial_refund_recorded', {
+          payment_intent_id: paymentIntentId,
+          refunded_pence: settled.amount,
+          expected_pence: refundPence,
+          detail: 'the remainder is still on the platform balance',
         });
       }
       return {
@@ -212,7 +220,7 @@ export async function refundPayment(
       };
     }
   } catch (err) {
-    console.error('[payments] existing refund lookup failed', (err as Error).message);
+    log.error('payments_existing_refund_lookup_failed', { error: describeError(err) });
   }
 
   // --- Issue the Stripe refund (idempotent — never a second refund) -----------
@@ -229,7 +237,7 @@ export async function refundPayment(
       { idempotencyKey: refundIdempotencyKey(paymentIntentId) },
     );
   } catch (err) {
-    console.error('[payments] refund create failed', (err as Error).message);
+    log.error('payments_refund_create_failed', { error: describeError(err) });
     return { status: 'stripe_error' };
   }
 
@@ -261,7 +269,7 @@ export async function refundSupersededForPost(
     // filled by an older backlog before this post's row appeared in it.
     const { data: due, error } = await admin.rpc('refunds_due', { p_limit: 50, p_post_id: postId });
     if (error) {
-      console.error('[payments] refunds_due failed (webhook)', error.message);
+      log.error('payments_refunds_due_failed_webhook', { error: describeError(error) });
       return 0;
     }
     const rows = ((due ?? []) as { payment_intent_id: string; post_id: string | null; reason: string }[])
@@ -282,13 +290,13 @@ export async function refundSupersededForPost(
       if (recordError) {
         // Refund issued, record failed: the charge.refunded webhook and the
         // sweep both reconcile it under the same per-payment key.
-        console.error('[payments] superseded refund record failed', recordError.message);
+        log.error('payments_superseded_refund_record_failed', { error: describeError(recordError) });
         continue;
       }
       refunded += 1;
     }
   } catch (err) {
-    console.error('[payments] superseded refund failed (webhook)', (err as Error).message);
+    log.error('payments_superseded_refund_failed_webhook', { error: describeError(err) });
   }
   return refunded;
 }
@@ -312,7 +320,7 @@ export async function refundHeldEscrow(
     .maybeSingle();
 
   if (heldError) {
-    console.error('[payments] held payment lookup failed', heldError.message);
+    log.error('payments_held_payment_lookup_failed', { error: describeError(heldError) });
     return { status: 'lookup_failed' };
   }
   if (!held) {

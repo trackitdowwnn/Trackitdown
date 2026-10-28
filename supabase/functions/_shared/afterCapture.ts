@@ -28,6 +28,10 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { notifyUsers } from './push.ts';
 import { refundSupersededForPost } from './refundEscrow.ts';
+import { createLog } from './log.ts';
+import { describeError } from './redact.ts';
+
+const log = createLog('afterCapture');
 
 /** Keep `work` alive past the response where the runtime allows; else await it. */
 async function offThePath(work: Promise<unknown>): Promise<void> {
@@ -51,7 +55,7 @@ export async function followUpCapture(
       .maybeSingle();
     postId = (payment?.post_id as string | undefined) ?? null;
   } catch (err) {
-    console.error('[payments] capture follow-up lookup failed', (err as Error).message);
+    log.error('payments_capture_follow_up_lookup_failed', { error: describeError(err) });
     return;
   }
   if (!postId) return;
@@ -65,9 +69,11 @@ export async function followUpCapture(
     admin.functions
       .invoke('notify-spotters', { body: { postId: post } })
       .then(({ error }) => {
-        if (error) console.error('[notifications] alert dispatch failed', error.message);
+        if (error) log.error('notifications_alert_dispatch_failed', { error: describeError(error) });
       })
-      .catch((err) => console.error('[notifications] alert dispatch failed', (err as Error).message)),
+      .catch((err) =>
+        log.error('notifications_alert_dispatch_failed', { error: describeError(err) }),
+      ),
   );
 
   // --- The replaced reward goes home (2026-10-05) ----------------------------
@@ -79,10 +85,10 @@ export async function followUpCapture(
       try {
         const refunded = await refundSupersededForPost(admin, stripe, post);
         if (refunded > 0) {
-          console.log('[payments] replaced reward refunded', { postId: post, refunded });
+          log.info('payments_replaced_reward_refunded', { post_id: post, refunded });
         }
       } catch (err) {
-        console.error('[payments] replaced reward refund failed', (err as Error).message);
+        log.error('payments_replaced_reward_refund_failed', { error: describeError(err) });
       }
     })(),
   );
@@ -97,7 +103,7 @@ export async function followUpCapture(
           p_payment_intent_id: intentId,
         });
         if (error) {
-          console.error('[notifications] listing_live claim failed', error.message);
+          log.error('notifications_listing_live_claim_failed', { error: describeError(error) });
           return;
         }
         if (!claim?.claimed) return;
@@ -109,7 +115,7 @@ export async function followUpCapture(
           collapseKey: `listing_live:${claim.post_id as string}`,
         });
       } catch (err) {
-        console.error('[notifications] listing_live push failed', (err as Error).message);
+        log.error('notifications_listing_live_push_failed', { error: describeError(err) });
       }
     })(),
   );

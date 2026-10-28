@@ -70,6 +70,11 @@ import { syncPayoutAccountFromStripe } from '../_shared/applyPayoutAccountState.
 import { releaseAllPendingFor } from '../_shared/releasePayout.ts';
 import { sendOpsAlert } from '../_shared/opsAlert.ts';
 import { notifyUsers } from '../_shared/push.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
+
+const log = createLog('stripe-webhook');
 
 /** True when this deployment's Stripe key is a LIVE one — every event must
  *  match it (sk_live_ / rk_live_ vs the test keys). */
@@ -79,7 +84,7 @@ const LIVE_KEY = /^(sk|rk)_live_/.test(Deno.env.get('STRIPE_SECRET_KEY') ?? '');
 // The endpoint takes the RAW body (signature is computed over the exact bytes),
 // so this must never be invoked through supabase.functions.invoke (which JSON-
 // encodes). It is registered directly as a Stripe webhook endpoint URL.
-Deno.serve(async (request) => {
+Deno.serve(withHandler(log, async (request) => {
   if (request.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 });
   }
@@ -144,7 +149,7 @@ Deno.serve(async (request) => {
       }
     }
     // A bad signature is the one case we reject — it isn't really Stripe.
-    console.error('[payments] webhook signature verification failed', (err as Error).message);
+    log.error('payments_webhook_signature_verification_failed', { error: describeError(err) });
     return new Response('Invalid signature', { status: 400 });
   }
   const event: Stripe.Event = verified;
@@ -153,7 +158,7 @@ Deno.serve(async (request) => {
   // this deployment's key — a sandbox endpoint secret left configured after
   // the company-account move, say — is acknowledged and never applied.
   if (event.livemode !== LIVE_KEY) {
-    console.warn('[payments] webhook event from the other mode ignored', {
+    log.warn('payments_webhook_event_from_the_other_mode_ignored', {
       type: event.type,
       livemode: event.livemode,
     });
@@ -175,7 +180,7 @@ Deno.serve(async (request) => {
     .maybeSingle();
   if (lookupError) {
     // Couldn't reach the dedup ledger — 500 so Stripe retries later.
-    console.error('[payments] dedup lookup failed', lookupError.message);
+    log.error('payments_dedup_lookup_failed', { error: describeError(lookupError) });
     return new Response('Dedup failed', { status: 500 });
   }
   if (existing) {
@@ -208,7 +213,7 @@ Deno.serve(async (request) => {
         p_payment_intent_id: intent.id,
       });
       if (error) throw error;
-      console.log('[payments] charge captured', { paymentIntentId: intent.id });
+      log.info('payments_charge_captured', { payment_intent_id: intent.id });
       // Correct for BOTH kinds: a fee post goes draft -> active exactly as an
       // escrowed one does, so it must reach spotters the same way.
       wentLiveIntentId = intent.id;
@@ -218,7 +223,7 @@ Deno.serve(async (request) => {
         p_payment_intent_id: intent.id,
       });
       if (error) throw error;
-      console.log('[payments] escrow charge failed', { paymentIntentId: intent.id });
+      log.info('payments_escrow_charge_failed', { payment_intent_id: intent.id });
     } else if (event.type === 'charge.refunded') {
       // Belt-and-braces confirmation of a reward refund. The exit functions and
       // the sweep are authoritative (they issue the refund and record it); this
@@ -247,7 +252,7 @@ Deno.serve(async (request) => {
           const refunds = await stripe.refunds.list({ payment_intent: intentId, limit: 1 });
           refundId = refunds.data[0]?.id ?? null;
         } catch (err) {
-          console.warn('[payments] refund id lookup failed', (err as Error).message);
+          log.warn('payments_refund_id_lookup_failed', { error: describeError(err) });
         }
       }
       if (intentId) {
@@ -257,7 +262,7 @@ Deno.serve(async (request) => {
           p_refunded_amount_pence: charge.amount_refunded,
         });
         if (error) throw error;
-        console.log('[payments] refund confirmed', { paymentIntentId: intentId, outcome });
+        log.info('payments_refund_confirmed', { payment_intent_id: intentId, outcome });
         if (outcome === 'refunded_with_credited_sighting') {
           // Only a refund made by hand in the dashboard reaches this: the money
           // a credited spotter was owed went back to the owner. The ledger now
@@ -317,7 +322,7 @@ Deno.serve(async (request) => {
           kind = intent.metadata?.kind ?? null;
         } catch (err) {
           // The alert matters more than the post id; the dispute id finds it.
-          console.warn('[payments] dispute intent lookup failed', (err as Error).message);
+          log.warn('payments_dispute_intent_lookup_failed', { error: describeError(err) });
         }
       }
       const dueBy = dispute.evidence_details?.due_by
@@ -401,15 +406,13 @@ Deno.serve(async (request) => {
         // Not one we recorded: every creator records the id before onboarding
         // can begin, so this is another integration or a test account. Never
         // guessed at — that would risk paying a stranger.
-        console.warn('[payments] account.updated for an unrecorded account', {
-          accountId: account.id,
-        });
+        log.warn('payments_account_updated_for_an_unrecorded_account', { account_id: account.id });
       } else {
         // Flags only — never a name, never the bank details Stripe just took.
-        console.log('[payments] payee account updated', {
-          accountId: account.id,
+        log.info('payments_payee_account_updated', {
+          account_id: account.id,
           changed: result.changed,
-          becamePayable: result.becamePayable,
+          became_payable: result.becamePayable,
         });
       }
     } else if (event.type.startsWith('payout.') && event.account) {
@@ -435,8 +438,8 @@ Deno.serve(async (request) => {
       });
       if (error) throw error;
       // Ids and a status only — never a bank detail or an amount.
-      console.log('[payments] payout recorded', {
-        accountId: event.account,
+      log.info('payments_payout_recorded', {
+        account_id: event.account,
         status: payout.status,
         applied: Boolean(recorded?.applied),
       });
@@ -448,7 +451,7 @@ Deno.serve(async (request) => {
   } catch (err) {
     // Processing failed and NOTHING was recorded — 500 so Stripe retries and
     // reprocesses (idempotent). No claim to release; the event is never dropped.
-    console.error('[payments] webhook processing failed', (err as Error).message);
+    log.error('payments_webhook_processing_failed', { error: describeError(err) });
     return new Response('Processing failed', { status: 500 });
   }
 
@@ -459,7 +462,7 @@ Deno.serve(async (request) => {
   if (recordError) {
     // The state change committed but recording it did not. 500 so Stripe retries;
     // the retry reprocesses (idempotent no-op) and records. Never a silent drop.
-    console.error('[payments] recording processed event failed', recordError.message);
+    log.error('payments_recording_processed_event_failed', { error: describeError(recordError) });
     return new Response('Record failed', { status: 500 });
   }
 
@@ -488,7 +491,7 @@ Deno.serve(async (request) => {
         p_payout_id: failedPayout.payoutId,
       });
       if (error) {
-        console.error('[notifications] payout_failed claim failed', error.message);
+        log.error('notifications_payout_failed_claim_failed', { error: describeError(error) });
       } else if (claim?.claimed) {
         await notifyUsers(admin, [claim.user_id as string], {
           kind: 'payout_failed',
@@ -499,12 +502,12 @@ Deno.serve(async (request) => {
         });
       }
     } catch (err) {
-      console.error('[notifications] payout_failed push failed', (err as Error).message);
+      log.error('notifications_payout_failed_push_failed', { error: describeError(err) });
     }
   }
 
   return new Response(JSON.stringify({ received: true }), { status: 200 });
-});
+}));
 
 /** The part of a v2 thin event this endpoint reads: what happened, and to what. */
 type ThinEventNotification = {
@@ -535,7 +538,7 @@ async function handleThinEvent(
   // The same mode check as v1 events (audit hardening, 2026-10-26).
   const livemode = (notification as { livemode?: unknown }).livemode;
   if (typeof livemode === 'boolean' && livemode !== LIVE_KEY) {
-    console.warn('[payments] thin event from the other mode ignored', { type: notification.type });
+    log.warn('payments_thin_event_from_the_other_mode_ignored', { type: notification.type });
     return new Response(JSON.stringify({ received: true, ignored: 'mode' }), { status: 200 });
   }
 
@@ -547,7 +550,7 @@ async function handleThinEvent(
     .eq('event_id', notification.id)
     .maybeSingle();
   if (lookupError) {
-    console.error('[payments] dedup lookup failed', lookupError.message);
+    log.error('payments_dedup_lookup_failed', { error: describeError(lookupError) });
     return new Response('Dedup failed', { status: 500 });
   }
   if (existing) {
@@ -562,23 +565,23 @@ async function handleThinEvent(
       );
       if (result.outcome === 'unreadable') {
         // A Stripe blip — 500 so the event comes back and is read again.
-        console.error('[payments] v2 account event: account unreadable', { accountId });
+        log.error('payments_v2_account_event_account_unreadable', { account_id: accountId });
         return new Response('Account unreadable', { status: 500 });
       }
       if (result.outcome === 'unknown_account') {
         // Not one we recorded (another integration, or a test account whose
         // row was cleared). Never guessed at — that would risk a stranger.
-        console.warn('[payments] v2 account event for an unrecorded account', { accountId });
+        log.warn('payments_v2_account_event_for_an_unrecorded_account', { account_id: accountId });
       } else {
-        console.log('[payments] v2 account event applied', {
+        log.info('payments_v2_account_event_applied', {
           type: notification.type,
-          accountId,
+          account_id: accountId,
           changed: result.changed,
-          becamePayable: result.becamePayable,
+          became_payable: result.becamePayable,
         });
       }
     } catch (err) {
-      console.error('[payments] v2 account event processing failed', (err as Error).message);
+      log.error('payments_v2_account_event_processing_failed', { error: describeError(err) });
       return new Response('Processing failed', { status: 500 });
     }
   }
@@ -588,7 +591,7 @@ async function handleThinEvent(
     p_event_id: notification.id,
   });
   if (recordError) {
-    console.error('[payments] recording processed event failed', recordError.message);
+    log.error('payments_recording_processed_event_failed', { error: describeError(recordError) });
     return new Response('Record failed', { status: 500 });
   }
   return new Response(JSON.stringify({ received: true }), { status: 200 });

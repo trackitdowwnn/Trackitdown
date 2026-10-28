@@ -84,7 +84,7 @@ export function withHandler(
 ): (request: Request) => Promise<Response> {
   installGlobalHandlers(log);
   return (request) => {
-    const context = traceFor(request.headers.get('traceparent'));
+    const context = { ...traceFor(request.headers.get('traceparent')), fn: log.name };
     return runInContext(context, async () => {
       const started = Date.now();
       let response: Response;

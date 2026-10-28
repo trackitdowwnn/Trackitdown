@@ -26,13 +26,18 @@
 import { followUpCapture } from '../_shared/afterCapture.ts';
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
+
+const log = createLog('sync-post-payment');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** At most this many waiting intents are checked per call (an edit can leave a few). */
 const MAX_INTENTS = 3;
 
-Deno.serve(async (request) => {
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') {
     return preflightResponse();
   }
@@ -69,7 +74,7 @@ Deno.serve(async (request) => {
     .eq('id', postId)
     .maybeSingle();
   if (postError) {
-    console.error('[payments] post payment sync lookup failed', postError.message);
+    log.error('payments_post_payment_sync_lookup_failed', { error: describeError(postError) });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t check your payment. Please try again.', 500);
   }
   if (!post || post.owner_id !== userId) {
@@ -85,7 +90,7 @@ Deno.serve(async (request) => {
     .order('created_at', { ascending: false })
     .limit(MAX_INTENTS);
   if (waitingError) {
-    console.error('[payments] post payment sync lookup failed', waitingError.message);
+    log.error('payments_post_payment_sync_lookup_failed', { error: describeError(waitingError) });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t check your payment. Please try again.', 500);
   }
 
@@ -98,20 +103,20 @@ Deno.serve(async (request) => {
       status = (await stripe.paymentIntents.retrieve(intentId)).status;
     } catch (err) {
       // A blip: the screen keeps looking, and the webhook is still coming.
-      console.warn('[payments] post payment sync read failed', { type: (err as { type?: string }).type });
+      log.warn('payments_post_payment_sync_read_failed', { type: (err as { type?: string }).type });
       continue;
     }
     if (status !== 'succeeded') continue;
 
     const { error } = await admin.rpc('mark_post_payment_held', { p_payment_intent_id: intentId });
     if (error) {
-      console.error('[payments] post payment sync record failed', error.message);
+      log.error('payments_post_payment_sync_record_failed', { error: describeError(error) });
       return errorResponse('LEDGER_ERROR', 'We couldn’t check your payment. Please try again.', 500);
     }
-    console.log('[payments] charge captured (sync)', { paymentIntentId: intentId });
+    log.info('payments_charge_captured_sync', { payment_intent_id: intentId });
     captured += 1;
     await followUpCapture(admin, stripe, intentId);
   }
 
   return jsonResponse({ status: captured > 0 ? 'captured' : 'unchanged' });
-});
+}));

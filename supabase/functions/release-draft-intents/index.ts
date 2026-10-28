@@ -21,8 +21,13 @@
 import { cancelAndProve } from '../_shared/cancelIntents.ts';
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
 
-Deno.serve(async (request) => {
+const log = createLog('release-draft-intents');
+
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') {
     return preflightResponse();
   }
@@ -58,7 +63,7 @@ Deno.serve(async (request) => {
     .eq('id', postId)
     .maybeSingle();
   if (postError) {
-    console.error('[drafts] post lookup failed', postError.message);
+    log.error('drafts_post_lookup_failed', { error: describeError(postError) });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t save your changes. Please try again.', 500);
   }
   if (!post || post.owner_id !== userId) {
@@ -75,7 +80,7 @@ Deno.serve(async (request) => {
     .eq('post_id', postId)
     .in('status', ['requires_payment', 'failed']);
   if (ledgerError) {
-    console.error('[drafts] ledger read failed', ledgerError.message);
+    log.error('drafts_ledger_read_failed', { error: describeError(ledgerError) });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t save your changes. Please try again.', 500);
   }
   const intentIds = (open ?? []).map((row) => row.stripe_payment_intent_id as string);
@@ -98,11 +103,11 @@ Deno.serve(async (request) => {
     if (message.includes('NOT_OWNER')) {
       return errorResponse('POST_NOT_FOUND', 'We couldn’t find that draft.', 404);
     }
-    console.error('[drafts] forget_cancelled_draft_intents failed', message, { postId });
+    log.error('drafts_forget_cancelled_draft_intents_failed', { message, post_id: postId });
     return errorResponse('RELEASE_FAILED', 'We couldn’t save your changes. Please try again.', 500);
   }
 
   const left = intentIds.length - ((forgotten as number | null) ?? 0);
-  console.log('[drafts] draft intents released', { postId, cancelled: cancelled.length, left });
+  log.info('drafts_draft_intents_released', { post_id: postId, cancelled: cancelled.length, left });
   return jsonResponse({ open: left });
-});
+}));

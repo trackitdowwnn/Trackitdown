@@ -5,13 +5,17 @@
  * WHY:   One implementation for the two draft paths (delete-draft,
  *        release-draft-intents). The list is evidence: a hopeful entry would let
  *        a still-live intent's row be removed, which both RPCs exist to prevent.
- *        Imports are type-only so Jest can load it (see push.test.ts).
+ *        Its only runtime import is ./log.ts, which Jest loads too.
  * LINKS: supabase/functions/delete-draft/index.ts;
  *        supabase/functions/release-draft-intents/index.ts;
  *        supabase/tests/cancelIntents.test.ts.
  */
 
 import type Stripe from 'npm:stripe@22.4.0';
+import { createLog } from './log.ts';
+import { describeError } from './redact.ts';
+
+const log = createLog('cancelIntents');
 
 type IntentApi = Pick<Stripe['paymentIntents'], 'cancel' | 'retrieve'>;
 
@@ -35,9 +39,10 @@ export async function cancelAndProve(
       } catch (retrieveErr) {
         // Cannot cancel it and cannot read it, so it is not proven. The RPC
         // finds its row unnamed and refuses, which is the correct outcome.
-        console.warn(`[${logTag}] intent state unknown`, {
-          message: (retrieveErr as Error).message,
-          original: (err as Error).message,
+        log.warn('intent_state_unknown', {
+          tag: logTag,
+          error: describeError(retrieveErr),
+          original: describeError(err),
         });
       }
     }

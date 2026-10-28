@@ -237,10 +237,10 @@ describe('refundPayment', () => {
 
     expect(outcome).toMatchObject({ status: 'refunded', refundId: 're_hand', refundPence: 19300, feePence: 700 });
     expect(create).not.toHaveBeenCalled();
-    expect(errors).toHaveBeenCalledWith(
-      expect.stringContaining('[ops] ALERT partial refund'),
-      expect.objectContaining({ refundedPence: 19300, expectedPence: 19680 }),
-    );
+    const alert = errors.mock.calls
+      .map(([line]) => JSON.parse(String(line)))
+      .find((entry) => entry.msg === 'ops_alert_partial_refund_recorded');
+    expect(alert).toMatchObject({ level: 'error', refunded_pence: 19300, expected_pence: 19680 });
   });
 
   it('issues nothing when no refundable payment matches', async () => {

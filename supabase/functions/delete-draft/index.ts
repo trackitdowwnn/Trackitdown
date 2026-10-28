@@ -55,8 +55,13 @@
 import { cancelAndProve } from '../_shared/cancelIntents.ts';
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
 
-Deno.serve(async (request) => {
+const log = createLog('delete-draft');
+
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') {
     return preflightResponse();
   }
@@ -100,7 +105,7 @@ Deno.serve(async (request) => {
     .maybeSingle();
 
   if (postError) {
-    console.error('[drafts] post lookup failed', postError.message);
+    log.error('drafts_post_lookup_failed', { error: describeError(postError) });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t delete that draft. Please try again.', 500);
   }
   if (!post || post.owner_id !== userId) {
@@ -124,7 +129,7 @@ Deno.serve(async (request) => {
     .eq('post_id', postId);
 
   if (ledgerError) {
-    console.error('[drafts] ledger read failed', ledgerError.message);
+    log.error('drafts_ledger_read_failed', { error: describeError(ledgerError) });
     return errorResponse('LOOKUP_FAILED', 'We couldn’t delete that draft. Please try again.', 500);
   }
 
@@ -150,7 +155,7 @@ Deno.serve(async (request) => {
     // that will never succeed: money that actually moved means this draft is
     // not a draft any more in every sense that matters.
     if (message.includes('PAYMENT_EXISTS')) {
-      console.error('[drafts] delete refused — money has moved', { postId });
+      log.error('drafts_delete_refused', { post_id: postId, detail: 'money has moved' });
       return errorResponse(
         'PAYMENT_EXISTS',
         'This listing has a payment against it, so it can’t be deleted. Contact support and we’ll sort it.',
@@ -162,9 +167,10 @@ Deno.serve(async (request) => {
     // genuinely worth it — the usual cause is an intent opened on another
     // device mid-flight, which the next attempt will see and cancel.
     if (message.includes('INTENT_NOT_CANCELLED')) {
-      console.warn('[drafts] delete refused — an intent could not be proven cancelled', {
-        postId,
-        cancelledCount: cancelled.length,
+      log.warn('drafts_delete_refused', {
+        post_id: postId,
+        cancelled_count: cancelled.length,
+        detail: 'an intent could not be proven cancelled',
       });
       return errorResponse(
         'INTENT_NOT_CANCELLED',
@@ -184,10 +190,10 @@ Deno.serve(async (request) => {
       return errorResponse('POST_NOT_FOUND', 'We couldn’t find that draft.', 404);
     }
 
-    console.error('[drafts] delete_draft_post failed', message, { postId });
+    log.error('drafts_delete_draft_post_failed', { message, post_id: postId });
     return errorResponse('DELETE_FAILED', 'We couldn’t delete that draft. Please try again.', 500);
   }
 
-  console.log('[drafts] draft deleted', { postId, intentsCancelled: cancelled.length });
+  log.info('drafts_draft_deleted', { post_id: postId, intents_cancelled: cancelled.length });
   return jsonResponse({ deleted: true });
-});
+}));

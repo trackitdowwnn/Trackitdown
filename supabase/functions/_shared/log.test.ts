@@ -86,6 +86,24 @@ describe('createLog', () => {
     expect(outside.request_id).toBeUndefined();
   });
 
+  it("a shared module's line names the serving function, and itself as module", () => {
+    const { parsed } = capture();
+    const lines: string[] = [];
+    const shared = createLog('refundEscrow', {
+      env: () => undefined,
+      write: (_level, line) => lines.push(line),
+    });
+    runInContext({ trace_id: 't', span_id: 's', request_id: 'r', fn: 'stripe-webhook' }, () =>
+      shared.info('refund_made'),
+    );
+    shared.info('outside');
+    const [inside, outside] = lines.map((line) => JSON.parse(line));
+    expect(inside).toMatchObject({ fn: 'stripe-webhook', module: 'refundEscrow' });
+    expect(outside.fn).toBe('refundEscrow');
+    expect(outside.module).toBeUndefined();
+    expect(parsed()).toEqual([]);
+  });
+
   it('is readable text in development', () => {
     const { log, lines } = capture({ APP_ENV: 'development' });
     log.warn('slow', { duration_ms: 5 });
