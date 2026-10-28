@@ -37,8 +37,13 @@
 import { createServiceRoleClient } from '../_shared/clients.ts';
 import { buildDataExport, type DataExportRaw, type Row } from '../_shared/dataExport.ts';
 import { renderDataExportPdf } from '../_shared/dataExportPdf.ts';
+import { withHandler } from '../_shared/handler.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
 import { isOwnCleanPath } from '../_shared/storagePath.ts';
+
+const log = createLog('export-my-data');
 
 const BUCKET = 'data-exports';
 /** How long the download link works. */
@@ -79,7 +84,7 @@ async function all(
     for (const column of orderBy) ordered = ordered.order(column, { ascending: true });
     const { data, error } = await ordered.range(from, from + PAGE - 1);
     if (error) {
-      console.error('[profile] export gather failed', { label });
+      log.error('export_gather_failed', { label });
       throw new GatherError(label);
     }
     const page = (data as Row[] | null) ?? [];
@@ -114,7 +119,7 @@ async function signAll(
       .from(bucket)
       .createSignedUrls(paths.slice(i, i + ID_CHUNK), PHOTO_LINK_SECONDS);
     if (error) {
-      console.error('[profile] export photo signing failed', { bucket });
+      log.error('export_photo_signing_failed', { bucket });
       throw new GatherError(`sign:${bucket}`);
     }
     for (const entry of data ?? []) {
@@ -213,7 +218,7 @@ async function gather(admin: Admin, user: AuthUser): Promise<DataExportRaw> {
     (async () => {
       const { data, error } = await admin.rpc('data_export_points', { p_user_id: userId });
       if (error) {
-        console.error('[profile] export gather failed', { label: 'points' });
+        log.error('export_gather_failed', { label: 'points' });
         throw new GatherError('points');
       }
       return (data ?? { posts: [], alert_zones: [] }) as { posts: Row[]; alert_zones: Row[] };
@@ -458,7 +463,7 @@ async function downloadLink(admin: Admin, jsonPath: string, createdAt: Date) {
   };
 }
 
-Deno.serve(async (request) => {
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') {
     return preflightResponse();
   }
@@ -491,7 +496,7 @@ Deno.serve(async (request) => {
     .limit(1)
     .maybeSingle();
   if (recentError) {
-    console.error('[profile] export lookup failed', recentError.message);
+    log.error('export_lookup_failed', { error: describeError(recentError) });
     return failed();
   }
   if (recent) {
@@ -501,7 +506,7 @@ Deno.serve(async (request) => {
       new Date(recent.created_at as string),
     );
     if (link) {
-      console.log('[profile] data export re-signed', { userId, requestId: recent.id });
+      log.info('data_export_resigned', { user_id: userId, export_id: recent.id });
       return jsonResponse({ ...link, reused: true });
     }
     // The file is gone (removed early?) — fall through and build a new one.
@@ -515,7 +520,7 @@ Deno.serve(async (request) => {
     exported = buildDataExport(raw, userId, new Date());
   } catch (error) {
     if (!(error instanceof GatherError)) {
-      console.error('[profile] export build failed', (error as Error).message);
+      log.error('export_build_failed', { error: describeError(error) });
     }
     return failed();
   }
@@ -526,7 +531,7 @@ Deno.serve(async (request) => {
   const removeBoth = async () => {
     const { error: rollbackError } = await admin.storage.from(BUCKET).remove([path, pdfPath]);
     if (rollbackError) {
-      console.error('[profile] export rollback failed — left for the sweep', { userId });
+      log.error('export_rollback_failed', { user_id: userId });
     }
   };
 
@@ -535,7 +540,7 @@ Deno.serve(async (request) => {
     .from(BUCKET)
     .upload(path, bytes, { contentType: 'application/json', upsert: false });
   if (uploadError) {
-    console.error('[profile] export upload failed', uploadError.message);
+    log.error('export_upload_failed', { error: describeError(uploadError) });
     return failed();
   }
   // The PDF carries a link to the JSON, good for as long as the files live.
@@ -553,7 +558,7 @@ Deno.serve(async (request) => {
       expiresAt: new Date(createdAt.getTime() + PHOTO_LINK_SECONDS * 1000).toISOString(),
     });
   } catch (error) {
-    console.error('[profile] export pdf failed', (error as Error).message);
+    log.error('export_pdf_failed', { error: describeError(error) });
     await removeBoth();
     return failed();
   }
@@ -561,7 +566,7 @@ Deno.serve(async (request) => {
     .from(BUCKET)
     .upload(pdfPath, pdf, { contentType: 'application/pdf', upsert: false });
   if (pdfUploadError) {
-    console.error('[profile] export pdf upload failed', pdfUploadError.message);
+    log.error('export_pdf_upload_failed', { error: describeError(pdfUploadError) });
     await removeBoth();
     return failed();
   }
@@ -579,20 +584,20 @@ Deno.serve(async (request) => {
   if (recordError) {
     // Unrecorded: take them back now. If that fails too, the hourly sweep
     // still finds them — it also removes old files no request row names.
-    console.error('[profile] export record failed', recordError.message);
+    log.error('export_record_failed', { error: describeError(recordError) });
     await removeBoth();
     return failed();
   }
 
   const link = await downloadLink(admin, path, createdAt);
   if (!link) {
-    console.error('[profile] export signing failed', { userId, requestId: recorded.id });
+    log.error('export_signing_failed', { user_id: userId, export_id: recorded.id });
     return failed();
   }
-  console.log('[profile] data export built', {
-    userId,
-    requestId: recorded.id,
+  log.info('data_export_built', {
+    user_id: userId,
+    export_id: recorded.id,
     bytes: bytes.byteLength + pdf.byteLength,
   });
   return jsonResponse({ ...link, reused: false });
-});
+}));

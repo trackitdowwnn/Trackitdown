@@ -34,7 +34,10 @@
  */
 
 import { createServiceRoleClient, requireEnv } from '../_shared/clients.ts';
+import { withHandler } from '../_shared/handler.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
 import { isOwnCleanPath } from '../_shared/storagePath.ts';
 // ⚠️ THE CONTENT BUILDERS LIVE NEXT DOOR SO THEY CAN BE TESTED. They are pure
 // and Deno-free on purpose: a TypeError in one of them stopped every bug-report
@@ -79,8 +82,9 @@ const LINK_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 const BUCKET = 'bug-screenshots';
 
+const log = createLog('notify-bug-report');
 
-Deno.serve(async (request) => {
+Deno.serve(withHandler(log, async (request) => {
   if (request.method === 'OPTIONS') return preflightResponse();
   if (request.method !== 'POST') {
     return errorResponse('METHOD_NOT_ALLOWED', 'Use POST.', 405);
@@ -119,7 +123,7 @@ Deno.serve(async (request) => {
     p_report_id: reportId,
   });
   if (error) {
-    console.error('[bug-report] claim failed', error.message);
+    log.error('claim_failed', { error: describeError(error) });
     return errorResponse('CLAIM_FAILED', 'Could not claim the report.', 500);
   }
 
@@ -142,7 +146,7 @@ Deno.serve(async (request) => {
       const { data: user } = await admin.auth.admin.getUserById(report.reporter_id);
       reporterEmail = user?.user?.email ?? null;
     } catch {
-      console.error('[bug-report] could not resolve the reporter address');
+      log.warn('reporter_address_unresolved');
     }
   }
 
@@ -228,15 +232,15 @@ Deno.serve(async (request) => {
       // ⚠️ THE STATUS ONLY. A provider's error body can quote the payload back,
       // and the payload here is the text somebody wrote about their bug — the
       // same rule bugReportApi follows for database errors.
-      console.error('[bug-report] send failed', response.status);
+      log.error('send_failed', { status: response.status });
       return errorResponse('SEND_FAILED', 'Could not send the email.', 502);
     }
-  } catch {
-    console.error('[bug-report] send threw');
+  } catch (error) {
+    log.error('send_threw', { error: describeError(error) });
     return errorResponse('SEND_FAILED', 'Could not send the email.', 502);
   }
 
   // The id only — never the message, never a link, never the address.
-  console.log('[bug-report] emailed', report.id);
+  log.info('report_emailed', { report_id: report.id });
   return jsonResponse({ sent: true });
-});
+}));
