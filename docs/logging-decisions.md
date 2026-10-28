@@ -55,7 +55,7 @@ The owner agreed these decisions on 2026-10-28, after a discovery audit and a st
 | 2 | `_shared/log.ts`, `redact.ts`, `handler.ts` on two low-risk functions | deploy |
 | 3 | The other 22 functions, in 3 batches | deploy |
 | 4 | `audit_payment_events` | migration |
-| 5 | Server Sentry + sweep heartbeat (the owner creates the EU org and sets `SENTRY_DSN`) | deploy |
+| 5 | Server Sentry + sweep heartbeat (the owner creates the EU org and sets `SENTRY_DSN`). Every error-level line and every uncaught throw becomes a Sentry event; inert until the DSN exists | deploy |
 | 6 | App: `traceparent` on function calls, global handlers, root `ErrorBoundary`, OTA id | OTA |
 | 7 | `docs/LOGGING.md` rewrite + handover | — |
 

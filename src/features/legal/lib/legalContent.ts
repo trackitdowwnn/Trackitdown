@@ -369,7 +369,7 @@ const PRIVACY: LegalDocument = {
   // (already true), and notification tokens unused for 9 months.
   slug: 'privacy',
   title: 'Privacy policy',
-  lastUpdated: '22 October 2026',
+  lastUpdated: '28 October 2026',
   intro: [
     `${OPERATOR} is the controller of the personal data described here.`,
     'This app handles location, vehicle details, photographs and payments, so this policy is specific rather than generic. If something below is not clear, ask us before you use the service.',
@@ -457,6 +457,7 @@ const PRIVACY: LegalDocument = {
         '• Apple and Google — if you sign in with Apple or Google, they confirm who you are to us.',
         '• Resend — sending email: your sign-in codes, and the bug reports you send and alerts about payments on to our inbox.',
         '• Google (Gmail) — our inbox, which receives the bug reports you send and alerts about payments.',
+        '• Sentry — reports of errors on our servers, in the EU (Germany). A report says what failed in our code, not who you are or where.',
         '• Waze or Google Maps — only if a vehicle’s owner chooses to open a sighting’s location in one of them; the app passes the location and nothing else.',
         '• The police, if we are required to disclose information or where we believe it is necessary to prevent harm.',
         'We do not sell personal data and we do not use it for advertising.',
