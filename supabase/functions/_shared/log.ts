@@ -59,13 +59,20 @@ export function currentContext(): TraceContext | undefined {
 type Env = (name: string) => string | undefined;
 type Write = (level: Level, line: string) => void;
 
-const denoEnv: Env = (name) =>
+export const denoEnv: Env = (name) =>
   (globalThis as { Deno?: { env?: { get(n: string): string | undefined } } }).Deno?.env?.get(name);
 
 const consoleWrite: Write = (level, line) => {
   // The matching console method, so Supabase's log explorer filters by level.
   (level === 'error' ? console.error : level === 'warn' ? console.warn : console.log)(line);
 };
+
+let errorSink: ((msg: string, data: LogData) => void) | undefined;
+
+/** Where error lines also go (./sentry.ts); one sink, replaced by the next call. */
+export function onErrorLine(sink: ((msg: string, data: LogData) => void) | undefined): void {
+  errorSink = sink;
+}
 
 const RANK: Record<Level, number> = { debug: 10, info: 20, warn: 30, error: 40 };
 const isLevel = (value: string | undefined): value is Level =>
@@ -100,12 +107,14 @@ export function createLog(fn: string, options: { env?: Env; write?: Write } = {}
       if (pretty) {
         const extra = Object.keys(own).length ? ` ${JSON.stringify(own)}` : '';
         write(level, `${base.ts} ${level.toUpperCase()} [${base.fn}] ${msg}${extra}`);
+        if (level === 'error') errorSink?.(msg, own);
         return;
       }
       // The entry's own data can't overwrite a base field.
       const entry: LogData = { ...base };
       for (const [key, value] of Object.entries(own)) if (!(key in entry)) entry[key] = value;
       write(level, JSON.stringify(entry));
+      if (level === 'error') errorSink?.(msg, own);
     } catch {
       write(
         'error',

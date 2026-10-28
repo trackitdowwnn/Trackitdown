@@ -62,8 +62,10 @@ clause) under `npm run test:db`, instead of needing a second, Deno test stack.
 Shared code lives in `_shared/` (`clients.ts`, `http.ts`, `push.ts` — the ONE
 send utility every notification type uses; `log.ts`, `redact.ts` and
 `handler.ts` — the logger, its redaction, and the `withHandler` wrapper that adds
-trace and request ids, `request_end` and a top-level catch; see
-`docs/logging-decisions.md`). The money-state SQL functions are
+trace and request ids, `request_end` and a top-level catch; `sentry.ts`,
+which sends error lines, uncaught throws and the sweep's heartbeat to Sentry
+once `SENTRY_DSN` is set — `npx supabase secrets set SENTRY_DSN=… --project-ref
+<ref>`, EU-region project; see `docs/logging-decisions.md`). The money-state SQL functions are
 in `supabase/migrations/20260726100000_post_payment.sql` (charge) and
 `20260729100000_post_refund_cancel.sql` (refund); the notification ones in
 `20260802100000_push_infrastructure.sql`, `20260802130000_alert_matching.sql`

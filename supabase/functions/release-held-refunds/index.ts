@@ -65,6 +65,7 @@ import { payoutTransferGroups, releasePayoutForPost } from '../_shared/releasePa
 import { notifyUsers } from '../_shared/push.ts';
 import { announcePayoutSent, announceRecoveryToWatchers } from '../_shared/recoveryAnnounce.ts';
 import { withHandler } from '../_shared/handler.ts';
+import { startCronCheckIn } from '../_shared/sentry.ts';
 import { createLog } from '../_shared/log.ts';
 import { describeError } from '../_shared/redact.ts';
 
@@ -96,6 +97,9 @@ Deno.serve(withHandler(log, async (request) => {
   if (!allowed) {
     return errorResponse('NOT_AUTHENTICATED', 'Not allowed.', 401);
   }
+  // The heartbeat: a run that never finishes, or never starts, raises a Sentry
+  // issue (inert until SENTRY_DSN is set). Matches cron.job release-held-refunds-hourly.
+  const finishCheckIn = startCronCheckIn('release-held-refunds', '0 * * * *');
   const stripe = createStripeClient();
   const summary = {
     refunded: 0,
@@ -1322,5 +1326,6 @@ Deno.serve(withHandler(log, async (request) => {
   }
 
   log.info('payments_hold_sweep_done', { ...summary });
+  void finishCheckIn('ok');
   return jsonResponse(summary);
 }));

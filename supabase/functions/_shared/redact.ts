@@ -80,7 +80,7 @@ export function redact(value: unknown, extraKeys?: RegExp, depth = 0): unknown {
 }
 
 /** True for anything Stripe's SDK threw (StripeCardError, StripeInvalidRequestError, …). */
-function isStripeError(err: Record<string, unknown>): boolean {
+export function isStripeError(err: Record<string, unknown>): boolean {
   return (
     (typeof err.type === 'string' && err.type.startsWith('Stripe')) ||
     typeof err.rawType === 'string'

@@ -47,6 +47,7 @@ this automatically.
 | Google Maps / OS geocoder (Google on Android, Apple on iOS) | Processors — maps, place names | Map viewport, coordinates to turn into an address | **Not documented.** |
 | Apple, Google | Sign-in providers | Sign-in identity tokens, Apple full name if shared | **Not documented.** |
 | Resend | Processor — email | Sign-in codes (Supabase Auth custom SMTP, from `noreply@trackitdown.co.uk`); bug-report emails (message, diagnostics, reporter's email, 7-day screenshot links); ops alerts (payment and post ids) | **Not documented.** |
+| Sentry | Processor — server error reports and the hourly-sweep heartbeat (from the day `SENTRY_DSN` is set; 2026-10-28) | The failing function, the event name, error type and stack frames, the request and trace ids, and the log line's redacted data (ids and counts). **No request bodies, headers, user, breadcrumbs or Stripe error messages** (`_shared/sentry.ts`) | EU region (Germany). **Transfer basis to document.** |
 | Google (Gmail) | The interim operator inbox `trackitdowwnn@gmail.com` receiving bug reports and ops alerts | As Resend, above | **Not documented.** Retention of the emails not set. |
 | Waze / Google Maps apps | Opened by the OWNER from a sighting | One coordinate, when the owner taps | User-initiated. |
 | The police | Disclosure when required, or to prevent harm | Case-by-case | — |
