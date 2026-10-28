@@ -55,7 +55,7 @@ describe('useBountyGuidance', () => {
 
     await act(async () => rerender({ lat: 51.5 })); // a different point, nothing known
     expect(result.current.guidance).toEqual(EMPTY);
-    never(ELSEWHERE);
+    await act(async () => never(ELSEWHERE));
   });
 
   it('asks nothing without a location', async () => {

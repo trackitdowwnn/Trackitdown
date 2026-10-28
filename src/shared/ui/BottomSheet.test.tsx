@@ -157,7 +157,7 @@ describe('BottomSheet', () => {
 
     const close = await findByRole('button', { name: 'Close' });
     await act(async () => {
-      fireEvent.press(close);
+      await fireEvent.press(close);
     });
     expect(queryByText('Sheet body')).toBeNull();
     expect(onDismiss).toHaveBeenCalledTimes(1);
@@ -392,7 +392,7 @@ describe('⚠️ BottomSheet scrolls the focused input above the keyboard (Andro
     await act(async () => sheetRef.current?.open());
     const layout = async () =>
       act(async () => {
-        fireEvent(view.getByTestId('sheet-scroll-view'), 'layout', {
+        await fireEvent(view.getByTestId('sheet-scroll-view'), 'layout', {
           nativeEvent: { layout: { height: 700 } },
         });
       });
@@ -424,13 +424,13 @@ describe('⚠️ BottomSheet scrolls the focused input above the keyboard (Andro
     expect(mockSheetScrollTo).toHaveBeenCalledTimes(1);
     // The scroll lands; then the field grows a line.
     await act(async () => {
-      fireEvent(view.getByTestId('sheet-scroll-view'), 'scroll', {
+      await fireEvent(view.getByTestId('sheet-scroll-view'), 'scroll', {
         nativeEvent: { contentOffset: { y: 276 } },
       });
     });
     focusInputAt(500, 150);
     await act(async () => {
-      fireEvent(view.getByTestId('sheet-scroll-view'), 'contentSizeChange', 390, pastCap());
+      await fireEvent(view.getByTestId('sheet-scroll-view'), 'contentSizeChange', 390, pastCap());
     });
     expect(mockSheetScrollTo).toHaveBeenLastCalledWith({ y: 306, animated: true });
   });
@@ -439,7 +439,7 @@ describe('⚠️ BottomSheet scrolls the focused input above the keyboard (Andro
     focusInputAt(500, 120);
     const { view } = await openWithKeyboard();
     await act(async () => {
-      fireEvent(view.getByTestId('sheet-scroll-view'), 'contentSizeChange', 390, belowCap());
+      await fireEvent(view.getByTestId('sheet-scroll-view'), 'contentSizeChange', 390, belowCap());
     });
     expect(mockSheetScrollTo).not.toHaveBeenCalled();
   });
@@ -448,7 +448,7 @@ describe('⚠️ BottomSheet scrolls the focused input above the keyboard (Andro
     focusInputAt(500, 120);
     const { view } = await openWithKeyboard();
     await act(async () => {
-      fireEvent(view.getByTestId('sheet-scroll-view'), 'scroll', {
+      await fireEvent(view.getByTestId('sheet-scroll-view'), 'scroll', {
         nativeEvent: { contentOffset: { y: 300 } },
       });
       jest.advanceTimersByTime(250);
@@ -467,7 +467,7 @@ describe('⚠️ BottomSheet scrolls the focused input above the keyboard (Andro
     // Focus moves: the keyboard height and content size stay the same.
     focusInputAt(600, 56);
     await act(async () => {
-      fireEvent(view.getByTestId('sheet-aware-input'), 'focus', {});
+      await fireEvent(view.getByTestId('sheet-aware-input'), 'focus', {});
     });
     // 8 + 600 + 56 + 48 = 712; visible 400.
     expect(mockSheetScrollTo).toHaveBeenCalledWith({ y: 312, animated: true });
@@ -477,7 +477,7 @@ describe('⚠️ BottomSheet scrolls the focused input above the keyboard (Andro
     focusInputAt(500, 120);
     const { sheetRef, view, layout } = await openWithKeyboard();
     await act(async () => {
-      fireEvent(view.getByTestId('sheet-scroll-view'), 'scroll', {
+      await fireEvent(view.getByTestId('sheet-scroll-view'), 'scroll', {
         nativeEvent: { contentOffset: { y: 276 } },
       });
       keyboardHandlers.keyboardDidHide?.();
@@ -502,7 +502,7 @@ describe('⚠️ BottomSheet scrolls the focused input above the keyboard (Andro
     await act(async () => sheetRef.current?.open());
     focusInputAt(500, 120);
     await act(async () => {
-      fireEvent((await view).getByTestId('sheet-scroll-view'), 'contentSizeChange', 390, pastCap());
+      await fireEvent((await view).getByTestId('sheet-scroll-view'), 'contentSizeChange', 390, pastCap());
       jest.advanceTimersByTime(1000);
     });
     expect(mockSheetScrollTo).not.toHaveBeenCalled();

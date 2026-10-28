@@ -104,7 +104,7 @@ describe('PaintFinishSheet', () => {
     await act(async () => ref.current?.open());
 
     await act(async () => {
-      fireEvent.press(screen.getByRole('radio', { name: /^Pearl/ }));
+      await fireEvent.press(screen.getByRole('radio', { name: /^Pearl/ }));
     });
 
     expect(onPick).toHaveBeenCalledWith('pearl');
@@ -118,7 +118,7 @@ describe('PaintFinishSheet', () => {
     await act(async () => ref.current?.open());
 
     await act(async () => {
-      fireEvent.press(screen.getByRole('radio', { name: /^Not sure/ }));
+      await fireEvent.press(screen.getByRole('radio', { name: /^Not sure/ }));
     });
 
     expect(onPick).toHaveBeenCalledWith(null);
@@ -171,8 +171,8 @@ describe('PaintFinishSheet', () => {
     const matt = screen.getByRole('radio', { name: /^Matt/ });
 
     await act(async () => {
-      fireEvent.press(metallic);
-      fireEvent.press(matt);
+      await fireEvent.press(metallic);
+      await fireEvent.press(matt);
     });
 
     expect(onPick).toHaveBeenCalledTimes(1);
@@ -184,11 +184,11 @@ describe('PaintFinishSheet', () => {
     const screen = await view;
     await act(async () => ref.current?.open());
     await act(async () => {
-      fireEvent.press(screen.getByRole('radio', { name: /^Metallic/ }));
+      await fireEvent.press(screen.getByRole('radio', { name: /^Metallic/ }));
     });
     await act(async () => ref.current?.open());
     await act(async () => {
-      fireEvent.press(screen.getByRole('radio', { name: /^Matt/ }));
+      await fireEvent.press(screen.getByRole('radio', { name: /^Matt/ }));
     });
 
     expect(onPick).toHaveBeenLastCalledWith('matte');

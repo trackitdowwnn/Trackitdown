@@ -145,14 +145,14 @@ jest.mock('../hooks/useResendCountdown', () => ({
 
 async function enterEmailAndCode(screen: Awaited<ReturnType<typeof render>>) {
   await act(async () => {
-    fireEvent.changeText(screen.getByLabelText('Email'), 'sam@example.com');
+    await fireEvent.changeText(screen.getByLabelText('Email'), 'sam@example.com');
   });
   await act(async () => {
-    fireEvent.press(screen.getByText('Continue'));
+    await fireEvent.press(screen.getByText('Continue'));
   });
   await waitFor(() => expect(screen.getByText(/Enter the code we emailed/)).toBeTruthy());
   await act(async () => {
-    fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '123456');
+    await fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '123456');
   });
 }
 
@@ -267,14 +267,14 @@ describe('AuthSheet', () => {
     expect(run).not.toHaveBeenCalled(); // the ordering under test
 
     await act(async () => {
-      fireEvent.changeText(screen.getByLabelText('First name'), 'Sam');
+      await fireEvent.changeText(screen.getByLabelText('First name'), 'Sam');
     });
     // The preview is how others will see them: it fills in as they type.
     // Decorative, so it is hidden from the accessibility tree.
     const preview = screen.getByTestId('profile-preview', { includeHiddenElements: true });
     expect(within(preview).getByText('S', { includeHiddenElements: true })).toBeTruthy();
     await act(async () => {
-      fireEvent.press(screen.getByText('Get started'));
+      await fireEvent.press(screen.getByText('Get started'));
     });
     await waitFor(() => expect(mockCreateProfile).toHaveBeenCalledWith('u1', { firstName: 'Sam' }));
     expect(mockInvalidateProfileCheck).toHaveBeenCalled();
@@ -329,7 +329,7 @@ describe('AuthSheet', () => {
     await enterEmailAndCode(screen);
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Use a different email'));
+      await fireEvent.press(screen.getByText('Use a different email'));
     });
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
   });
@@ -349,7 +349,7 @@ describe('Continue with Google (2026-10-15)', () => {
     mockSignInWithGoogle.mockResolvedValue({ cancelled: false, userId: 'u1', firstName: 'Sam' });
     const screen = await openSheet();
     await act(async () => {
-      fireEvent.press(screen.getByText('Continue with Google'));
+      await fireEvent.press(screen.getByText('Continue with Google'));
     });
     // Signed in, no profiles row yet: the name step — already filled in.
     await act(async () => {
@@ -360,7 +360,7 @@ describe('Continue with Google (2026-10-15)', () => {
 
     // Still theirs to confirm: one tap.
     await act(async () => {
-      fireEvent.press(screen.getByText('Get started'));
+      await fireEvent.press(screen.getByText('Get started'));
     });
     await waitFor(() => expect(mockCreateProfile).toHaveBeenCalledWith('u1', { firstName: 'Sam' }));
   });
@@ -369,7 +369,7 @@ describe('Continue with Google (2026-10-15)', () => {
     mockSignInWithGoogle.mockResolvedValue({ cancelled: true });
     const screen = await openSheet();
     await act(async () => {
-      fireEvent.press(screen.getByText('Continue with Google'));
+      await fireEvent.press(screen.getByText('Continue with Google'));
     });
     expect(screen.getByLabelText('Email')).toBeTruthy();
     expect(screen.queryByText(/couldn’t|didn’t|failed/i)).toBeNull();
@@ -403,7 +403,7 @@ describe('Sign in with Apple — Android takes the web flow (2026-10-15)', () =>
     mockSignInWithAppleWeb.mockResolvedValue({ cancelled: false, userId: 'u1', firstName: 'Sam' });
     const screen = await openSheet();
     await act(async () => {
-      fireEvent.press(screen.getByText('Continue with Apple'));
+      await fireEvent.press(screen.getByText('Continue with Apple'));
     });
     expect(mockSignInWithAppleWeb).toHaveBeenCalledTimes(1);
     expect(mockSignInWithApple).not.toHaveBeenCalled();
@@ -424,7 +424,7 @@ describe('Sign in with Apple — Android takes the web flow (2026-10-15)', () =>
     expect(screen.queryByTestId('apple-coming-soon')).toBeNull(); // not mounted until asked
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Continue with Apple'));
+      await fireEvent.press(screen.getByText('Continue with Apple'));
     });
     expect(screen.getByTestId('apple-coming-soon')).toBeTruthy();
     expect(screen.getByText('Coming soon')).toBeTruthy();
@@ -432,11 +432,13 @@ describe('Sign in with Apple — Android takes the web flow (2026-10-15)', () =>
 
     // "Got it" closes it, and the sign-in sheet is still there to use.
     await act(async () => {
-      fireEvent.press(screen.getByText('Got it'));
+      await fireEvent.press(screen.getByText('Got it'));
     });
     await waitFor(() => expect(screen.queryByTestId('apple-coming-soon')).toBeNull());
     expect(screen.getByLabelText('Email')).toBeTruthy();
-    expect(consumePendingIntent()).not.toBeNull(); // the gate was not cancelled
+    // In act: taking the intent re-renders the sheet that watches it.
+    const intent = await act(async () => consumePendingIntent());
+    expect(intent).not.toBeNull(); // the gate was not cancelled
   });
 
   it('iOS: never the web button — the native one is Apple’s own', async () => {
@@ -458,10 +460,10 @@ describe('sign-in best-practice pass (2026-10-15)', () => {
 
   async function toCodeStep(screen: Awaited<ReturnType<typeof render>>) {
     await act(async () => {
-      fireEvent.changeText(screen.getByLabelText('Email'), 'sam@example.com');
+      await fireEvent.changeText(screen.getByLabelText('Email'), 'sam@example.com');
     });
     await act(async () => {
-      fireEvent.press(screen.getByText('Continue'));
+      await fireEvent.press(screen.getByText('Continue'));
     });
     await waitFor(() => expect(screen.getByText(/Enter the code we emailed/)).toBeTruthy());
   }
@@ -482,17 +484,21 @@ describe('sign-in best-practice pass (2026-10-15)', () => {
   it('⚠️ a malformed address SAYS so (GOV.UK) — never just a greyed-out button', async () => {
     const screen = await openSheet();
     await act(async () => {
-      fireEvent.changeText(screen.getByLabelText('Email'), 'sam@');
+      await fireEvent.changeText(screen.getByLabelText('Email'), 'sam@');
+    });
+    // Its own act: the effect that starts the label's float runs when the act above ends.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250)); // the label's 200ms float
     });
     await act(async () => {
-      fireEvent.press(screen.getByText('Continue'));
+      await fireEvent.press(screen.getByText('Continue'));
     });
     expect(screen.getByText('Enter an email address like name@example.com')).toBeTruthy();
     expect(mockRequestEmailOtp).not.toHaveBeenCalled();
 
     // …and the message goes as soon as they fix it.
     await act(async () => {
-      fireEvent.changeText(screen.getByLabelText('Email, error: Enter an email address like name@example.com'), 'sam@example.com');
+      await fireEvent.changeText(screen.getByLabelText('Email, error: Enter an email address like name@example.com'), 'sam@example.com');
     });
     expect(screen.queryByText('Enter an email address like name@example.com')).toBeNull();
   });
@@ -509,14 +515,14 @@ describe('sign-in best-practice pass (2026-10-15)', () => {
     const screen = await openSheet();
     await toCodeStep(screen);
     await act(async () => {
-      fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '12345');
+      await fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '12345');
     });
     await act(async () => {
-      fireEvent.press(screen.getByText('Verify'));
+      await fireEvent.press(screen.getByText('Verify'));
     });
     expect(mockVerifyEmailOtp).not.toHaveBeenCalled();
     await act(async () => {
-      fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '123456');
+      await fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '123456');
     });
     expect(mockVerifyEmailOtp).toHaveBeenCalledTimes(1);
     expect(mockVerifyEmailOtp).toHaveBeenCalledWith('sam@example.com', '123456');
@@ -531,12 +537,12 @@ describe('sign-in best-practice pass (2026-10-15)', () => {
     const screen = await openSheet();
     await toCodeStep(screen);
     await act(async () => {
-      fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '123456');
+      await fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '123456');
     });
     await waitFor(() => expect(screen.getByText(/Something went wrong|didn’t match/)).toBeTruthy());
 
     await act(async () => {
-      fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '1');
+      await fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '1');
     });
     expect(screen.queryByText(/Something went wrong|didn’t match/)).toBeNull();
   });
@@ -546,7 +552,7 @@ describe('sign-in best-practice pass (2026-10-15)', () => {
     await toCodeStep(screen);
     mockRequestEmailOtp.mockClear();
     await act(async () => {
-      fireEvent.press(screen.getByText('Resend code'));
+      await fireEvent.press(screen.getByText('Resend code'));
     });
     expect(mockRequestEmailOtp).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('otp-resent')).toBeTruthy();
@@ -557,7 +563,7 @@ describe('sign-in best-practice pass (2026-10-15)', () => {
     const screen = await openSheet();
     await toCodeStep(screen);
     await act(async () => {
-      fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '123456');
+      await fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '123456');
     });
     await act(async () => {
       setMockStanding('incomplete');

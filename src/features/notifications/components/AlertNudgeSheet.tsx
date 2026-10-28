@@ -29,7 +29,7 @@
 
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { InteractionManager, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { useSaveCarNudgeIntent } from '@/features/garage';
 import { createLogger } from '@/shared/lib/logger';
@@ -142,12 +142,13 @@ export function AlertNudgeSheet() {
     void markAlertNudgeOffered();
     log.info('alert_nudge_shown', { surface: 'exit_sheet', source: intent.source });
 
-    // The post route's back navigation is still animating; presenting into that
-    // transition drops the animation. Wait for it to settle.
-    const task = InteractionManager.runAfterInteractions(() => {
+    // Opened on the next tick, not in this commit. That is all RN 0.86's
+    // runAfterInteractions did (a deprecation stub): it does NOT wait for the
+    // post route's back navigation to finish.
+    const timer = setTimeout(() => {
       sheetRef.current?.open();
-    });
-    return () => task.cancel();
+    }, 0);
+    return () => clearTimeout(timer);
     // PRIMITIVES ONLY. An object dep here re-runs this effect every render and
     // the cleanup above cancels the pending open() — see the note at alertsStatus.
   }, [intent, garageIntent, alertsStatus, alertCount, alreadyOffered, suppress]);

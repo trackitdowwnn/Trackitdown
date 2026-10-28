@@ -137,7 +137,7 @@ describe('scope: a named area', () => {
     // about what it was for, not just about what it lacks.
     expect(view.getByRole('header', { name: 'Thefts in St Albans' })).toBeTruthy();
     // And the way out DOES the alternative: the map resolves the name itself.
-    fireEvent.press(view.getByText('Show on the map'));
+    await fireEvent.press(view.getByText('Show on the map'));
     expect(mockReplace).toHaveBeenCalledWith({
       pathname: '/search-map',
       params: { area: 'St Albans' },
@@ -352,7 +352,7 @@ describe('moving the radius (2026-09-22 — the slider used to vanish mid-drag)'
     await waitFor(() => expect(view.getByTestId('stats-hero')).toBeTruthy());
     const sliderBefore = view.getByTestId('stats-radius-slider');
     await act(async () => {
-      nudge(view, 'increment');
+      await nudge(view, 'increment');
     });
     // The whole point: nothing was swapped for a skeleton. Same slider
     // instance, figures still there, the line already saying where the
@@ -375,7 +375,7 @@ describe('moving the radius (2026-09-22 — the slider used to vanish mid-drag)'
     const yearBefore = view.getByTestId('stats-card-year');
     mockFetch.mockResolvedValue({ ...FULL, total30d: 31 });
     await act(async () => {
-      nudge(view, 'increment');
+      await nudge(view, 'increment');
       jest.advanceTimersByTime(300);
     });
     await waitFor(() => expect(view.getByTestId('stats-hero')).toHaveTextContent(/31 cars/));
@@ -399,7 +399,7 @@ describe('moving the radius (2026-09-22 — the slider used to vanish mid-drag)'
     // does on device.
     for (let snap = 0; snap < 3; snap += 1) {
       await act(async () => {
-        nudge(view, 'increment');
+        await nudge(view, 'increment');
       });
       await act(async () => {
         jest.advanceTimersByTime(100);
@@ -429,7 +429,7 @@ describe('moving the radius (2026-09-22 — the slider used to vanish mid-drag)'
     // commits with the new radius before its timer runs — the settled-drag
     // test above drives it the same way.
     await act(async () => {
-      nudge(view, 'increment');
+      await nudge(view, 'increment');
     });
     await act(async () => {
       jest.advanceTimersByTime(300);
@@ -465,12 +465,12 @@ describe('moving the radius (2026-09-22 — the slider used to vanish mid-drag)'
     let settle: (value: unknown) => void = () => {};
     mockFetch.mockReturnValue(new Promise((resolve) => (settle = resolve)));
     await act(async () => {
-      fireEvent(view.getByTestId('stats-scroll'), 'refresh');
+      await fireEvent(view.getByTestId('stats-scroll'), 'refresh');
     });
     // The pull is in flight; move the slider, which cancels it.
     mockFetch.mockRejectedValue(new Error('offline'));
     await act(async () => {
-      nudge(view, 'increment');
+      await nudge(view, 'increment');
     });
     await act(async () => {
       jest.advanceTimersByTime(300);
@@ -492,7 +492,7 @@ describe('moving the radius (2026-09-22 — the slider used to vanish mid-drag)'
     const sliderBefore = view.getByTestId('stats-radius-slider');
     mockFetch.mockResolvedValue(NOT_ENOUGH);
     await act(async () => {
-      nudge(view, 'decrement');
+      await nudge(view, 'decrement');
       jest.advanceTimersByTime(300);
     });
     await waitFor(() => expect(view.getByText('Not enough nearby to say')).toBeTruthy());

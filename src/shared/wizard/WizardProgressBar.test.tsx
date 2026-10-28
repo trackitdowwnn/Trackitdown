@@ -39,11 +39,9 @@ type View = Awaited<ReturnType<typeof render>>;
 
 /** Measure every track at `width` (re-rendering so the styles read it). */
 async function measure(view: View, width: number, rerender: () => void) {
-  await act(async () => {
-    view.getAllByTestId('wizard-progress-segment').forEach((segment) =>
-      fireEvent(segment, 'layout', { nativeEvent: { layout: { width } } }),
-    );
-  });
+  for (const segment of view.getAllByTestId('wizard-progress-segment')) {
+    await fireEvent(segment, 'layout', { nativeEvent: { layout: { width } } });
+  }
   await act(async () => rerender());
 }
 
@@ -99,7 +97,7 @@ describe('WizardProgressBar', () => {
   it('animates only the segment that changed, when it changes', async () => {
     const view = await render(<WizardProgressBar fills={[1, 0.25, 0]} label="x" percent={40} />);
     await act(async () => {
-      view.rerender(<WizardProgressBar fills={[1, 0.5, 0]} label="x" percent={50} />);
+      await view.rerender(<WizardProgressBar fills={[1, 0.5, 0]} label="x" percent={50} />);
     });
     expect(mockWithTiming).toHaveBeenCalledTimes(1);
     expect(mockWithTiming).toHaveBeenCalledWith(0.5);
@@ -109,7 +107,7 @@ describe('WizardProgressBar', () => {
     mockReduceMotion = true;
     const view = await render(<WizardProgressBar fills={[0.25]} label="x" percent={25} />);
     await act(async () => {
-      view.rerender(<WizardProgressBar fills={[0.5]} label="x" percent={50} />);
+      await view.rerender(<WizardProgressBar fills={[0.5]} label="x" percent={50} />);
     });
     expect(mockWithTiming).not.toHaveBeenCalled();
   });

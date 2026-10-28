@@ -198,7 +198,7 @@ const renderScreen = (postId = POST_ID, sightingId = SIGHTING_ID) =>
 
 const press = async (node: Parameters<typeof fireEvent.press>[0]) => {
   await act(async () => {
-    fireEvent.press(node);
+    await fireEvent.press(node);
   });
 };
 /** Every plain-string Text on screen, in tree (reading) order. */
@@ -337,7 +337,7 @@ describe('the decision', () => {
     // The next fetch: the owner changed it elsewhere and a recovery credited it.
     ready(sighting({ status: 'credited', reviewedAt: '2026-10-08T12:00:00Z' }));
     await act(async () => {
-      view.rerender(<SightingDetailScreen postId={POST_ID} sightingId={SIGHTING_ID} />);
+      await view.rerender(<SightingDetailScreen postId={POST_ID} sightingId={SIGHTING_ID} />);
     });
     expect(view.getByText('Credited')).toBeTruthy();
     expect(view.queryByText('Not your car')).toBeNull();
@@ -351,7 +351,7 @@ describe('the decision', () => {
     // payload (another field moved), still carrying the old status.
     ready(sighting({ status: 'unverified', note: 'Still outside the Tesco' }));
     await act(async () => {
-      view.rerender(<SightingDetailScreen postId={POST_ID} sightingId={SIGHTING_ID} />);
+      await view.rerender(<SightingDetailScreen postId={POST_ID} sightingId={SIGHTING_ID} />);
     });
     expect(view.getByText('Still outside the Tesco')).toBeTruthy();
     expect(view.getByText('Not your car')).toBeTruthy();
@@ -366,8 +366,8 @@ describe('the decision', () => {
     // Both taps inside ONE act: they land before any re-render, so both see
     // the same render's state — exactly a fast double tap on a device.
     await act(async () => {
-      fireEvent.press(confirm);
-      fireEvent.press(confirm);
+      await fireEvent.press(confirm);
+      await fireEvent.press(confirm);
     });
     expect(mockHelpful).toHaveBeenCalledTimes(1);
   });
@@ -377,8 +377,8 @@ describe('the decision', () => {
     const view = await renderScreen();
     const notMine = view.getByRole('button', { name: 'Not my car' });
     await act(async () => {
-      fireEvent.press(notMine);
-      fireEvent.press(notMine);
+      await fireEvent.press(notMine);
+      await fireEvent.press(notMine);
     });
     expect(mockNotMine).toHaveBeenCalledTimes(1);
   });
@@ -634,7 +634,7 @@ describe('the evidence', () => {
   it('marks a library photo ON the photo — ADR-0003', async () => {
     const view = await renderScreen();
     await act(async () => {
-      fireEvent(view.getByTestId('sighting-photos'), 'layout', {
+      await fireEvent(view.getByTestId('sighting-photos'), 'layout', {
         nativeEvent: { layout: { width: 390 } },
       });
     });

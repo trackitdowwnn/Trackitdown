@@ -1,18 +1,18 @@
 /**
  * WHAT:  useOpenOnArrival — run `open` exactly ONCE, the first time `ready`
- *        becomes true, after the screen's push transition has finished.
+ *        becomes true, deferred to the next tick.
  * WHY:   A long-press on My listings raises the owner's Manage sheet as soon as
  *        that listing's details have loaded. "Once" matters: the details
  *        reload after every edit and on the 30s poll, and a sheet that
  *        re-opened on each of those would fight the owner.
- *        runAfterInteractions so anything still animating settles before the
- *        sheet slides up, rather than the two animating over each other.
+ *        The defer only moves the open out of the commit that made `ready`
+ *        true. It does NOT wait for the push transition: RN 0.86's
+ *        runAfterInteractions (used here before) was only this next-tick stub.
  * LINKS: src/features/vehicles/screens/MyPostsScreen.tsx (ListingManager,
  *        the caller).
  */
 
 import { useEffect, useRef } from 'react';
-import { InteractionManager } from 'react-native';
 
 export function useOpenOnArrival(ready: boolean, open: () => void): void {
   const done = useRef(false);
@@ -26,12 +26,12 @@ export function useOpenOnArrival(ready: boolean, open: () => void): void {
     if (!ready || done.current) {
       return;
     }
-    const task = InteractionManager.runAfterInteractions(() => {
+    const timer = setTimeout(() => {
       // Marked done only once it has actually run, so a `ready` that flickers
-      // off before the transition ends (and cancels this) still gets its turn.
+      // off before this fires (and cancels it) still gets its turn.
       done.current = true;
       openRef.current();
-    });
-    return () => task.cancel();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [ready]);
 }

@@ -52,7 +52,7 @@ const statusIs = () => screen.getByTestId('status').props.children;
 const settlingIs = () => screen.getByTestId('settling').props.children;
 const settle = async () => {
   await act(async () => {
-    fireEvent.press(screen.getByTestId('settle'));
+    await fireEvent.press(screen.getByTestId('settle'));
   });
 };
 
@@ -138,7 +138,7 @@ describe('the derived states', () => {
     mockSession = { status: 'signedIn', userId: 'user-2' };
     mockFetch.mockReturnValue(new Promise(() => {})); // second read never settles
     await act(async () => {
-      view.rerender(<Probe />);
+      await view.rerender(<Probe />);
     });
 
     // Keyed on the user, so the previous row cannot be reused while the new
@@ -206,8 +206,8 @@ describe('the settling window', () => {
     const before = mockFetch.mock.calls.length;
 
     await act(async () => {
-      fireEvent.press(screen.getByTestId('settle'));
-      fireEvent.press(screen.getByTestId('settle'));
+      await fireEvent.press(screen.getByTestId('settle'));
+      await fireEvent.press(screen.getByTestId('settle'));
     });
     expect(mockFetch.mock.calls.length).toBe(before + 1);
   });
@@ -219,7 +219,7 @@ describe('the settling window', () => {
     const onUnmount = mockFetch.mock.calls.length;
 
     await act(async () => {
-      view.unmount();
+      await view.unmount();
       jest.advanceTimersByTime(20000);
     });
     expect(mockFetch.mock.calls.length).toBe(onUnmount);
