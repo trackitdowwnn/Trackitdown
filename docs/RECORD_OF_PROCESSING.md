@@ -220,6 +220,11 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
 - **Data:** `payments` — Stripe ids, amounts, fees, status and dates,
   `post_snapshot`, `payee_snapshot` (the payee's Stripe account id once their
   account is deleted); `stripe_webhook_events` ids. **No card details.**
+  `audit_payment_events` (2026-10-28): an append-only copy of every money
+  change to a payment — payment and post id, kind, status before and after,
+  amounts, Stripe ids, and the system role that made it. **No user id, payee
+  account, name or place**, and no foreign keys, so it outlives the post or
+  account it describes. No API role can read or write it.
 - **Purpose:** take the fee or hold the bounty; refund; pay the spotter.
 - **Basis:** contract; legal obligation (financial records); Art. 17(3)(b)/(e)
   for the snapshot kept after a post is deleted.
@@ -228,7 +233,8 @@ Lawful bases quoted are the privacy policy's ("How we use it"): **contract**
   6 years from the end of the financial year (the usual UK tax-records rule;
   to confirm with the solicitor/accountant). Not enforced yet: no ledger row
   is that old. Webhook dedup ids: 30 days (`purge_old_webhook_events`,
-  2026-10-22).
+  2026-10-22). `audit_payment_events`: 6 years, as evidence (legal
+  obligation); no purge job until a row is that old (2032).
 - **Security:** amounts server-authoritative; signed webhooks; service-role or
   SECURITY DEFINER access only.
 
