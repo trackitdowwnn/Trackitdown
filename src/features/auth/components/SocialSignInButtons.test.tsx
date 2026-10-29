@@ -72,6 +72,12 @@ describe('the spinner sits on the button that was tapped (device check, 2026-10-
       disabled: true,
       busy: true,
     });
+    // The spinner alone, like Continue's (owner, same day): Google's logo and
+    // label hidden underneath, Apple's untouched.
+    const opacityAround = (label: string) =>
+      StyleSheet.flatten(view.getByText(label).parent?.props.style)?.opacity;
+    expect(opacityAround('Continue with Google')).toBe(0);
+    expect(opacityAround('Continue with Apple')).not.toBe(0);
   });
 
   it('nothing in flight: no spinner anywhere', async () => {

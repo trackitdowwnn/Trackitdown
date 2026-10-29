@@ -23,6 +23,7 @@ export { requestSaveCarNudge, useSaveCarNudgeIntent } from './lib/exitNudgeInten
 // The + button's report host (blank form / chooser / prefilled form, in place).
 export { StartReportScreen } from './screens/StartReportScreen';
 export { useStartReport } from './hooks/useStartReport';
+export { FinishDraftSheet, type FinishDraftSheetRef } from './components/FinishDraftSheet';
 export { MyCarsScreen } from './screens/MyCarsScreen';
 export {
   ReportSavedCarScreen,
