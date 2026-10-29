@@ -92,7 +92,7 @@ export const TELEMETRY_KEYS: ReadonlySet<string> = new Set([
   'action', 'answered', 'app', 'attempt', 'attempts', 'bytes', 'candidates', 'canAskAgain',
   'category', 'changed', 'code', 'coldStart', 'context', 'count', 'counted', 'created',
   'criteriaKeys', 'details', 'distanceMiles', 'durationMs', 'editing', 'enabled', 'error',
-  'face', 'fields', 'flags', 'fn', 'from', 'fromIndex', 'fromPhotos', 'gaveNote',
+  'face', 'fields', 'flags', 'fn', 'frame', 'from', 'fromIndex', 'fromPhotos', 'gaveNote',
   'gaveReason', 'granted', 'hadPref', 'hadTypedPlate', 'hasMissingPartsNote', 'hasNote',
   'index', 'kind', 'length', 'located', 'marked', 'missingParts', 'mode', 'newUser',
   'nextStep', 'of', 'offset', 'ota', 'path', 'permissionMs', 'photoCount', 'platform',

@@ -5,10 +5,16 @@
  * WHY:   One consistent log format makes the app's behaviour readable
  *        by humans AND by Claude Code during debugging, and gives one
  *        central place to enforce privacy rules. Raw console.log is
- *        banned in app code (ESLint no-console) — this is the only file
+ *        banned in app code (by convention; the ESLint no-console rule is
+ *        still to be added — docs/LOGGING.md) — this is the only file
  *        allowed to call it.
+ *        Level: EXPO_PUBLIC_LOG_LEVEL (default debug in dev, info in a
+ *        release build). Redaction mirrors the server's
+ *        supabase/functions/_shared/redact.ts (keys at any depth up to 5,
+ *        plus secret-shaped text); logger.test.ts pins the two together.
  * LINKS: docs/LOGGING.md (the standard — read it before logging),
- *        docs/SECURITY_AND_TRUST.md (privacy rules enforced here).
+ *        docs/SECURITY_AND_TRUST.md (privacy rules enforced here),
+ *        docs/logging-decisions.md.
  */
 
  
@@ -43,27 +49,75 @@ const CONSOLE_METHOD: Record<LogLevel, "log" | "warn" | "error"> = {
   error: "error",
 };
 
+const LEVEL_RANK: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error: 40 };
+
+/** EXPO_PUBLIC_LOG_LEVEL, read once (Expo inlines it at build time). */
+export function thresholdFor(setting: string | undefined, dev: boolean): number {
+  const level = setting?.toLowerCase();
+  if (level && Object.hasOwn(LEVEL_RANK, level)) return LEVEL_RANK[level as LogLevel];
+  return LEVEL_RANK[dev ? "debug" : "info"];
+}
+const threshold = thresholdFor(process.env.EXPO_PUBLIC_LOG_LEVEL, __DEV__);
+
 // Data keys auto-masked as a safety net. Backstop only — never rely on
 // this instead of simply not logging sensitive values. SAFETY: see
-// docs/LOGGING.md privacy rules.
-const SENSITIVE_KEY_PATTERN = /token|password|secret|authorization|apikey|api_key/i;
+// docs/LOGGING.md privacy rules. ⚠️ The same list as the server's redact.ts.
+export const SENSITIVE_KEY_PATTERN =
+  /token|secret|password|passwd|authorization|cookie|key$|email|phone|iban|account_?number|sort_?code|lat$|lng$|latitude|longitude|coord|plate|address|postcode|birth|dob|url|link|content|nickname|note|body/i;
+
+/** A number under one of these is a count, and kept (the server's rule). */
+const COUNT_KEY = /(count|purged|sent|emailed|removed|skipped|total)$/i;
+
+const MASK = "[REDACTED]";
+const MAX_DEPTH = 5;
+
+/** Secret-shaped text, masked wherever it appears (the server's list). */
+const SECRET_TEXT: [RegExp, string][] = [
+  [/eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g, MASK],
+  [/\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]+/g, MASK],
+  [/\bwhsec_[A-Za-z0-9]+/g, MASK],
+  [/\b\w*_secret_\w+/g, MASK],
+  [/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, `Bearer ${MASK}`],
+  [/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, MASK],
+  [/([?&](?:token|sig|signature|x-amz-signature)=)[^&\s"']+/gi, `$1${MASK}`],
+  [/\b[A-Z]{2}[0-9]{2} ?[A-Z]{3}\b/g, MASK],
+];
+
+function scrubText(text: string): string {
+  return SECRET_TEXT.reduce((out, [pattern, replacement]) => out.replace(pattern, replacement), text);
+}
 
 const RING_BUFFER_SIZE = 300;
 const ringBuffer: LogEntry[] = [];
 const sinks: LogSink[] = [];
 
-/** Masks sensitive-looking keys one level deep. Backstop, not a licence. */
-function redactData(data: Record<string, unknown>): Record<string, unknown> {
+/** Masks sensitive keys at any depth up to 5, and secret-shaped text. Backstop, not a licence. */
+export function redactValue(value: unknown, depth = 0): unknown {
+  if (typeof value === "string") return scrubText(value);
+  if (value === null || typeof value !== "object") return value;
+  if (value instanceof Error) return { name: value.name, message: scrubText(value.message) };
+  if (depth >= MAX_DEPTH) return "[too deep]";
+  if (Array.isArray(value)) return value.map((item) => redactValue(item, depth + 1));
   const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(data)) {
-    out[key] = SENSITIVE_KEY_PATTERN.test(key) ? "[REDACTED]" : value;
+  for (const [key, item] of Object.entries(value)) {
+    const isCount = typeof item === "number" && COUNT_KEY.test(key);
+    const isFlag = typeof item === "boolean" || item === null || item === undefined;
+    out[key] = SENSITIVE_KEY_PATTERN.test(key) && !isCount && !isFlag ? MASK : redactValue(item, depth + 1);
   }
   return out;
 }
 
+function redactData(data: Record<string, unknown>): Record<string, unknown> {
+  try {
+    return redactValue(data) as Record<string, unknown>;
+  } catch {
+    return { redaction: "failed" };
+  }
+}
+
 function emit(level: LogLevel, feature: string, message: string, data?: Record<string, unknown>): void {
-  // Debug logs never run in production builds.
-  if (level === "debug" && !__DEV__) return;
+  // Below the configured level (debug never runs in a release build by default).
+  if (LEVEL_RANK[level] < threshold) return;
 
   const entry: LogEntry = {
     timestamp: new Date().toISOString(),
