@@ -296,6 +296,57 @@ describe('⚠️ a token from another Expo project', () => {
     expect(bodies.slice(1)).toEqual([OURS, [FOREIGN]]);
   });
 
+  // Audit run 3, lead 2: an error Expo does not explain with a project map.
+  function unexplainedRejection(fails: (tokens: string[]) => boolean) {
+    const bodies: string[][] = [];
+    global.fetch = jest.fn(async (_url: string, init: { body: string }) => {
+      const tokens = (JSON.parse(init.body) as { to: string }[]).map((m) => m.to);
+      bodies.push(tokens);
+      if (fails(tokens)) {
+        return {
+          ok: false,
+          status: 401,
+          json: async () => ({ errors: [{ code: 'UNAUTHORIZED', message: 'no access' }] }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ data: tokens.map((_, i) => ({ status: 'ok', id: `t-${i}` })) }),
+      };
+    }) as unknown as typeof fetch;
+    return bodies;
+  }
+
+  it("⚠️ halves a batch a stranger's token fails for any reason, and prunes only that token", async () => {
+    const bodies = unexplainedRejection((tokens) => tokens.includes(FOREIGN));
+    const client = sendClient();
+
+    const result = await sendExpoPush(client as never, [
+      message(OURS[0]),
+      message(FOREIGN),
+      ...OURS.slice(1).map(message),
+    ]);
+
+    expect(result).toEqual({ accepted: 3, rejected: 1, pruned: 1 });
+    expect(client.rpc).toHaveBeenCalledWith('prune_push_token', { p_token: FOREIGN });
+    expect(bodies.length).toBeLessThanOrEqual(5);
+  });
+
+  it('⚠️ never prunes anyone when EVERY request fails — the cause is ours, not a token', async () => {
+    const bodies = unexplainedRejection(() => true);
+    const client = sendClient();
+    const many = Array.from({ length: 100 }, (_, i) => message(`ExponentPushToken[u${i}]`));
+
+    const result = await sendExpoPush(client as never, many);
+
+    expect(result.accepted).toBe(0);
+    expect(result.rejected).toBe(100);
+    expect(result.pruned).toBe(0);
+    expect(client.rpc).not.toHaveBeenCalledWith('prune_push_token', expect.anything());
+    // Bounded: one request plus at most 64 halving requests.
+    expect(bodies.length).toBeLessThanOrEqual(65);
+  });
+
   it('any other request failure still rejects the chunk without resending', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
