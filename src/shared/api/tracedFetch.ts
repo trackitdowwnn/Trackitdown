@@ -7,8 +7,10 @@
  * WHY:   docs/logging-decisions.md: an app-side failure must lead to its
  *        one server log line. The server continues the trace id from
  *        `traceparent` and answers with `x-request-id`; the request id lands
- *        in the device log, which a bug report carries. Telemetry never gets
- *        it (a UUID — decision 3), only the function and status of a 5xx.
+ *        in the device log (Metro, and the dev-only "copy logs"). It does NOT
+ *        leave the phone: bug reports carry event names only
+ *        (bugBreadcrumbs.ts) and telemetry drops UUIDs (decision 3) — a 5xx
+ *        reaches telemetry as the function and status, matched by time.
  *        Trace ids are random, not cryptographic: they correlate, they grant
  *        nothing.
  * LINKS: ./supabase.ts (global.fetch); supabase/functions/_shared/handler.ts
