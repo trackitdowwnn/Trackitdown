@@ -81,6 +81,44 @@ function safeError(error: unknown): unknown {
   return copy;
 }
 
+/** The first word of an event name says which part of the product it is. */
+const AREAS: Record<string, string> = {
+  payments: 'Payments',
+  notifications: 'Notifications',
+  posts: 'Listings',
+  drafts: 'Drafts',
+  sightings: 'Sightings',
+  storage: 'Storage',
+  retention: 'Data retention',
+  profile: 'Account',
+  export: 'Data export',
+  ops: 'Ops',
+};
+
+/** An issue title a person can read: `payments_refund_create_failed` →
+ *  `Payments: refund create failed`; no known area → `Claim failed`. */
+export function readableTitle(msg: string): string {
+  const [first, ...rest] = msg.split('_').filter(Boolean);
+  if (first && rest.length && Object.hasOwn(AREAS, first)) {
+    return `${AREAS[first]}: ${rest.join(' ')}`;
+  }
+  const words = msg.split('_').filter(Boolean).join(' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** What a describeError() value under `data.error` says, for tags. */
+function errorTags(data: LogData | undefined): Record<string, string> {
+  const error = data?.error as { type?: unknown; name?: unknown; code?: unknown } | undefined;
+  if (!error || typeof error !== 'object') return {};
+  const tags: Record<string, string> = {};
+  const type = error.type ?? error.name;
+  if (typeof type === 'string') tags.error_type = type;
+  if (typeof error.code === 'string' || typeof error.code === 'number') {
+    tags.error_code = String(error.code);
+  }
+  return tags;
+}
+
 /** One capture in its own scope, then a flush kept off the response path. */
 function capture(
   send: (sdk: Sdk) => void,
@@ -93,10 +131,15 @@ function capture(
     .then(async (sdk) => {
       if (!sdk) return;
       sdk.withScope((scope) => {
+        // The line under the title in Sentry: which function it happened in.
+        scope.setTransactionName(context?.fn ?? 'unknown');
         scope.setTag('fn', context?.fn ?? 'unknown');
         if (context?.request_id) scope.setTag('request_id', context.request_id);
         if (context?.trace_id) scope.setTag('trace_id', context.trace_id);
         scope.setTag('event', msg);
+        for (const [key, value] of Object.entries(errorTags(options.data))) {
+          scope.setTag(key, value);
+        }
         if (options.data) scope.setExtras(options.data);
         if (options.fingerprint) scope.setFingerprint(options.fingerprint);
         send(sdk);
@@ -140,7 +183,10 @@ export function startSentry(options: { env?: Env; load?: () => Promise<Sdk> } = 
     if (REPORTED_DIRECTLY.has(msg)) return;
     // One Sentry issue per function + event, however the data differs.
     const fingerprint = [currentContext()?.fn ?? 'unknown', msg];
-    void capture((sdk) => sdk.captureMessage(msg, 'error'), msg, { data, fingerprint });
+    void capture((sdk) => sdk.captureMessage(readableTitle(msg), 'error'), msg, {
+      data,
+      fingerprint,
+    });
   });
 }
 

@@ -11,6 +11,7 @@
 
 import { createLog, runInContext } from './log';
 import {
+  readableTitle,
   reportException,
   resetSentryForTests,
   scrubEvent,
@@ -19,7 +20,12 @@ import {
 } from './sentry';
 
 function fakeSdk() {
-  const scopes: { tags: Record<string, string>; extras?: unknown; fingerprint?: string[] }[] = [];
+  const scopes: {
+    tags: Record<string, string>;
+    extras?: unknown;
+    fingerprint?: string[];
+    transaction?: string;
+  }[] = [];
   const sent: { kind: string; value: unknown }[] = [];
   let current: (typeof scopes)[number];
   const sdk = {
@@ -33,6 +39,7 @@ function fakeSdk() {
         setTag: (k: string, v: string) => (current.tags[k] = v),
         setExtras: (e: unknown) => (current.extras = e),
         setFingerprint: (f: string[]) => (current.fingerprint = f),
+        setTransactionName: (t: string) => (current.transaction = t),
       });
     }),
     captureMessage: jest.fn((value: string) => sent.push({ kind: 'message', value })),
@@ -96,22 +103,33 @@ describe('with SENTRY_DSN', () => {
     expect(options.beforeBreadcrumb()).toBeNull();
   });
 
-  it('sends an error line, grouped by function + event, tagged with its request', async () => {
+  it('sends an error line with a readable title, grouped by function + event', async () => {
     const { sent, scopes } = start();
     runInContext(ctx, () =>
-      quiet().error('payments_refund_create_failed', { post_id: 'p1', email: 'a@b.co' }),
+      quiet().error('payments_refund_create_failed', {
+        post_id: 'p1',
+        email: 'a@b.co',
+        error: { name: 'Error', type: 'StripeCardError', code: 'card_declined' },
+      }),
     );
     await settle();
     await settle();
-    expect(sent).toEqual([{ kind: 'message', value: 'payments_refund_create_failed' }]);
+    expect(sent).toEqual([{ kind: 'message', value: 'Payments: refund create failed' }]);
     expect(scopes[0]).toEqual({
+      transaction: 'stripe-webhook',
       tags: {
         fn: 'stripe-webhook',
         request_id: 'req-1',
         trace_id: 'a'.repeat(32),
         event: 'payments_refund_create_failed',
+        error_type: 'StripeCardError',
+        error_code: 'card_declined',
       },
-      extras: { post_id: 'p1', email: '[redacted]' },
+      extras: {
+        post_id: 'p1',
+        email: '[redacted]',
+        error: { name: 'Error', type: 'StripeCardError', code: 'card_declined' },
+      },
       fingerprint: ['stripe-webhook', 'payments_refund_create_failed'],
     });
   });
@@ -173,6 +191,24 @@ describe('with SENTRY_DSN', () => {
     startSentry({ env: () => 'dsn', load: () => Promise.reject(new Error('offline')) });
     expect(() => quiet().error('x')).not.toThrow();
     await expect(reportException(new Error('x'), 'y')).resolves.toBeUndefined();
+  });
+});
+
+describe('readableTitle', () => {
+  it.each([
+    [
+      'payments_webhook_signature_verification_failed',
+      'Payments: webhook signature verification failed',
+    ],
+    ['notifications_expo_send_failed', 'Notifications: expo send failed'],
+    ['posts_delete_refused', 'Listings: delete refused'],
+    ['profile_auth_user_delete_failed', 'Account: auth user delete failed'],
+    ['export_gather_failed', 'Data export: gather failed'],
+    ['ops_alert_partial_refund_recorded', 'Ops: alert partial refund recorded'],
+    ['claim_failed', 'Claim failed'],
+    ['constructor_x', 'Constructor x'],
+  ])('%s → %s', (msg, title) => {
+    expect(readableTitle(msg)).toBe(title);
   });
 });
 
