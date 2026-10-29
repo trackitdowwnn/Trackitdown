@@ -5,7 +5,8 @@
  * WHY:   One consistent log format makes the app's behaviour readable
  *        by humans AND by Claude Code during debugging, and gives one
  *        central place to enforce privacy rules. Raw console.log is
- *        banned in app code (ESLint no-console) — this is the only file
+ *        banned in app code (by convention; the ESLint no-console rule is
+ *        still to be added — docs/LOGGING.md) — this is the only file
  *        allowed to call it.
  *        Level: EXPO_PUBLIC_LOG_LEVEL (default debug in dev, info in a
  *        release build). Redaction mirrors the server's
