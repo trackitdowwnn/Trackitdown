@@ -118,16 +118,39 @@ export async function sendExpoPush(
   if (messages.length === 0) return result;
 
   for (const batch of chunk(messages, MAX_MESSAGES_PER_REQUEST)) {
-    await sendChunk(admin, batch, result);
+    const isolate: Isolation = { requestsLeft: MAX_ISOLATION_REQUESTS, failedAlone: [] };
+    const acceptedBefore = result.accepted;
+    await sendChunk(admin, batch, result, isolate);
+    // A token that fails a request on its own is pruned ONLY when others in
+    // the same chunk got through — otherwise the cause was ours (a bad access
+    // token, say), and pruning would delete every user's token.
+    if (isolate.failedAlone.length > 0 && result.accepted > acceptedBefore) {
+      result.pruned += await pruneTokens(admin, isolate.failedAlone);
+    }
   }
 
   return result;
+}
+
+/** Halving a 100-message chunk to one bad message takes ~14 requests; 64
+ *  leaves room for a few bad tokens without letting a global failure multiply. */
+const MAX_ISOLATION_REQUESTS = 64;
+
+interface Isolation {
+  requestsLeft: number;
+  failedAlone: string[];
+}
+
+/** A 4xx that one message could cause. Not 429 (our rate) and not a 5xx (Expo's outage). */
+function couldBeOneToken(status: number): boolean {
+  return status >= 400 && status < 500 && status !== 429;
 }
 
 async function sendChunk(
   admin: SupabaseClient,
   batch: readonly PushMessage[],
   result: SendPushResult,
+  isolate: Isolation,
 ): Promise<void> {
   let tickets: ExpoTicket[];
   try {
@@ -144,8 +167,31 @@ async function sendChunk(
       const groups = splitByProject(batch, payload.errors);
       if (groups) {
         log.error('notifications_batch_mixed_expo_projects_resending_per_project');
-        for (const group of groups) await sendChunk(admin, group, result);
+        for (const group of groups) await sendChunk(admin, group, result, isolate);
         return;
+      }
+      // SAFETY: any OTHER error one stranger's token can cause (Enhanced
+      // Security on their project, say) would still fail everyone sharing the
+      // request, and Expo does not name the token (audit run 3, lead 2). Halve
+      // until the message that fails alone is found; the rest still go.
+      if (couldBeOneToken(response.status)) {
+        if (batch.length === 1) {
+          log.warn('notifications_push_token_failed_alone', { status: response.status });
+          isolate.failedAlone.push(batch[0].to);
+          result.rejected += 1;
+          return;
+        }
+        if (isolate.requestsLeft >= 2) {
+          isolate.requestsLeft -= 2;
+          log.warn('notifications_batch_rejected_halving', {
+            size: batch.length,
+            status: response.status,
+          });
+          const middle = Math.ceil(batch.length / 2);
+          await sendChunk(admin, batch.slice(0, middle), result, isolate);
+          await sendChunk(admin, batch.slice(middle), result, isolate);
+          return;
+        }
       }
       // Request-level failure (TOO_MANY_REQUESTS, UNAUTHORIZED, …). Nothing
       // in this chunk was accepted; the post is still visible in-app.
