@@ -18,7 +18,7 @@
  *        over the app someone is already looking at.
  * LINKS: ../lib/pushRoute.ts (the pure mapping), ../hooks/usePushRegistration.ts;
  *        src/app/_layout.tsx (mounts this); src/shared/ui/Toast.tsx;
- *        https://docs.expo.dev/versions/v57.0.0/sdk/notifications/.
+ *        https://docs.expo.dev/versions/v58.0.0/sdk/notifications/.
  */
 
 import * as Notifications from 'expo-notifications';

@@ -72,7 +72,7 @@ beforeEach(() => {
     ok: true,
     arrayBuffer: async () => PDF_BYTES.buffer,
   }) as unknown as typeof fetch;
-  openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+  openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
 });
 
 /** Renders, waits for the viewer, and has it draw the PDF. */

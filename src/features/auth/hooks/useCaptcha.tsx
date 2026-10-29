@@ -41,7 +41,9 @@ export interface Captcha {
 
 export function useCaptcha(): Captcha {
   const [config] = useState(captchaConfig);
-  const ref = useRef<WebView>(null);
+  // shortcut: react-native-webview 14.0.1 types its class as WebView<P = undefined>, so a
+  // bare <WebView> has never props; <object> restores them. Drop it once fixed upstream.
+  const ref = useRef<WebView<object>>(null);
   const pending = useRef<Pending | null>(null);
   const loaded = useRef(false);
   const [challenge, setChallenge] = useState(false);
@@ -83,7 +85,7 @@ export function useCaptcha(): Captcha {
   };
 
   const widget = (
-    <WebView
+    <WebView<object>
       ref={ref}
       testID="captcha-widget"
       accessibilityLabel="Security check"

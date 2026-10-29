@@ -19,7 +19,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  type TextInput,
+  type TextInputInstance,
   View,
 } from 'react-native';
 
@@ -70,7 +70,7 @@ export function OtpInput({
   autoFocus = true,
 }: OtpInputProps) {
   const styles = useThemedStyles(makeStyles);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputInstance>(null);
   // Lazy useState (not useRef().current) so the value is created once without
   // reading a ref during render (react-compiler lint).
   const [shakeX] = useState(() => new Animated.Value(0));

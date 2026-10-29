@@ -12,7 +12,7 @@
  * LINKS: src/features/notifications/hooks/usePushRegistration.ts (caller);
  *        app.json (extra.eas.projectId — required to mint a token);
  *        supabase/functions/_shared/push.ts (sends to ALERTS_CHANNEL_ID);
- *        https://docs.expo.dev/versions/v57.0.0/sdk/notifications/.
+ *        https://docs.expo.dev/versions/v58.0.0/sdk/notifications/.
  */
 
 import Constants from 'expo-constants';

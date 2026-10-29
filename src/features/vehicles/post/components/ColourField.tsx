@@ -31,9 +31,9 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  type TextInputInstance,
   useWindowDimensions,
   View,
-  type TextInput,
 } from 'react-native';
 import Animated, {
   FadeInDown,
@@ -196,7 +196,7 @@ export function ColourField({
 }: ColourFieldProps) {
   const styles = useThemedStyles(makeStyles);
   const sheetRef = useRef<BottomSheetRef>(null);
-  const noteRef = useRef<TextInput>(null);
+  const noteRef = useRef<TextInputInstance>(null);
   const [sheetUp, setSheetUp] = useState(false);
   // Done pressed on a blank required note: the box says why (UI review —
   // a disabled Done said nothing to anyone).

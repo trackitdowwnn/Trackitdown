@@ -12,7 +12,7 @@
  */
 
 import { render } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
+import { type StyleProp, StyleSheet, type ViewStyle } from 'react-native';
 
 import { sizes } from '@/shared/theme';
 // Straight from the palette module — the barrel no longer exports `colors`, so
@@ -36,9 +36,9 @@ const bar = (day: string, count: number, fraction: number): SparklineBar => ({
  *  in the last N days"), and a selector that drifts with copy is how the screen
  *  test's chart assertions silently stopped testing anything. */
 const barsOf = (view: ReturnType<typeof render> extends Promise<infer T> ? T : never) =>
-  view.getByTestId('stats-sparkline').props.children as { props: { style: unknown } }[];
+  view.getByTestId('stats-sparkline').props.children as { props: { style: StyleProp<ViewStyle> } }[];
 
-const flat = (node: { props: { style: unknown } }) =>
+const flat = (node: { props: { style: StyleProp<ViewStyle> } }) =>
   StyleSheet.flatten(node.props.style) as { height: number; backgroundColor: string };
 
 /** WCAG relative luminance for a #rrggbb string. */

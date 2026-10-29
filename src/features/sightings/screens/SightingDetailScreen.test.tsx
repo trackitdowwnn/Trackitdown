@@ -875,7 +875,7 @@ describe('the actions', () => {
   ])(
     '⚠️ %s: the safety notice stands by the point — and again before that app opens',
     async (testID, confirmLabel, url) => {
-      const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+      const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
       try {
         const view = await renderScreen();
         expect(view.getAllByText(SAFETY_NOTICE_BODY)).toHaveLength(1);

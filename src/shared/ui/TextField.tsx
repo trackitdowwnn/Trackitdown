@@ -41,7 +41,7 @@ import {
   StyleSheet,
   Text,
   View,
-  type TextInput,
+  type TextInputInstance,
   type TextInputProps,
 } from 'react-native';
 
@@ -107,7 +107,7 @@ export interface TextFieldProps
   disabled?: boolean;
   /** The input itself (React 19 ref-as-prop, forwarded through `...rest`) —
    *  e.g. to move screen-reader focus onto it. */
-  ref?: Ref<TextInput>;
+  ref?: Ref<TextInputInstance>;
 }
 
 /** Per-variant TextInput defaults; callers can still override via ...rest. */

@@ -26,7 +26,7 @@
  *        useApplyUpdateOnLaunch.ts is the only thing that touches the native
  *        module.
  * LINKS: ./useApplyUpdateOnLaunch.ts (the hook, wired in src/app/_layout.tsx);
- *        https://docs.expo.dev/versions/v57.0.0/sdk/updates/ (the contract);
+ *        https://docs.expo.dev/versions/v58.0.0/sdk/updates/ (the contract);
  *        ./startupTrace.ts (the same "module evaluation ≈ launch" clock).
  */
 

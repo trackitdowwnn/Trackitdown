@@ -9,7 +9,7 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
+import { type StyleProp, StyleSheet, type ViewStyle } from 'react-native';
 
 import type { MapPost } from '../types';
 import { MapPins } from './MapPins';
@@ -57,7 +57,7 @@ type MarkerNode = {
     image?: { uri: string };
     tracksViewChanges: boolean;
   };
-  children: { props: { collapsable?: boolean; style?: unknown } }[];
+  children: { props: { collapsable?: boolean; style?: StyleProp<ViewStyle> } }[];
 };
 
 const renderPins = async (
@@ -390,7 +390,7 @@ describe('⚠️ the Android bitmap rules', () => {
       const wrapper = node.children[0];
       expect(StyleSheet.flatten(wrapper.props.style as never) ?? {}).toEqual({});
       const pill = StyleSheet.flatten(
-        (wrapper as unknown as { children: { props: { style?: unknown } }[] }).children[0].props.style as never,
+        (wrapper as unknown as { children: { props: { style?: StyleProp<ViewStyle> } }[] }).children[0].props.style as never,
       ) as Record<string, unknown>;
       expect(pill).not.toHaveProperty('margin');
       expect(pill).not.toHaveProperty('minWidth');
@@ -431,7 +431,7 @@ describe('⚠️ the Android bitmap rules', () => {
     }
     const pillPadding = (node: MarkerNode) =>
       StyleSheet.flatten(
-        (node.children[0] as unknown as { children: { props: { style?: unknown } }[] }).children[0].props.style,
+        (node.children[0] as unknown as { children: { props: { style?: StyleProp<ViewStyle> } }[] }).children[0].props.style,
       ) as { paddingHorizontal: number };
     expect(pillPadding(selection(view)[0]).paddingHorizontal).toBeGreaterThan(
       pillPadding(statics(view)[0]).paddingHorizontal,

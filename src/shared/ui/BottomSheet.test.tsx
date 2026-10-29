@@ -20,7 +20,17 @@
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { createRef, type ReactNode } from 'react';
-import { BackHandler, Dimensions, Keyboard, Platform, StyleSheet, Text, TextInput } from 'react-native';
+import {
+  BackHandler,
+  Dimensions,
+  Keyboard,
+  Platform,
+  type StyleProp,
+  StyleSheet,
+  Text,
+  TextInput,
+  type ViewStyle,
+} from 'react-native';
 
 import { BottomSheet, sheetRevealOffset, type BottomSheetRef } from './BottomSheet';
 import { TextField } from './TextField';
@@ -284,7 +294,7 @@ describe('BottomSheet keyboard lift (Android)', () => {
   function contentPaddingBottom(getByTestId: (testId: string) => { props: Record<string, unknown> }) {
     const scrollView = getByTestId('sheet-scroll-view');
     const style = StyleSheet.flatten(
-      scrollView.props.contentContainerStyle,
+      scrollView.props.contentContainerStyle as StyleProp<ViewStyle>,
     ) as { paddingBottom: number };
     return style.paddingBottom;
   }

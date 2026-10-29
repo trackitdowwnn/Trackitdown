@@ -20,7 +20,7 @@
 
 import { Feather } from '@expo/vector-icons';
 import { memo, useRef } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type ViewInstance } from 'react-native';
 
 import {
   radii,
@@ -44,7 +44,7 @@ export interface FeedTopBarProps {
 export const FeedTopBar = memo(function FeedTopBar({ onPressSearch }: FeedTopBarProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
-  const pillRef = useRef<View>(null);
+  const pillRef = useRef<ViewInstance>(null);
   // Measure the pill in WINDOW (absolute) coords on tap, then open — the
   // surface animates from this exact rect out to full-screen.
   const handlePress = () => {

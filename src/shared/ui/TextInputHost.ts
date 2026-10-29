@@ -15,14 +15,14 @@
  */
 
 import { createContext, createElement, useContext, type ComponentType, type Ref } from 'react';
-import { TextInput, type TextInputProps } from 'react-native';
+import { TextInput, type TextInputInstance, type TextInputProps } from 'react-native';
 
 export const TextInputHostContext =
   createContext<ComponentType<TextInputProps>>(TextInput);
 
 /** Renders the host-provided TextInput (sheet-aware inside a BottomSheet).
  *  Accepts a `ref` to the underlying input (React 19 ref-as-prop). */
-export function HostTextInput(props: TextInputProps & { ref?: Ref<TextInput> }) {
+export function HostTextInput(props: TextInputProps & { ref?: Ref<TextInputInstance> }) {
   const Input = useContext(TextInputHostContext);
   return createElement(Input, props);
 }

@@ -22,7 +22,7 @@
  *        map label's click beats a marker's.
  * LINKS: src/shared/ui/LocationPicker.tsx (MapComponentProps);
  *        app.config.ts (Google Maps API keys);
- *        https://docs.expo.dev/versions/v57.0.0/sdk/map-view/.
+ *        https://docs.expo.dev/versions/v58.0.0/sdk/map-view/.
  *
  * Usage:
  *   import { AppMap } from '@/shared/ui/AppMap';

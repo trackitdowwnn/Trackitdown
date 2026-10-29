@@ -14,7 +14,7 @@
  *        and GOOGLE_MAPS_IOS_API_KEY (enable "Maps SDK for Android" / "Maps
  *        SDK for iOS" in Google Cloud). See .env.example.
  * LINKS: app.json (static base config), src/shared/ui/AppMap.tsx,
- *        https://docs.expo.dev/versions/v57.0.0/sdk/map-view/.
+ *        https://docs.expo.dev/versions/v58.0.0/sdk/map-view/.
  */
 
 import type { ConfigContext, ExpoConfig } from 'expo/config';

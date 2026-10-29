@@ -153,7 +153,7 @@ export function Button({
           <Feather
             name={icon}
             size={sizes.iconSm}
-            color={variantStyle.label.color}
+            color={variantStyle.label.color as string}
             accessible={false}
             importantForAccessibility="no"
           />

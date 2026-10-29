@@ -16,7 +16,7 @@
  */
 
 import { render } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
+import { type StyleProp, StyleSheet, type ViewStyle } from 'react-native';
 
 import { swatchForName } from '@/shared/lib';
 
@@ -28,7 +28,7 @@ import { CarColourTile } from './CarColourTile';
 // module. carColours moved to `@/shared/lib` on 2026-08-28 and the tax went
 // with it — the component now imports the real thing and so does this file.
 
-const fillOf = (element: { props: { style?: unknown } }) =>
+const fillOf = (element: { props: { style?: StyleProp<ViewStyle> } }) =>
   (StyleSheet.flatten(element.props.style) as { backgroundColor?: string }).backgroundColor;
 
 /**

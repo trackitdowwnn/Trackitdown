@@ -34,12 +34,13 @@
 import { Image as ImageIcon, type LucideIcon } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import {
+  type LayoutChangeEvent,
   ScrollView,
+  type ScrollViewInstance,
+  type StyleProp,
   StyleSheet,
   Text,
   View,
-  type LayoutChangeEvent,
-  type StyleProp,
   type ViewStyle,
 } from 'react-native';
 
@@ -100,7 +101,7 @@ export function PhotoPager({
   const palette = usePalette();
   const [width, setWidth] = useState(estimatedWidth);
   const [index, setIndex] = useState(0);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const height = fixedHeight ?? (width > 0 ? width / aspectRatio : 0);
 
   // A shorter list must not leave the page past the end — and the clamp is

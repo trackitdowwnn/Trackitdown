@@ -65,8 +65,10 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  View,
+  type TextInputInstance,
   useWindowDimensions,
+  View,
+  type ViewInstance,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
@@ -238,7 +240,7 @@ export function SelectScreen<V extends string | number>({
 }: SelectScreenProps<V>) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
-  const searchRef = useRef<TextInput>(null);
+  const searchRef = useRef<TextInputInstance>(null);
   const listRef = useRef<FlatList<SelectListItem<V>>>(null);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -275,8 +277,8 @@ export function SelectScreen<V extends string | number>({
   // The pill's measured height, so the list's last rows scroll clear of it at
   // any text size.
   const [pillHeight, setPillHeight] = useState(0);
-  const entryInputRef = useRef<TextInput>(null);
-  const pillRef = useRef<View>(null);
+  const entryInputRef = useRef<TextInputInstance>(null);
+  const pillRef = useRef<ViewInstance>(null);
   if (visible !== prevVisible) {
     setPrevVisible(visible);
     if (visible) {
@@ -815,7 +817,7 @@ export function SelectScreen<V extends string | number>({
                             </View>
                           ) : null}
                         </>
-                      ) : null
+                      ) : undefined
                     }
                     renderItem={({ item, index }) => (
                       <SelectRow

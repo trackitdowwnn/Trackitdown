@@ -64,7 +64,9 @@ export function YourDataScreen() {
   const palette = usePalette();
   const router = useRouter();
   const toast = useToast();
-  const webview = useRef<WebView>(null);
+  // shortcut: react-native-webview 14.0.1 types its class as WebView<P = undefined>, so a
+  // bare <WebView> has never props; <object> restores them. Drop it once fixed upstream.
+  const webview = useRef<WebView<object>>(null);
 
   const [status, setStatus] = useState<Status>('loading');
   const [shown, setShown] = useState(false);
@@ -162,7 +164,7 @@ export function YourDataScreen() {
       ) : (
         <View style={styles.body}>
           {status === 'ready' ? (
-            <WebView
+            <WebView<object>
               ref={webview}
               testID="your-data-pdf"
               source={{ html }}
