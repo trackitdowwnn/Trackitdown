@@ -56,6 +56,32 @@ afterEach(() => {
   mockAppleButton.mockClear();
 });
 
+describe('the spinner sits on the button that was tapped (device check, 2026-10-29)', () => {
+  it('Google in flight: a spinner on Google, none on Apple, both disabled', async () => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    const view = await render(
+      <ThemeControlsContext.Provider
+        value={{ preference: 'light', scheme: 'light', setPreference: jest.fn() }}
+      >
+        <SocialSignInButtons {...props} showAppleWeb disabled loading="google" />
+      </ThemeControlsContext.Provider>,
+    );
+    expect(view.getByTestId('google-sign-in-spinner')).toBeTruthy();
+    expect(view.queryByTestId('apple-sign-in-spinner')).toBeNull();
+    expect(view.getByTestId('google-sign-in').props.accessibilityState).toMatchObject({
+      disabled: true,
+      busy: true,
+    });
+  });
+
+  it('nothing in flight: no spinner anywhere', async () => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    const view = await renderIn('light', true, true);
+    expect(view.queryByTestId('google-sign-in-spinner')).toBeNull();
+    expect(view.queryByTestId('apple-sign-in-spinner')).toBeNull();
+  });
+});
+
 describe('which providers show', () => {
   it('Android, Google set up: "Continue with Google", no Apple', async () => {
     jest.replaceProperty(Platform, 'OS', 'android');

@@ -73,11 +73,13 @@ jest.mock('expo-apple-authentication', () => ({
 }));
 
 const mockGoogleSignIn = jest.fn();
+const mockGoogleSignOut = jest.fn().mockResolvedValue(null);
 jest.mock('@react-native-google-signin/google-signin', () => ({
   __esModule: true,
   GoogleSignin: {
     configure: jest.fn(),
     hasPlayServices: jest.fn().mockResolvedValue(true),
+    signOut: (...a: unknown[]) => mockGoogleSignOut(...a),
     signIn: (...a: unknown[]) => mockGoogleSignIn(...a),
   },
   isErrorWithCode: (e: unknown) => typeof e === 'object' && e !== null && 'code' in e,
@@ -167,6 +169,23 @@ describe('social sign-in', () => {
       firstName: null,
     });
     expect(mockSignInWithIdToken).toHaveBeenCalledWith({ provider: 'google', token: 'g-tok' });
+  });
+
+  it('⚠️ google: forgets the remembered account first, so the picker always opens', async () => {
+    mockGoogleSignIn.mockResolvedValue({ type: 'success', data: { idToken: 'g-tok' } });
+    mockSignInWithIdToken.mockResolvedValue({ data: { user: { id: 'u3' } }, error: null });
+    await signInWithGoogle();
+    expect(mockGoogleSignOut).toHaveBeenCalled();
+    expect(mockGoogleSignOut.mock.invocationCallOrder[0]).toBeLessThan(
+      mockGoogleSignIn.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('google: a failure to forget the account never blocks the sign-in', async () => {
+    mockGoogleSignOut.mockRejectedValueOnce(new Error('not signed in'));
+    mockGoogleSignIn.mockResolvedValue({ type: 'success', data: { idToken: 'g-tok' } });
+    mockSignInWithIdToken.mockResolvedValue({ data: { user: { id: 'u3' } }, error: null });
+    await expect(signInWithGoogle()).resolves.toMatchObject({ cancelled: false, userId: 'u3' });
   });
 
   it('google: carries their given name, for a new user’s name box (2026-10-15)', async () => {
