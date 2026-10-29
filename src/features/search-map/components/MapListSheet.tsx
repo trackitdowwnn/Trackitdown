@@ -289,7 +289,7 @@ export const MapListSheet = memo(function MapListSheet({
                 title="No stolen cars in this area"
                 body="That's a good thing. Pan the map, or check back later."
               />
-            ) : null
+            ) : undefined
           }
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}

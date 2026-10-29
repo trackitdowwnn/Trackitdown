@@ -37,7 +37,13 @@
 import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  type ScrollViewInstance,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Animated, {
   useAnimatedScrollHandler,
   useAnimatedStyle,
@@ -71,7 +77,7 @@ export function LegalDocumentScreen({ slug }: LegalDocumentScreenProps) {
   const insets = useSafeAreaInsets();
   const doc = legalDocument(slug);
 
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   // Section tops, keyed by index, filled by each section's onLayout. A plain
   // ref rather than state: writing it must not re-render, and it is only ever
   // read inside a press handler.

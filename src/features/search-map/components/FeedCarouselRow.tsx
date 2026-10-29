@@ -85,7 +85,7 @@ export const FeedCarouselRow = memo(function FeedCarouselRow({
           <View style={{ width: cardWidth }}>
             <SkeletonVehicleCard variant="compact" />
           </View>
-        ) : null
+        ) : undefined
       }
       contentContainerStyle={styles.content}
       // Carousels hold ≤10 compact cards — cheap enough to keep mounted;

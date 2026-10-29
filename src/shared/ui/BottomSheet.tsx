@@ -61,9 +61,10 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  type TextInputProps,
   useWindowDimensions,
   View,
-  type TextInputProps,
+  type ViewInstance,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -234,7 +235,7 @@ export function BottomSheet({
   // (SheetTextInput, below); and when content past the cap changes size (a
   // multiline field growing a line as they type).
   const scrollRef = useRef<BottomSheetScrollViewMethods>(null);
-  const contentRef = useRef<View>(null);
+  const contentRef = useRef<ViewInstance>(null);
   const viewportHeight = useRef(0);
   const scrollY = useRef(0);
   const revealFocusedInput = useCallback(() => {

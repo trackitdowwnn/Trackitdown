@@ -22,7 +22,14 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  type ScrollViewInstance,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '../theme';
@@ -115,7 +122,7 @@ export function ChoiceChips<V extends string = string>({
   // opening); later ones animate, so a change of answer reads as motion —
   // unless the OS asks for reduced motion (DESIGN_SYSTEM.md, Motion).
   const reduceMotion = useReducedMotion();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const chipX = useRef(new Map<string, number>());
   const scrolledTo = useRef<string | null>(null);
   const tracksSelection = scrollable && scrollToSelected;

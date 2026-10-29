@@ -80,7 +80,8 @@ function makeProps(
       descriptors: Object.fromEntries(
         routes.map((route) => [route.key, { options: options[route.name] ?? {} }]),
       ),
-      navigation: { emit, navigate },
+      emitter: { emit },
+      navigateToTab: navigate,
       insets: { top: 0, bottom: 20, left: 0, right: 0 },
     } as unknown as BottomTabBarProps,
     emit,
@@ -177,12 +178,12 @@ describe('press contract', () => {
       target: 'inbox-key',
       canPreventDefault: true,
     });
-    expect(navigate).toHaveBeenCalledWith('inbox');
+    expect(navigate).toHaveBeenCalledWith('inbox-key');
   });
 
   it('a prevented tabPress does not navigate', async () => {
     const { props, navigate } = makeProps(TABS);
-    (props.navigation.emit as jest.Mock).mockReturnValue({ defaultPrevented: true });
+    (props.emitter.emit as jest.Mock).mockReturnValue({ defaultPrevented: true });
     const { getByTestId } = await render(<AppTabBar {...props} tabs={TABS} />);
     await act(async () => {
       fireEvent.press(getByTestId('app-tab-inbox'));
@@ -190,14 +191,14 @@ describe('press contract', () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it('re-tapping the active tab still emits and navigates (pop-to-root path)', async () => {
+  it('re-tapping the active tab still emits and navigates', async () => {
     const { props, emit, navigate } = makeProps(TABS, { index: 0 });
     const { getByTestId } = await render(<AppTabBar {...props} tabs={TABS} />);
     await act(async () => {
       fireEvent.press(getByTestId('app-tab-explore'));
     });
     expect(emit).toHaveBeenCalled();
-    expect(navigate).toHaveBeenCalledWith('explore');
+    expect(navigate).toHaveBeenCalledWith('explore-key');
   });
 });
 
@@ -319,7 +320,7 @@ describe('photo tabs (avatar as icon)', () => {
     expect(emit).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'tabPress', target: 'profile-key' }),
     );
-    expect(navigate).toHaveBeenCalledWith('profile');
+    expect(navigate).toHaveBeenCalledWith('profile-key');
   });
 });
 

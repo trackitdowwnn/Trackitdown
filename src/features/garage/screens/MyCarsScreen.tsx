@@ -223,7 +223,7 @@ export function MyCarsScreen() {
                   That&apos;s all {MAX_VEHICLES} — remove one to add another.
                 </Text>
               </View>
-            ) : null
+            ) : undefined
           }
         />
       )}

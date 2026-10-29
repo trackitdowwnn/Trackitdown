@@ -52,11 +52,11 @@ const ink = (view: RenderResult) =>
   (hostNodes(view).find((node) => node.type === 'RNSVGRect')?.props.fill as { payload: number })
     .payload;
 const paint = (view: RenderResult) =>
-  StyleSheet.flatten(view.getByTestId('brand-splash').props.style).backgroundColor;
+  StyleSheet.flatten(view.getByTestId('brand-splash').props.style)?.backgroundColor;
 /** The progress line's track: the one plain View inside the line's slot. */
 const trackColour = (view: RenderResult) => {
   const track = view.getByTestId('brand-splash-progress').children[0] as unknown as JsonNode;
-  return StyleSheet.flatten(track.props.style as { backgroundColor?: string }).backgroundColor;
+  return StyleSheet.flatten(track.props.style as { backgroundColor?: string })?.backgroundColor;
 };
 
 const advance = async (ms: number) => {

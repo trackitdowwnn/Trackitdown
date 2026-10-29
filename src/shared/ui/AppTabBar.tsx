@@ -29,7 +29,7 @@
  *   </Tabs>
  */
 
-// Expo Router SDK 57 vendors React Navigation; this public subpath carries
+// Expo Router vendors React Navigation; this public subpath carries
 // the custom-tabBar contract types (no direct @react-navigation dependency).
 import type { BottomTabBarProps } from 'expo-router/tabs';
 import type { LucideIcon } from 'lucide-react-native';
@@ -111,7 +111,8 @@ const STROKE_ACTIVE = 2.5;
 export function AppTabBar({
   state,
   descriptors,
-  navigation,
+  emitter,
+  navigateToTab,
   insets,
   tabs,
   badges,
@@ -179,15 +180,14 @@ export function AppTabBar({
                 )}
                 reduceMotion={reduceMotion}
                 onPress={() => {
-                  const event = navigation.emit({
+                  const event = emitter.emit({
                     type: 'tabPress',
                     target: route.key,
                     canPreventDefault: true,
                   });
                   if (!event.defaultPrevented) {
-                    // On the focused tab this pops its nested stack to root;
-                    // screens using useScrollToTop react to the emit above.
-                    navigation.navigate(route.name);
+                    // Screens using useScrollToTop react to the emit above.
+                    navigateToTab(route.key);
                   }
                 }}
               />

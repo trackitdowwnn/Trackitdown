@@ -15,7 +15,7 @@
 
 import { Feather } from '@expo/vector-icons';
 import { memo, useRef } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type ViewInstance } from 'react-native';
 
 import {
   opacity,
@@ -73,7 +73,7 @@ export const MapSearchPill = memo(function MapSearchPill({
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const active = Boolean(summary && summary.headline.trim());
-  const pillRef = useRef<View>(null);
+  const pillRef = useRef<ViewInstance>(null);
 
   // Measure in WINDOW (absolute) coords on tap, then open — same as
   // FeedTopBar. Measured per-tap rather than on layout because this pill

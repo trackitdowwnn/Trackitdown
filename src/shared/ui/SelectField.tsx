@@ -26,7 +26,14 @@
 
 import { Feather } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  AccessibilityInfo,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type ViewInstance,
+} from 'react-native';
 
 import { lightHaptic } from '../lib/haptics';
 import {
@@ -127,7 +134,7 @@ export function SelectField<V extends string | number>({
   const palette = usePalette();
   const [open, setOpen] = useState(false);
 
-  const fieldRef = useRef<View>(null);
+  const fieldRef = useRef<ViewInstance>(null);
   const focusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {

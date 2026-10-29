@@ -232,7 +232,7 @@ export function MyPostsScreen() {
                       ))
                     : null}
                 </View>
-              ) : null
+              ) : undefined
             }
             ListHeaderComponent={
               stillMissingAsks.length > 0 ? (
@@ -251,7 +251,7 @@ export function MyPostsScreen() {
                     onPress={() => router.push(`/post/${stillMissingAsks[0].postId}`)}
                   />
                 </View>
-              ) : null
+              ) : undefined
             }
             refreshControl={
               <ThemedRefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />

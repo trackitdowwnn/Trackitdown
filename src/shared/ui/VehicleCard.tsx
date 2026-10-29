@@ -39,10 +39,11 @@ import {
   Animated,
   Easing,
   ScrollView,
+  type ScrollViewInstance,
   StyleSheet,
   Text,
-  View,
   useAnimatedValue,
+  View,
 } from 'react-native';
 // RNGH's Pressable, NOT react-native's: the card wraps a horizontal
 // ScrollView, and the core Pressable races the native scroll for the
@@ -344,7 +345,7 @@ function PhotoCarousel({ post, staticOnly = false }: { post: PostSummary; static
     setActiveIndex(0);
   }
 
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   // Mirror of activeIndex for the width-change effect (reading state there
   // would make the effect fire on every swipe and fight the user's gesture).
   const activeIndexRef = useRef(0);

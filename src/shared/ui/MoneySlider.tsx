@@ -46,6 +46,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  type TextInputInstance,
   View,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -269,7 +270,7 @@ export function MoneySlider({
 
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState('');
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputInstance>(null);
 
   const settleMs = reduceMotion ? 0 : motion.standard;
   const grabMs = reduceMotion ? 0 : motion.fast;

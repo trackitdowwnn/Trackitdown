@@ -6,7 +6,7 @@
  */
 
 import { render } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
+import { type StyleProp, StyleSheet, type ViewStyle } from 'react-native';
 
 import { rankedMakes } from '../lib/areaInsightsModel';
 import { RankedBars } from './RankedBars';
@@ -30,7 +30,7 @@ describe('RankedBars', () => {
     const widthOf = (key: string) => {
       const row = view.getByTestId(`makes-${key}`);
       // row → [line, track → [fill]] (ReportCard.test walks children the same way)
-      const track = row.children[1] as { children: { props: { style?: unknown } }[] };
+      const track = row.children[1] as { children: { props: { style?: StyleProp<ViewStyle> } }[] };
       return (StyleSheet.flatten(track.children[0].props.style) as { width: string }).width;
     };
     expect(widthOf('Ford')).toBe('100%');

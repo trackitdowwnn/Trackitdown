@@ -23,7 +23,7 @@
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 import * as RN from 'react-native';
-import { StyleSheet } from 'react-native';
+import { type StyleProp, StyleSheet, type ViewStyle } from 'react-native';
 
 import { paletteFor } from '@/shared/theme';
 
@@ -57,7 +57,7 @@ const entry = (overrides: Partial<MySightingRecordEntry> = {}): MySightingRecord
   ...overrides,
 });
 
-const flat = (element: { props: { style?: unknown } }) =>
+const flat = (element: { props: { style?: StyleProp<ViewStyle> } }) =>
   StyleSheet.flatten(element.props.style) as Record<string, unknown>;
 
 /** The ink lucide sets on a rendered `Svg` root — see CarColourTile.test.tsx,
@@ -133,7 +133,7 @@ describe('⚠️ the skeleton tracks the card', () => {
     // the card's own title occupies 44, and a 22pt bar would leave the skeleton
     // short by half a line per row.
     const lines = getByTestId('report-card-skeleton-row').children[1] as {
-      children: { props: { style?: unknown } }[];
+      children: { props: { style?: StyleProp<ViewStyle> } }[];
     };
     expect(flat(lines.children[0]).height).toBe(44);
   });
