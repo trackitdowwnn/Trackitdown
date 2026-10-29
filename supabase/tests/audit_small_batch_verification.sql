@@ -197,10 +197,16 @@ begin
   if exists (select 1 from public.orphaned_photos where path in (
        '11111111-1111-1111-1111-111111111111/kept-0.jpg',
        '11111111-1111-1111-1111-111111111111/young-0.jpg',
-       '11111111-1111-1111-1111-111111111111/retried-0.jpg',
        '11111111-1111-1111-1111-111111111111/demo-x-0-Ab_c-0.jpg')) then
-    raise exception 'CHECK 6 FAILED: a referenced, young, just-retried or hand-named photo '
+    raise exception 'CHECK 6 FAILED: a referenced, young or hand-named photo '
                     'was queued for deletion.';
+  end if;
+  -- ⚠️ CHANGED by 20261029100000 (audit run 3, lead 3): age is by CREATION, so
+  -- a 3-day-old unreferenced photo rewritten an hour ago IS queued — a rewrite
+  -- resetting the clock was how a photo nothing names could be kept forever.
+  if not exists (select 1 from public.orphaned_photos
+                  where path = '11111111-1111-1111-1111-111111111111/retried-0.jpg') then
+    raise exception 'CHECK 6 FAILED: a rewrite kept an old, unreferenced upload out of the queue.';
   end if;
   if not exists (select 1 from public.orphaned_sighting_photos where path =
        'a1a1a1a1-0000-0000-0000-000000000001/22222222-2222-2222-2222-222222222222/stray-0.jpg') then
