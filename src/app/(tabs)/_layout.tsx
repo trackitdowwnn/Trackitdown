@@ -21,12 +21,18 @@
 
 import { Tabs, useSegments } from 'expo-router';
 import { Bookmark, Compass, MessageCircle, Plus, User } from 'lucide-react-native';
-import { useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 
 import { useRequireAuth, useTabAuthGate } from '@/features/auth';
 import { useInboxBadgeSync } from '@/features/chat';
-import { useHasSavedCar, useStartReport } from '@/features/garage';
+import {
+  FinishDraftSheet,
+  type FinishDraftSheetRef,
+  useHasSavedCar,
+  useStartReport,
+} from '@/features/garage';
 import { useProfileTab, useTrackVisitedTab } from '@/features/profile';
+import type { ServerDraft } from '@/features/vehicles';
 import {
   AppTabBar,
   type AppTabConfig,
@@ -89,7 +95,13 @@ function BadgedTabs() {
   // is usually already cached and the wait is zero. One list_my_vehicles per
   // app session (loadGarage dedupes it), not one per mount of this layout.
   useHasSavedCar({ enabled: true });
-  const startReport = useStartReport();
+  // A listing left at the payment step: + asks about it in a sheet first.
+  const draftSheetRef = useRef<FinishDraftSheetRef>(null);
+  const openDraftSheet = useCallback(
+    (draft: ServerDraft) => draftSheetRef.current?.open(draft),
+    [],
+  );
+  const startReport = useStartReport(openDraftSheet);
 
   // Session/avatar changes re-render this layout, so the tab bar reacts live:
   // sign-in flips "Profile" → "You", an EditProfile avatar save (shared
@@ -105,39 +117,41 @@ function BadgedTabs() {
   );
 
   return (
-    <Tabs
-      screenOptions={{ headerShown: false }}
-      tabBar={(props) => (
-        <AppTabBar
-          {...props}
-          tabs={tabs}
-          badges={badges}
-          action={{
-            icon: Plus,
-            accessibilityLabel: 'Report a stolen car',
-            // Gated: a guest signs in first (sheet), then the wizard opens
-            // without re-tapping. Full-screen flow OUTSIDE the (tabs) group,
-            // so the tab bar is gone for the wizard.
-            //
-            // NO __DEV__ BYPASS. One lived here so the wizard could be opened
-            // without signing in, and it made dev AND PREVIEW builds — the ones
-            // testers use — let a guest walk all thirteen steps, upload photos,
-            // and only fail at submit, where `create_post` raises
-            // NOT_AUTHENTICATED with no sheet to recover through. It had also
-            // started spreading (SaveYourCarSheet grew a workaround for it).
-            // Seed a dev session instead of skipping the gate.
-            onPress: () =>
-              requireAuth({ context: 'post_car', run: startReport }),
-          }}
-        />
-      )}
-    >
-      <Tabs.Screen name="explore" />
-      <Tabs.Screen name="watchlist" />
-      {/* Non-members: press prevented + AuthSheet, same as Profile below. */}
-      <Tabs.Screen name="inbox" listeners={inboxListeners} />
-      <Tabs.Screen name="profile" listeners={profileTab.listeners} />
-    </Tabs>
+    <>
+      <Tabs
+        screenOptions={{ headerShown: false }}
+        tabBar={(props) => (
+          <AppTabBar
+            {...props}
+            tabs={tabs}
+            badges={badges}
+            action={{
+              icon: Plus,
+              accessibilityLabel: 'Report a stolen car',
+              // Gated: a guest signs in first (sheet), then the wizard opens
+              // without re-tapping. Full-screen flow OUTSIDE the (tabs) group,
+              // so the tab bar is gone for the wizard.
+              //
+              // NO __DEV__ BYPASS. One lived here so the wizard could be opened
+              // without signing in, and it made dev AND PREVIEW builds — the ones
+              // testers use — let a guest walk all thirteen steps, upload photos,
+              // and only fail at submit, where `create_post` raises
+              // NOT_AUTHENTICATED with no sheet to recover through. It had also
+              // started spreading (SaveYourCarSheet grew a workaround for it).
+              // Seed a dev session instead of skipping the gate.
+              onPress: () => requireAuth({ context: 'post_car', run: startReport }),
+            }}
+          />
+        )}
+      >
+        <Tabs.Screen name="explore" />
+        <Tabs.Screen name="watchlist" />
+        {/* Non-members: press prevented + AuthSheet, same as Profile below. */}
+        <Tabs.Screen name="inbox" listeners={inboxListeners} />
+        <Tabs.Screen name="profile" listeners={profileTab.listeners} />
+      </Tabs>
+      <FinishDraftSheet ref={draftSheetRef} />
+    </>
   );
 }
 

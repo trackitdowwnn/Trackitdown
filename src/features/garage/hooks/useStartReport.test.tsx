@@ -22,11 +22,13 @@ jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
 jest.mock('@/features/auth', () => ({ getCurrentUserId: () => 'u1' }));
 
 const mockPrimeDraft = jest.fn(async () => {});
-const mockPrimeServerDraft = jest.fn(async () => {});
+const mockFindServerDraft = jest.fn(async (): Promise<{ id: string; label: string } | null> => null);
 jest.mock('@/features/vehicles', () => ({
   primePostDraft: () => mockPrimeDraft(),
-  primeServerDraft: () => mockPrimeServerDraft(),
+  findServerDraft: () => mockFindServerDraft(),
 }));
+
+const mockOnDraft = jest.fn();
 
 const mockAwaitGarage = jest.fn(async (_userId: string | null, _timeoutMs: number) => {});
 jest.mock('../lib/loadGarage', () => ({
@@ -36,6 +38,7 @@ jest.mock('../lib/loadGarage', () => ({
 beforeEach(() => {
   jest.clearAllMocks();
   mockPrimeDraft.mockResolvedValue(undefined);
+  mockFindServerDraft.mockResolvedValue(null);
   mockAwaitGarage.mockResolvedValue(undefined);
 });
 
@@ -45,7 +48,7 @@ afterEach(() => {
 
 describe('useStartReport', () => {
   it('reads the garage for the user signed in NOW, and the draft, then pushes once', async () => {
-    const { result } = await renderHook(() => useStartReport());
+    const { result } = await renderHook(() => useStartReport(mockOnDraft));
 
     await act(async () => {
       result.current();
@@ -55,6 +58,20 @@ describe('useStartReport', () => {
     expect(mockPrimeDraft).toHaveBeenCalled();
     expect(mockPush).toHaveBeenCalledTimes(1);
     expect(mockPush).toHaveBeenCalledWith('/post-a-car');
+    expect(mockOnDraft).not.toHaveBeenCalled();
+  });
+
+  it('a listing left unfinished asks first (onDraft) and opens no report', async () => {
+    const draft = { id: 'd1', label: 'Ford Fiesta · Blue' };
+    mockFindServerDraft.mockResolvedValue(draft);
+    const { result } = await renderHook(() => useStartReport(mockOnDraft));
+
+    await act(async () => {
+      result.current();
+    });
+
+    expect(mockOnDraft).toHaveBeenCalledWith(draft);
+    expect(mockPush).not.toHaveBeenCalled();
   });
 
   it('ignores a second tap while the first is still on its way', async () => {
@@ -64,7 +81,7 @@ describe('useStartReport', () => {
         finish = resolve;
       }),
     );
-    const { result } = await renderHook(() => useStartReport());
+    const { result } = await renderHook(() => useStartReport(mockOnDraft));
 
     await act(async () => {
       result.current();
@@ -81,7 +98,7 @@ describe('useStartReport', () => {
   it('never waits longer than the grace, however slow the network', async () => {
     jest.useFakeTimers();
     mockAwaitGarage.mockReturnValue(new Promise<void>(() => {})); // never settles
-    const { result } = await renderHook(() => useStartReport());
+    const { result } = await renderHook(() => useStartReport(mockOnDraft));
 
     await act(async () => {
       result.current();

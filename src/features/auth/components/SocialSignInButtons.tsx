@@ -174,11 +174,19 @@ function GoogleSignInButton({
         disabled ? styles.disabled : null,
       ]}
     >
-      {/* The logo stays as Google requires; the spinner goes after the label. */}
-      <GoogleLogo />
-      <Text style={[styles.googleLabel, { color: colours.text }]}>Continue with Google</Text>
+      {/* While busy, the spinner alone, centred — like Button's: the content
+          stays mounted (hidden) so the button keeps its size. */}
+      <View style={[styles.brandContent, loading && styles.hidden]}>
+        <GoogleLogo />
+        <Text style={[styles.googleLabel, { color: colours.text }]}>Continue with Google</Text>
+      </View>
       {loading ? (
-        <ActivityIndicator size="small" color={colours.text} testID="google-sign-in-spinner" />
+        <ActivityIndicator
+          size="small"
+          color={colours.text}
+          style={StyleSheet.absoluteFill}
+          testID="google-sign-in-spinner"
+        />
       ) : null}
     </Pressable>
   );
@@ -262,10 +270,17 @@ function AppleSignInButton({
         disabled ? styles.disabled : null,
       ]}
     >
-      <AppleLogo colour={colours.ink} />
-      <Text style={[styles.appleLabel, { color: colours.ink }]}>Continue with Apple</Text>
+      <View style={[styles.brandContent, loading && styles.hidden]}>
+        <AppleLogo colour={colours.ink} />
+        <Text style={[styles.appleLabel, { color: colours.ink }]}>Continue with Apple</Text>
+      </View>
       {loading ? (
-        <ActivityIndicator size="small" color={colours.ink} testID="apple-sign-in-spinner" />
+        <ActivityIndicator
+          size="small"
+          color={colours.ink}
+          style={StyleSheet.absoluteFill}
+          testID="apple-sign-in-spinner"
+        />
       ) : null}
     </Pressable>
   );
@@ -323,11 +338,18 @@ const makeStyles = (c: Palette) =>
     nativeAppleButton: {
       height: sizes.control,
     },
-    googleButton: {
+    // Logo + label in a row; hidden (not removed) under the busy spinner.
+    brandContent: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
       gap: spacing.sm,
+    },
+    hidden: {
+      opacity: 0,
+    },
+    googleButton: {
+      alignItems: 'center',
+      justifyContent: 'center',
       borderRadius: radii.md,
       borderWidth: 1,
       paddingHorizontal: spacing.md,
@@ -339,10 +361,8 @@ const makeStyles = (c: Palette) =>
       fontWeight: Platform.OS === 'android' ? undefined : '500',
     },
     appleButton: {
-      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: spacing.sm,
       borderRadius: radii.md,
       paddingHorizontal: spacing.md,
     },

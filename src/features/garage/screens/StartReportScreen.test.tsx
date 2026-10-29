@@ -75,7 +75,6 @@ jest.mock('../hooks/useMyVehicles', () => ({
 
 // The two forms are stood in for: what matters here is WHICH one shows, and
 // whether the blank one carries the garage's exit nudge.
-let mockServerDraft: { id: string; label: string } | null = null;
 jest.mock('@/features/vehicles', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
   const { Text: MockText } = require('react-native');
@@ -83,7 +82,6 @@ jest.mock('@/features/vehicles', () => {
     PostACarScreen: ({ onAbandon }: { onAbandon?: () => void }) => (
       <MockText testID="blank-report">{onAbandon ? 'with-nudge' : 'no-nudge'}</MockText>
     ),
-    takePrimedServerDraft: () => mockServerDraft,
   };
 });
 jest.mock('../components/PrefilledReport', () => {
@@ -126,42 +124,6 @@ beforeEach(() => {
   mockParams = {};
   mockSession = { status: 'signedIn', userId: 'u1' };
   mockVehicles = { status: 'ready', vehicles: [vehicle()], retry: mockRetry };
-});
-
-describe('a draft listing left at the payment step (device check, 2026-10-29)', () => {
-  afterEach(() => {
-    mockServerDraft = null;
-  });
-
-  it('asks first, naming the car', async () => {
-    mockServerDraft = { id: 'p-draft', label: 'Ford Fiesta · Blue' };
-    const view = await renderScreen();
-    expect(view.getByText('Finish your draft?')).toBeTruthy();
-    expect(view.getByText('Ford Fiesta · Blue')).toBeTruthy();
-    expect(view.queryByTestId('blank-report')).toBeNull();
-  });
-
-  it('Continue draft opens the draft, replacing this screen', async () => {
-    mockServerDraft = { id: 'p-draft', label: 'Ford Fiesta · Blue' };
-    const view = await renderScreen();
-    await act(async () => fireEvent.press(view.getByText('Continue draft')));
-    expect(mockReplace).toHaveBeenCalledWith('/post/p-draft');
-  });
-
-  it('Start a new one carries on to the usual report', async () => {
-    mockServerDraft = { id: 'p-draft', label: 'Ford Fiesta · Blue' };
-    const view = await renderScreen();
-    await act(async () => fireEvent.press(view.getByText('Start a new one')));
-    expect(view.queryByText('Finish your draft?')).toBeNull();
-  });
-
-  it('never asks on ?start=blank, an exit that must not loop', async () => {
-    mockServerDraft = { id: 'p-draft', label: 'Ford Fiesta · Blue' };
-    mockParams = { start: 'blank' };
-    const view = await renderScreen();
-    expect(view.queryByText('Finish your draft?')).toBeNull();
-    mockParams = {};
-  });
 });
 
 describe('the cars on offer', () => {
