@@ -22,7 +22,11 @@ jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
 jest.mock('@/features/auth', () => ({ getCurrentUserId: () => 'u1' }));
 
 const mockPrimeDraft = jest.fn(async () => {});
-jest.mock('@/features/vehicles', () => ({ primePostDraft: () => mockPrimeDraft() }));
+const mockPrimeServerDraft = jest.fn(async () => {});
+jest.mock('@/features/vehicles', () => ({
+  primePostDraft: () => mockPrimeDraft(),
+  primeServerDraft: () => mockPrimeServerDraft(),
+}));
 
 const mockAwaitGarage = jest.fn(async (_userId: string | null, _timeoutMs: number) => {});
 jest.mock('../lib/loadGarage', () => ({

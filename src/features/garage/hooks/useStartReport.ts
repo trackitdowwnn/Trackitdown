@@ -24,7 +24,7 @@ import { useRouter } from 'expo-router';
 import { useCallback, useRef } from 'react';
 
 import { getCurrentUserId } from '@/features/auth';
-import { primePostDraft } from '@/features/vehicles';
+import { primePostDraft, primeServerDraft } from '@/features/vehicles';
 import { motion } from '@/shared/theme';
 
 import { awaitGarageAnswer } from '../lib/loadGarage';
@@ -42,6 +42,8 @@ export function useStartReport(): () => void {
     const ready = Promise.all([
       awaitGarageAnswer(getCurrentUserId(), motion.skeletonGrace),
       primePostDraft(),
+      // A listing left at the payment step: the report screen asks about it.
+      primeServerDraft(),
     ]);
     // Both are capped together: the report opens within the grace, whatever
     // is still outstanding.

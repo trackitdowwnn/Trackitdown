@@ -45,11 +45,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useRequireAuth, useSession } from '@/features/auth';
-import { PostACarScreen } from '@/features/vehicles';
+import { PostACarScreen, takePrimedServerDraft } from '@/features/vehicles';
 import { createLogger } from '@/shared/lib/logger';
 import { EmptyState, Screen } from '@/shared/ui';
 
 import { ChooseCarStage } from '../components/ChooseCarStage';
+import { FinishDraftStage } from '../components/FinishDraftStage';
 import { PrefilledReport } from '../components/PrefilledReport';
 import { ReportHeader } from '../components/ReportHeader';
 import { ReportPending } from '../components/ReportPending';
@@ -124,6 +125,12 @@ export function StartReportScreen() {
   const [picked, setPicked] = useState<{ kind: 'blank' } | { kind: 'car'; vehicle: SavedVehicle } | null>(
     () => (start === 'blank' ? { kind: 'blank' } : null),
   );
+  // A listing left at the payment step, found while + waited: asked about
+  // first (device check, 2026-10-29). Taken once, so a later visit asks again
+  // only if + found it again. Never on ?start=blank (an exit that must not loop).
+  const [draftOffer, setDraftOffer] = useState(() =>
+    start === 'blank' ? null : takePrimedServerDraft(),
+  );
   // The first real stage shown is fixed for the visit (see the header). Set
   // during render — React's pattern for state derived from props — so the
   // commit and the stage land in the same frame. Each update is guarded by
@@ -164,6 +171,8 @@ export function StartReportScreen() {
     ? 'pending'
     : isGuest
       ? natural
+    : draftOffer && picked === null
+      ? 'draft'
     : picked?.kind === 'car'
       ? `car:${picked.vehicle.id}`
       : picked?.kind === 'blank'
@@ -201,6 +210,19 @@ export function StartReportScreen() {
             onAction={askToSignIn}
           />
         </Screen>
+      ) : stage === 'draft' && draftOffer ? (
+        <FinishDraftStage
+          carLabel={draftOffer.label}
+          onContinue={() => {
+            log.info('report_draft_continued');
+            router.replace(`/post/${draftOffer.id}`);
+          }}
+          onStartNew={() => {
+            log.info('report_draft_set_aside');
+            setDraftOffer(null);
+          }}
+          onBack={goBack}
+        />
       ) : picked?.kind === 'car' && stage === `car:${picked.vehicle.id}` ? (
         <PrefilledReport vehicle={picked.vehicle} />
       ) : stage === 'blank' ? (
