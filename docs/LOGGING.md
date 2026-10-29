@@ -115,7 +115,11 @@ Deno.serve(withHandler(log, async (request) => {
 
 `_shared/sentry.ts` sends every `log.error` line (one issue per function +
 event) and every uncaught throw (with frames) to Sentry's EU region, tagged
-with `fn`, `request_id` and `trace_id`. Default integrations are off and
+with `fn`, `request_id`, `trace_id` and, from `describeError`, `error_type` and
+`error_code`. An issue is titled from its event name —
+`payments_refund_create_failed` reads **Payments: refund create failed** — with
+the function underneath, so a good event name is a good Sentry title. The area
+words are the `AREAS` list in `sentry.ts`. Default integrations are off and
 `beforeSend` drops request, user and breadcrumbs and scrubs the rest. Scheduled
 jobs send a heartbeat: `startCronCheckIn('release-held-refunds', '0 * * * *')`
 at the start, the returned function with `'ok'` at the end — a missed or
