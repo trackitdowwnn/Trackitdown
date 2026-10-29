@@ -49,6 +49,7 @@ interface EventLike {
   request?: unknown;
   user?: unknown;
   breadcrumbs?: unknown;
+  sdk?: { settings?: Record<string, unknown> } & Record<string, unknown>;
 }
 
 /** beforeSend: what is allowed to leave for Sentry. */
@@ -56,6 +57,9 @@ export function scrubEvent<E extends EventLike>(event: E): E {
   delete event.request;
   delete event.user;
   delete event.breadcrumbs;
+  // Without this Sentry fills user.ip from the sender for a JavaScript event —
+  // first prod event, 2026-10-29: Supabase's own server IP, as a "user".
+  event.sdk = { ...event.sdk, settings: { ...event.sdk?.settings, infer_ip: 'never' } };
   if (typeof event.message === 'string') event.message = scrubText(event.message);
   for (const value of event.exception?.values ?? []) {
     if (typeof value.value === 'string') value.value = scrubText(value.value).slice(0, 300);
@@ -122,6 +126,9 @@ export function startSentry(options: { env?: Env; load?: () => Promise<Sdk> } = 
         defaultIntegrations: false,
         integrations: [sdk.linkedErrorsIntegration(), sdk.dedupeIntegration()],
         sendDefaultPii: false,
+        // A message gets no synthetic stack: it pointed into this file and made
+        // the issue title `capture.data.data`. The real frames are in extras.
+        attachStacktrace: false,
         enableOpenTelemetrySetup: false,
         beforeBreadcrumb: () => null,
         beforeSend: (event) => scrubEvent(event),

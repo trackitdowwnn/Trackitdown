@@ -88,6 +88,8 @@ describe('with SENTRY_DSN', () => {
         defaultIntegrations: false,
         integrations: ['linkedErrors', 'dedupe'],
         sendDefaultPii: false,
+        // A message must not get a synthetic stack (it titled the issue after sentry.ts).
+        attachStacktrace: false,
       }),
     );
     const options = sdk.init.mock.calls[0][0];
@@ -192,6 +194,15 @@ describe('scrubEvent', () => {
         values: [{ type: 'Error', value: 'token eyJhbGciOiJIUzI1NiJ9 Bearer [redacted]' }],
       },
       extra: { authorization: '[redacted]', post_id: 'p1' },
+      sdk: { settings: { infer_ip: 'never' } },
+    });
+  });
+
+  it('⚠️ tells Sentry never to infer an IP, keeping the SDK fields', () => {
+    const event = scrubEvent({ sdk: { name: 'sentry.javascript.deno', settings: { x: 1 } } });
+    expect(event.sdk).toEqual({
+      name: 'sentry.javascript.deno',
+      settings: { x: 1, infer_ip: 'never' },
     });
   });
 });
