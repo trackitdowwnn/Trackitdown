@@ -4,6 +4,10 @@ Testing philosophy: an AI writes most of this code quickly — tests are how
 we keep it honest. Coverage is tiered: some things MUST be tested, some
 should be, some are optional.
 
+What only a real phone can show (native screens, layout at large text, the
+payment sheet, maps) is in [`DEVICE_CHECKS.md`](DEVICE_CHECKS.md): one pass
+through the app. Add a box there when a PR ships something like that.
+
 **The coverage floor** (added 2026-09-02, review finding #32): CI ran
 `--coverage` from the start and threw the result away — no `coverageThreshold`,
 no `collectCoverageFrom`, so nothing could fail on it and a file with no tests
