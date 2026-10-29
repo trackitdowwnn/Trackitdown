@@ -294,7 +294,10 @@ function EmailStep({
   onAppleComingSoon: () => void;
 }) {
   const styles = useThemedStyles(makeStyles);
-  const [busy, setBusy] = useState(false);
+  // WHICH way in is working, not just "busy": the spinner belongs on the button
+  // that was tapped (device check, 2026-10-29: Google spun the Continue button).
+  const [pending, setPending] = useState<'email' | 'google' | 'apple' | null>(null);
+  const busy = pending !== null;
   // Two error slots on purpose: an email-path failure belongs ON the email
   // field; a social failure has nothing to do with that field, so it gets a
   // step-level line under the social buttons (a Google error painting the
@@ -305,7 +308,7 @@ function EmailStep({
   const captcha = useCaptcha();
 
   const handleContinue = async () => {
-    setBusy(true);
+    setPending('email');
     setEmailError(null);
     setSocialError(null);
     try {
@@ -314,12 +317,15 @@ function EmailStep({
     } catch (err) {
       setEmailError(err instanceof AuthActionError ? err.message : GENERIC_ERROR);
     } finally {
-      setBusy(false);
+      setPending(null);
     }
   };
 
-  const handleSocial = async (signIn: () => Promise<SocialResult>) => {
-    setBusy(true);
+  const handleSocial = async (
+    provider: 'google' | 'apple',
+    signIn: () => Promise<SocialResult>,
+  ) => {
+    setPending(provider);
     setEmailError(null);
     setSocialError(null);
     try {
@@ -332,7 +338,7 @@ function EmailStep({
     } catch (err) {
       setSocialError(err instanceof AuthActionError ? err.message : GENERIC_ERROR);
     } finally {
-      setBusy(false);
+      setPending(null);
     }
   };
 
@@ -361,12 +367,13 @@ function EmailStep({
         // iOS: Apple's native sheet. Android: Apple's web flow once it's
         // switched on — until then, the "coming soon" sheet (owner, 2026-10-15).
         onApple={() => {
-          if (Platform.OS !== 'android') return void handleSocial(signInWithApple);
-          if (isAppleWebSignInConfigured()) return void handleSocial(signInWithAppleWeb);
+          if (Platform.OS !== 'android') return void handleSocial('apple', signInWithApple);
+          if (isAppleWebSignInConfigured()) return void handleSocial('apple', signInWithAppleWeb);
           onAppleComingSoon();
         }}
-        onGoogle={() => handleSocial(signInWithGoogle)}
+        onGoogle={() => handleSocial('google', signInWithGoogle)}
         disabled={busy}
+        loading={pending === 'google' || pending === 'apple' ? pending : null}
         showGoogle={isGoogleSignInConfigured()}
         // Always on Android now: it signs in, or says it's coming.
         showAppleWeb={Platform.OS === 'android'}
@@ -394,7 +401,12 @@ function EmailStep({
         disabled={busy}
       />
       {captcha.widget}
-      <Button label="Continue" onPress={submitEmail} disabled={!canContinue} loading={busy} />
+      <Button
+        label="Continue"
+        onPress={submitEmail}
+        disabled={!canContinue}
+        loading={pending === 'email'}
+      />
       {/* Below all actions: "By continuing…" covers the social buttons too. */}
       <AuthLegalNotice />
     </View>

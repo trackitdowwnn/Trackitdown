@@ -28,7 +28,7 @@
  */
 
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import {
@@ -47,6 +47,8 @@ export interface SocialSignInButtonsProps {
   onGoogle: () => void;
   /** Disabled while another sign-in action is in flight. */
   disabled?: boolean;
+  /** The provider whose sign-in is in flight: its button shows a spinner. */
+  loading?: 'google' | 'apple' | null;
   /** False until Google is set up in this bundle — a button that can only
    *  fail is worse than none (2026-10-15). */
   showGoogle?: boolean;
@@ -62,6 +64,7 @@ export function SocialSignInButtons({
   onApple,
   onGoogle,
   disabled,
+  loading = null,
   showGoogle = true,
   showAppleWeb = false,
   dividerPosition = 'before',
@@ -110,11 +113,21 @@ export function SocialSignInButtons({
       {/* Apple first, as on iOS — its guidelines want it at least as
           prominent as any other sign-in. */}
       {showAppleOnAndroid ? (
-        <AppleSignInButton onPress={onApple} disabled={disabled} dark={scheme === 'dark'} />
+        <AppleSignInButton
+          onPress={onApple}
+          disabled={disabled}
+          loading={loading === 'apple'}
+          dark={scheme === 'dark'}
+        />
       ) : null}
 
       {showGoogle ? (
-        <GoogleSignInButton onPress={onGoogle} disabled={disabled} dark={scheme === 'dark'} />
+        <GoogleSignInButton
+          onPress={onGoogle}
+          disabled={disabled}
+          loading={loading === 'google'}
+          dark={scheme === 'dark'}
+        />
       ) : null}
 
       {dividerPosition === 'after' ? divider : null}
@@ -135,10 +148,12 @@ const GOOGLE = {
 function GoogleSignInButton({
   onPress,
   disabled,
+  loading,
   dark,
 }: {
   onPress: () => void;
   disabled?: boolean;
+  loading?: boolean;
   dark: boolean;
 }) {
   const styles = useThemedStyles(makeStyles);
@@ -149,7 +164,7 @@ function GoogleSignInButton({
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel="Continue with Google"
-      accessibilityState={{ disabled: Boolean(disabled) }}
+      accessibilityState={{ disabled: Boolean(disabled), busy: Boolean(loading) }}
       testID="google-sign-in"
       style={({ pressed }) => [
         styles.brandButton,
@@ -159,8 +174,12 @@ function GoogleSignInButton({
         disabled ? styles.disabled : null,
       ]}
     >
+      {/* The logo stays as Google requires; the spinner goes after the label. */}
       <GoogleLogo />
       <Text style={[styles.googleLabel, { color: colours.text }]}>Continue with Google</Text>
+      {loading ? (
+        <ActivityIndicator size="small" color={colours.text} testID="google-sign-in-spinner" />
+      ) : null}
     </Pressable>
   );
 }
@@ -217,10 +236,12 @@ const APPLE = {
 function AppleSignInButton({
   onPress,
   disabled,
+  loading,
   dark,
 }: {
   onPress: () => void;
   disabled?: boolean;
+  loading?: boolean;
   dark: boolean;
 }) {
   const styles = useThemedStyles(makeStyles);
@@ -231,7 +252,7 @@ function AppleSignInButton({
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel="Continue with Apple"
-      accessibilityState={{ disabled: Boolean(disabled) }}
+      accessibilityState={{ disabled: Boolean(disabled), busy: Boolean(loading) }}
       testID="apple-sign-in"
       style={({ pressed }) => [
         styles.brandButton,
@@ -243,6 +264,9 @@ function AppleSignInButton({
     >
       <AppleLogo colour={colours.ink} />
       <Text style={[styles.appleLabel, { color: colours.ink }]}>Continue with Apple</Text>
+      {loading ? (
+        <ActivityIndicator size="small" color={colours.ink} testID="apple-sign-in-spinner" />
+      ) : null}
     </Pressable>
   );
 }

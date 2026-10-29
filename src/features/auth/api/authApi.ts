@@ -278,6 +278,15 @@ export async function signInWithGoogle(): Promise<SocialResult> {
       iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
     });
     await GoogleSignin.hasPlayServices();
+    // Forget the account the Google SDK remembers, so the picker always opens
+    // (device check, 2026-10-29: it silently reused the first account, with no
+    // way to choose another). Local to the SDK — nothing is revoked, and our
+    // own session is untouched. Best effort: a failure here never blocks.
+    try {
+      await GoogleSignin.signOut();
+    } catch {
+      // Nothing remembered, or an older SDK: signIn still works.
+    }
     const response = await GoogleSignin.signIn();
     // ⚠️ v13+ RETURNS a cancel ({ type: 'cancelled' }) rather than throwing
     // it (the installed v16 included). Read as "no token", backing out of the
