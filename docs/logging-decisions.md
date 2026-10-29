@@ -48,15 +48,49 @@ The owner agreed these decisions on 2026-10-28, after a discovery audit and a st
 
 ## Phases
 
-| # | What | Ships by |
-|---|---|---|
-| 0 | This file | — |
-| 1 | Telemetry allow-list, server-side stripping, purge of existing rows. ESLint `no-console` waits: a config-protection hook blocks edits to `eslint.config.js` | migration + OTA |
-| 2 | `_shared/log.ts`, `redact.ts`, `handler.ts` on two low-risk functions | deploy |
-| 3 | The other 22 functions, in 3 batches | deploy |
-| 4 | `audit_payment_events` | migration |
-| 5 | Server Sentry + sweep heartbeat (the owner creates the EU org and sets `SENTRY_DSN`). Every error-level line and every uncaught throw becomes a Sentry event; inert until the DSN exists | deploy |
-| 6 | App: `traceparent` on function calls, global handlers, root `ErrorBoundary`, OTA id | OTA |
-| 7 | `docs/LOGGING.md` rewrite + handover | — |
+| # | What | Ships by | Status |
+|---|---|---|---|
+| 0 | This file | — | #304 |
+| 1 | Telemetry allow-list, server-side stripping, purge of existing rows. ESLint `no-console` waits: a config-protection hook blocks edits to `eslint.config.js` | migration + OTA | #304, OTA b9475423 — prod: 0 of 5,916 rows carry an id |
+| 2 | `_shared/log.ts`, `redact.ts`, `handler.ts` on two low-risk functions | deploy | #305 — AsyncLocalStorage confirmed in prod |
+| 3 | The other 22 functions, in 3 batches | deploy | #306 money, #307 notifications, #308 account; #307/#309 fixed over-masked counts and flags |
+| 4 | `audit_payment_events` | migration | #310 — 10 baseline rows in prod |
+| 5 | Server Sentry + sweep heartbeat (the owner creates the EU org and sets `SENTRY_DSN`). Every error-level line and every uncaught throw becomes a Sentry event; inert until the DSN exists | deploy | #311, OTA 59b3fd5b (privacy policy) — waiting on `SENTRY_DSN` |
+| 6 | App: `traceparent` on function calls, global handlers, root `ErrorBoundary`, OTA id | OTA | #312 |
+| 7 | `docs/LOGGING.md` rewrite + handover | — | #313 |
 
 Each phase is one PR: CI green, merged on the owner's "merge N", deploy verified, and an OTA when the app changed.
+
+## Handover (2026-10-29)
+
+**Done.**
+- Every Edge Function logs one JSON line per event. Each line carries version, trace, span and request ids; errors go through redaction; a crash returns a clean 500; every response carries `x-request-id`.
+- No raw `console` call is left on the server.
+- Every money change is kept as evidence for 6 years.
+- Telemetry can no longer carry an identifier or a place.
+- Server errors and the hourly sweep are wired to Sentry.
+- Once #312 ships: the app traces its function calls and reports its crashes.
+
+**Owner actions still open.**
+1. Create the Sentry project (EU region, Deno platform) and set `SENTRY_DSN` (`supabase/functions/README.md`). Then check that a sweep shows up as a check-in, and that the cron monitor and "new issue" alerts email you.
+2. Merge #312, and publish its OTA. Device check: a forced crash shows "Something went wrong", and `error_app_crash` appears in `telemetry_events`.
+3. Decide on the ESLint `no-console` rule: switch the config-protection hook off for one edit, or leave it as a convention.
+4. Decide whether `function_call_failed`'s `request_id` may travel in a bug report's breadcrumbs. Today they carry event names only, by design (`bugBreadcrumbs.ts`), so a tester's failure is matched by function and time instead.
+
+**Recommended next.**
+- **Alerts:**
+  - A Sentry issue alert: email on every new issue.
+  - A spike alert that protects the free tier's 5,000 errors a month.
+  - The cron monitor on `release-held-refunds`, created by its first check-in. Give it a 10-minute margin.
+  - A heartbeat for any new scheduled function, via `startCronCheckIn`.
+- **Dashboards.** Start with saved queries before any tool:
+  - 5xx `request_end` by `fn` per hour, from the Supabase logs.
+  - `payments_*` errors per day, from the Supabase logs.
+  - `error_app_crash` by `ota` and `error_function_call_failed` by `fn`, from `telemetry_events`.
+  - A payment's trail from `audit_payment_events`.
+  - Move to a hosted dashboard only once those prove they're read.
+- **App Sentry.** `@sentry/react-native`, with EAS source maps, at the next native build. It catches native crashes too, and replaces `crashReporting.ts`'s telemetry route.
+- **Later, as decided.**
+  - The OpenTelemetry SDK and exporters: the ids are already W3C, so nothing needs migrating.
+  - A log drain, if Supabase's retention proves too short.
+  - The audit table's purge job: nothing can be old enough to purge until 2032.
