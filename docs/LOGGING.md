@@ -1,146 +1,226 @@
-# Logging Standard
+# Logging
 
-One rule above all: **never call `console.log` directly in app code.**
-Always use the shared logger (`src/shared/lib/logger.ts`). Raw console
-calls are unstructured, untaggable, unredacted, and get left behind as
-noise. An ESLint `no-console` rule enforces this (logger.ts is the one
-exemption).
+How to log in Trackitdown — the app and the Edge Functions — what to log at
+each level, what must never be logged, and where every line ends up. The
+decisions behind it (and how to change one) are in
+[`logging-decisions.md`](logging-decisions.md).
 
-## Why structured logging matters here
+**The one rule:** never call `console.*` directly. The app uses
+`src/shared/lib/logger.ts`; Edge Functions use `supabase/functions/_shared/log.ts`.
+Raw console calls are untagged, unredacted and invisible to telemetry and
+Sentry. ⚠️ This is a convention, **not yet enforced**: the ESLint `no-console`
+rule is still to be added (a config-protection hook blocks edits to
+`eslint.config.js`). Today the only raw call left in app code is a dev warning
+in `src/shared/theme/paletteContext.tsx`; none are left in any Edge Function.
 
-1. **Human readability** — every log line has the same shape, so you can
-   scan the Metro terminal and instantly see which feature did what.
-2. **AI readability** — Claude Code debugs from logs. Consistent,
-   feature-tagged, single-line entries let it reconstruct what the app
-   did. This is a core input to `/diagnose-and-fix-bug`.
-3. **Privacy** — a central logger is the one place redaction can be
-   enforced. Scattered console.logs leak personal data.
+## Where a line goes
 
-## The format
+| Written by | Goes to | Kept |
+|---|---|---|
+| App `log.*` | Metro / device console; the 300-entry ring buffer (a bug report carries the last 50 event **names**, never their data) | Until the app restarts |
+| App `log.error`, and `log.info` named in snake_case | `public.telemetry_events`, allow-listed props only | Telemetry retention rule |
+| Edge Function `log.*` | Supabase function logs, one JSON line | Supabase's log retention (short — plan-dependent) |
+| Edge Function `log.error`, any uncaught throw | Sentry (EU), once `SENTRY_DSN` is set | Sentry free tier |
+| Any change to a `payments` row's money | `public.audit_payment_events` (a trigger, not a log) | 6 years, append-only |
 
-```
-🐛 DEBUG [feature] message { data }
-ℹ️ INFO  [feature] message { data }
-⚠️ WARN  [feature] message { data }
-🔴 ERROR [feature] message { data }
-```
+Anything that must last goes in the audit table or Sentry, never only in a log.
 
-Emoji + level render reliably in Metro, device logs, and CI output —
-that's the "colour coding" (true ANSI colour is terminal-dependent, so
-emoji is the portable version; in the Chrome/React Native DevTools
-console the levels also get the browser's native warn/error colouring).
-
-## Levels — when to use which
-
-- **debug** — developer detail (state transitions, cache hits). Stripped
-  in production builds.
-- **info** — notable app events: screen opened, post submitted, sighting
-  reported, notification received.
-- **warn** — recoverable oddities: retry needed, slow response (>3s),
-  validation rejection, empty result where one was expected.
-- **error** — something failed: API error, payment failure, crash-adjacent
-  states. In production these forward to Sentry (once wired in Phase 5).
-
-## What to log (boundaries, not noise)
-
-Log at the edges, where the app talks to the outside world:
-
-- **Every Supabase call** in feature `api/` files: operation start
-  (debug), success with duration (debug/info), failure with code (error).
-- **Every Edge Function invocation** from the app: called, succeeded,
-  failed. Inside Edge Functions, use the same message convention with
-  `console.log` (Deno — visible in Supabase dashboard/CLI logs).
-- **Every payment step** — always, at info or above. Money paths must be
-  reconstructable from logs alone.
-- **Navigation between features** (info) and push notifications
-  received/handled (info).
-- **Caught errors** — every catch block either logs at error or has a
-  comment explaining why silence is correct. Silent catch blocks are how
-  bugs become unfindable.
-
-Do NOT log inside render functions, loops, or per-keystroke handlers.
-
-## Privacy rules (non-negotiable — see SECURITY_AND_TRUST.md)
-
-NEVER log, at any level, in any environment:
-
-- Auth tokens, session objects, API keys, webhook payloads verbatim
-- **Bank details.** Sort codes and account numbers pass through
-  `submit-payout-details` on their way to Stripe (2026-08-03). There is no
-  redacting helper for these on purpose: a masked tail is still an account
-  number in a log, so the rule is nothing at all — not the value, not its
-  length, not the request body that carried it. Log the outcome and the Stripe
-  account id. Same for a date of birth and a home address collected with them.
-- Stripe **Account Session client secrets** and **Account Link URLs** — bearer
-  credentials into someone's identity documents
-- Verification document contents or their signed URLs
-- Chat message contents (log the event "message sent", never the text)
-- Full number plates — use the logger's `redactPlate()` → `AB12***`
-- Precise coordinates — use `redactLocation()` → 2-decimal rounding
-  (~1km) or an area name. Exact locations live in the database, not logs.
-- **User-authored names.** A watchlist collection name ("Mum's street") and a
-  saved vehicle's nickname are free text the user wrote for themselves — log
-  the id, never the name. Both are private user metadata under DOMAIN.md; a
-  name in a log is the one place it could escape the owner's own session.
-
-The logger's data serialiser also auto-masks any key named `token`,
-`password`, `secret`, `authorization`, or `key` as a safety net — but
-that net is a backstop, not permission to be careless.
-
-## Feature tags
-
-Each feature creates one child logger at the top of its api/hooks files:
+## In the app
 
 ```ts
-import { createLogger } from "@/shared/lib/logger";
-const log = createLogger("sightings");
+import { createLogger } from '@/shared/lib/logger';
+const log = createLogger('sightings'); // the feature folder name
 
-log.info("Sighting submitted", { postId, hasPhoto: true, durationMs });
+log.info('sighting_submit', { photoCount: 2, durationMs }); // an event: recorded
+log.warn('Upload retry', { attempt: 2 });                    // console + ring buffer only
+log.error('Sighting submit failed', { code });               // recorded as error_sighting_submit_failed
 ```
 
-Tags match feature folder names (`auth`, `vehicles`, `sightings`,
-`search-map`, `notifications`, `payments`, `chat`, `profile`,
-`moderation`, `watchlist`, `garage`) plus `app` for app-level events.
+- **Tags** are feature folder names (`auth`, `vehicles`, `sightings`,
+  `search-map`, `notifications`, `payments`, `chat`, `profile`, `moderation`,
+  `watchlist`, `garage`), plus `app` (crashes, startup) and `api` (Edge
+  Function calls).
+- **Level** comes from `EXPO_PUBLIC_LOG_LEVEL`: `debug` by default in dev,
+  `info` in a release build.
+- **Format** in the console: `🐛 DEBUG | ℹ️ INFO | ⚠️ WARN | 🔴 ERROR [feature] message { data }`.
+- **Telemetry** (`src/shared/lib/telemetry.ts`) records every `error` and every
+  `info` whose message is a snake_case event name. Only keys on the allow-list
+  (`TELEMETRY_KEYS`) leave the device, as scalars; any string holding a UUID and
+  any number shaped like a coordinate is dropped, and the database strips the
+  same again. **Adding a key is a privacy decision** — say why in the PR.
+- **Never log from the telemetry sink** or anything it calls during a flush: it
+  runs inside `emit`, so one log line there is an infinite loop.
 
-Watchlist collections emit `collection_create` / `collection_rename` /
-`collection_delete` / `collection_view`, `watch_move { postId, toId }`, and
-`watch_collection_fallback` (a save aimed at a list that had been deleted, and
-landed in Saved instead). **Ids only** — see the name rule above.
+### Calls to Edge Functions
 
-## The ring buffer (device debugging)
+Every `supabase.functions.invoke` goes through `src/shared/api/tracedFetch.ts`,
+which sends a W3C `traceparent` and, when the call fails, logs
+`function_call_failed { fn, status, request_id }`. The `request_id` is the
+server's `x-request-id` — the key to that call's server lines (see *Tracing a
+failure*). It stays on the device: telemetry drops it (a UUID) and bug reports
+carry event names only. You don't need to log the failure again; log what it
+means for the user.
 
-The logger keeps the last 300 entries in memory. A dev-only action
-(built in Phase 1's profile/settings screen) copies them to the
-clipboard so device-only issues can be pasted straight into
-`/diagnose-and-fix-bug`. The buffer is also inspectable in tests.
+### Crashes
 
-## Production behaviour
+`src/shared/lib/crashReporting.ts` reports a crash as one `app_crash` event —
+`{ kind, type, frame, ota }`, **never the message** — from React Native's
+global error handler (chained, not replaced), Hermes's unhandled-rejection
+tracker (release builds), and the root `ErrorBoundary` in `src/app/_layout.tsx`
+(“Something went wrong” / “Try again”). `ota` is the first 8 characters of the
+running update id, matching `eas update:list`. Native crashes are not caught
+until `@sentry/react-native` ships with the next native build.
 
-- `debug` is dropped entirely (guarded by `__DEV__`).
-- **A sink is registered** (`src/shared/lib/telemetry.ts`, since 2026-08-30),
-  and it sends two things to `public.telemetry_events`: every `error`, and
-  every `info` whose message is a **snake_case event name**. Nothing else
-  leaves the device — `warn` and prose `info` stay in the console and the ring
-  buffer.
+## In Edge Functions
 
-  ⚠️ **That convention is now load-bearing.** `log.info('feed_load', …)` is an
-  event and is recorded; `log.info('Sighting submitted', …)` is prose and is
-  not. Both were previously identical in effect, so this is a new rule rather
-  than a documented one — if you want a new log line counted, name it
-  `snake_case`.
+```ts
+import { withHandler } from '../_shared/handler.ts';
+import { createLog } from '../_shared/log.ts';
+import { describeError } from '../_shared/redact.ts';
 
-  ⚠️ **`data` is filtered before it is sent.** Scalars only, at most 8 keys,
-  strings truncated at 200 characters, and keys matching
-  `lat|lng|coord|plate|email|phone|address|postcode|token|secret|password` are
-  dropped outright. On a stolen-car app a coordinate or a plate must never
-  leave the device. This is a backstop, not a licence — the rule in the privacy
-  section still stands: do not log the value in the first place.
+const log = createLog('release-payout');
 
-  ⚠️ **Never call the logger from the sink**, or from anything the sink calls
-  during a flush. It is invoked *by* `emit`, so one log line in a failure path
-  is an infinite loop. `telemetry.ts` refuses its own feature tag as a second
-  belt, but the first rule is simply not to log there.
-- Sentry is still unwired, and remains the right answer for **crashes** — a
-  different job, because the process is gone before a flush can run. When it
-  lands it is a second sink, and nothing should ever import Sentry directly
-  except that sink.
+Deno.serve(withHandler(log, async (request) => {
+  // …
+  if (error) {
+    log.error('payments_transfer_create_failed', { post_id: postId, error: describeError(error) });
+    return errorResponse('STRIPE_ERROR', 'We couldn’t send the payout. Please try again.', 502);
+  }
+  log.info('payments_bounty_released', { post_id: postId, transfer_pence: transferPence });
+  return jsonResponse({ released: true });
+}));
+```
+
+- **Every function** wraps its handler in `withHandler`. It continues the
+  caller's `traceparent` (or starts a trace), gives the request a span and a
+  request id, logs `request_end { method, path, status, duration_ms }` (not for
+  preflights or `/health`), catches any throw (logged as `unhandled_error` with
+  its stack, answered with the house 500 `{ code: 'INTERNAL' }`), and returns
+  `x-request-id`.
+- **Shared modules** make their own logger — `createLog('refundEscrow')`.
+  Inside a request their lines carry the serving function in `fn` and
+  themselves in `module`, with the same ids.
+- **Errors** always go through `describeError(err)`: name, code, cause chain,
+  stack frames. It drops a **Stripe error's message** (it can repeat a rejected
+  bank value) and PostgREST's `details` and `hint` (they quote the failing row).
+  Never log `err.message` yourself.
+- **Settings** are function secrets: `LOG_LEVEL` (default `info`), `APP_ENV`
+  (default `production`; `development` prints readable lines),
+  `LOG_REDACT_KEYS` (extra key names to mask, comma-separated), `RELEASE` (set
+  to the commit SHA by `deploy.yml`), `SENTRY_DSN` (Sentry stays off until set).
+- **Tests** pass `createLog(fn, { write, env })` to capture lines; see
+  `_shared/log.test.ts`.
+
+### Sentry
+
+`_shared/sentry.ts` sends every `log.error` line (one issue per function +
+event) and every uncaught throw (with frames) to Sentry's EU region, tagged
+with `fn`, `request_id` and `trace_id`. Default integrations are off and
+`beforeSend` drops request, user and breadcrumbs and scrubs the rest. Scheduled
+jobs send a heartbeat: `startCronCheckIn('release-held-refunds', '0 * * * *')`
+at the start, the returned function with `'ok'` at the end — a missed or
+unfinished run raises an issue. Nothing happens until the owner sets
+`SENTRY_DSN`. Only `sentry.ts` may import the SDK.
+
+## Field conventions
+
+Every server line is one JSON object:
+
+| Field | Meaning |
+|---|---|
+| `ts` | UTC ISO time |
+| `level` | `debug` · `info` · `warn` · `error` |
+| `msg` | the event, **snake_case**, `<area>_<what happened>` — `payments_refund_create_failed` |
+| `service` | always `edge` |
+| `fn` | the function serving the request |
+| `module` | the shared module that wrote the line, when not the function itself |
+| `env`, `version` | `APP_ENV` and the deployed commit |
+| `trace_id`, `span_id`, `parent_span_id` | W3C / OpenTelemetry ids |
+| `request_id` | also returned as `x-request-id` |
+| your data | snake_case keys: `post_id`, `payment_intent_id`, `amount_pence`, `error` |
+
+App events follow the same naming: snake_case `msg`, camelCase prop keys from
+the allow-list.
+
+## Levels
+
+- **error** — something failed and someone may need to act. Reaches Sentry and
+  telemetry, so name it well.
+- **warn** — unexpected but handled: a retry, a fallback, a refused request.
+- **info** — a business event: `payments_charge_captured`, `sighting_submit`.
+- **debug** — development detail. Off in production.
+
+## What to log
+
+Log at the edges, where the app or a function talks to the outside world:
+
+- **Every payment step**, at info or above — a money path must be
+  reconstructable from its lines (and its audit rows).
+- **Every failure** — every `catch` either logs or has a comment saying why
+  silence is right. Silent catches are how bugs become unfindable.
+- **Outcomes, with ids and counts** — `{ post_id, sent: 3 }`, not prose.
+- Not inside render functions, loops or per-keystroke handlers.
+
+## Never log
+
+At any level, in any environment, app or server:
+
+- Auth tokens, session objects, API keys, cookies, webhook payloads verbatim.
+- **Bank details.** Sort codes and account numbers pass through
+  `submit-payout-details` on their way to Stripe. There is no redacting helper
+  on purpose: a masked tail is still an account number in a log. Log the
+  outcome and the Stripe account id — not the value, its length, or the request
+  body. Same for a date of birth and a home address collected with them.
+- Stripe **client secrets**, **Account Session secrets** and **Account Link /
+  login URLs** — bearer credentials into someone's identity documents.
+- Verification document contents, and any **signed URL**.
+- **Chat message contents** — log "message sent", never the text.
+- **Full plates** — `redactPlate()` → `AB12***`.
+- **Precise coordinates** — `redactLocation()` → ~1 km, or an area name.
+- **User-authored names** — a watchlist collection name, a vehicle nickname,
+  a free-text note. Log the id.
+- **Error messages from Stripe**, and any error message in the app's crash
+  reports.
+
+Redaction is the backstop, not the licence. Both loggers mask, at any depth up
+to 5, any key matching `token · secret · password · authorization · cookie ·
+…key · email · phone · iban · account number · sort code · lat · lng ·
+latitude · longitude · coord · plate · address · postcode · birth · dob · url
+· link · content · nickname · note · body`, and scrub JWTs, Stripe keys and
+secrets, Bearer tokens, emails, signed-link tokens and plates out of any text.
+A number under a count-shaped key (`…Count`, `…Purged`, `…Sent`, `…Emailed`)
+and any `true`/`false`/`null` are kept. The app and server lists are pinned
+together by `src/shared/lib/logger.test.ts`.
+
+## Tracing a failure
+
+1. Find the request id. On a dev build it is in `function_call_failed
+   { fn, status, request_id }` in Metro, or Profile → copy logs. From a tester's
+   phone it is NOT available — bug reports carry event names only — so start
+   from the function and the time instead: a 5xx is in telemetry as
+   `error_function_call_failed { fn, status }`, and a bug report shows
+   `api:function_call_failed` with the time it happened. Search the server logs
+   by `fn` and that minute, then take the `request_id` from the line you find.
+2. Supabase → Logs (or the Supabase MCP `query_logs`):
+
+   ```sql
+   select timestamp, event_message from logs
+   where source = 'function_logs'
+     and event_message like '%"request_id":"<id>"%'
+   order by timestamp
+   ```
+
+   Every line of that request — the function's own, its shared modules',
+   `request_end` — carries the id. Search by `trace_id` to follow one trace.
+3. If it was an `error`, the same request is a Sentry issue tagged
+   `request_id`.
+4. If money moved, its rows in `audit_payment_events` (by `payment_id`) show
+   every change, with the role that made it.
+
+## The ring buffer
+
+The app keeps its last 300 log entries in memory. A bug report carries the last
+50 as "Recent activity" — `time level feature:event` only, every data payload
+dropped (`src/features/profile/lib/bugBreadcrumbs.ts`, deliberately). The
+dev-only "copy logs" action on Profile copies the full entries for
+`/diagnose-and-fix-bug`.
