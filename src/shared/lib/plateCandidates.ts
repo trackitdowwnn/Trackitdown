@@ -46,7 +46,7 @@
  *        log the input; plates are personal data (use redactPlate).
  * LINKS: ./plate.ts (normalisation, formats, slot patterns);
  *        src/shared/lib/ocr/ (the adapter that produces TextBlock);
- *        src/features/garage/components/PlateScanSheet.tsx (the consumer).
+ *        src/shared/lib/plateSelection.ts (the consumer).
  */
 
 import {

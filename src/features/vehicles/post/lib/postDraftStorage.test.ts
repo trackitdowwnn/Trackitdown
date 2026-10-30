@@ -128,10 +128,10 @@ describe('savePostDraft', () => {
     expect(JSON.stringify(stored)).not.toContain('file://');
   });
 
-  it('keeps the plate, and whether the scan supplied it (2026-10-30)', async () => {
-    await savePostDraft({ ...answers(), plate: 'AB12 CDE', plateFromScan: true });
+  it('keeps the plate (2026-10-30)', async () => {
+    await savePostDraft({ ...answers(), plate: 'AB12 CDE' });
 
-    expect(written().answers).toMatchObject({ plate: 'AB12 CDE', plateFromScan: true });
+    expect(written().answers).toMatchObject({ plate: 'AB12 CDE' });
   });
 
   it('⚠️ writes ONLY whitelisted keys, whatever it is handed', async () => {

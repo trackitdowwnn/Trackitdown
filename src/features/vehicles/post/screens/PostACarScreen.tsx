@@ -52,6 +52,7 @@ import {
 } from '../lib/postDraftStorage';
 import { submitPost } from '../api/postApi';
 import { logPlateScanOutcome } from '../lib/plateScanOutcome';
+import { PlateScanProvider } from '../lib/usePlateScan';
 import { POST_A_CAR_INITIAL_ANSWERS, postACarFlow } from '../postACarFlow';
 import type { PostACarAnswers } from '../types';
 
@@ -259,34 +260,37 @@ export function PostACarScreen({
   }
 
   return (
-    <WizardScreen
-      flow={flow ?? postACarFlow}
-      // A restored draft overlays the seeds rather than replacing them: it holds
-      // only the whitelisted keys, so the bounty seed (and anything else the
-      // flow expects to exist) survives a draft that never reached that step.
-      initialAnswers={
-        initialAnswers ?? { ...POST_A_CAR_INITIAL_ANSWERS, ...(draft?.answers ?? {}) }
-      }
-      onExit={() => {
-        // requestExit is the ONLY route to onExit, and the success path leaves
-        // via router.replace without touching it — so reaching here means the
-        // wizard was abandoned. Guarded on the draft id because someone who got
-        // as far as creating one and then hit a payment problem HAS had a car
-        // stolen; "save one for next time" is the wrong sentence for them.
-        if (!createdPostIdRef.current) {
-          onAbandon?.();
+    // The plate scan outlives the photos step: its plates wait on the plate step.
+    <PlateScanProvider>
+      <WizardScreen
+        flow={flow ?? postACarFlow}
+        // A restored draft overlays the seeds rather than replacing them: it holds
+        // only the whitelisted keys, so the bounty seed (and anything else the
+        // flow expects to exist) survives a draft that never reached that step.
+        initialAnswers={
+          initialAnswers ?? { ...POST_A_CAR_INITIAL_ANSWERS, ...(draft?.answers ?? {}) }
         }
-        router.back();
-      }}
-      onComplete={handleComplete}
-      // ⚠️ ONLY THIS FLOW GETS IT. Nine steps ending in a card charge is the
-      // one place in the app where losing the answers is a real loss; report-a-
-      // sighting and add-a-vehicle keep the plain discard prompt.
-      onSaveAndExit={(answers) => savePostDraft(answers, ownerId)}
-      // Discard means discard: the saved draft goes too, or it came straight
-      // back on the next open. Only on the BLANK report — the prefilled path
-      // never read the draft, so its Discard must not wipe an unrelated one.
-      onDiscard={initialAnswers ? undefined : () => void clearPostDraft()}
-    />
+        onExit={() => {
+          // requestExit is the ONLY route to onExit, and the success path leaves
+          // via router.replace without touching it — so reaching here means the
+          // wizard was abandoned. Guarded on the draft id because someone who got
+          // as far as creating one and then hit a payment problem HAS had a car
+          // stolen; "save one for next time" is the wrong sentence for them.
+          if (!createdPostIdRef.current) {
+            onAbandon?.();
+          }
+          router.back();
+        }}
+        onComplete={handleComplete}
+        // ⚠️ ONLY THIS FLOW GETS IT. Nine steps ending in a card charge is the
+        // one place in the app where losing the answers is a real loss; report-a-
+        // sighting and add-a-vehicle keep the plain discard prompt.
+        onSaveAndExit={(answers) => savePostDraft(answers, ownerId)}
+        // Discard means discard: the saved draft goes too, or it came straight
+        // back on the next open. Only on the BLANK report — the prefilled path
+        // never read the draft, so its Discard must not wipe an unrelated one.
+        onDiscard={initialAnswers ? undefined : () => void clearPostDraft()}
+      />
+    </PlateScanProvider>
   );
 }

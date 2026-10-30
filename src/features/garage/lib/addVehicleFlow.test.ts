@@ -71,33 +71,12 @@ describe('add-vehicle flow structure', () => {
   });
 });
 
-describe('the plate step steps aside once the scan has answered it', () => {
-  const plateWhen = stepById('plate').when;
-
-  it('is asked when nothing has answered it', () => {
-    expect(plateWhen?.({})).toBe(true);
+describe('the plate step is where the scanned plates are offered', () => {
+  it('is always asked: the plates read from the photos wait there (2026-10-30)', () => {
+    expect(stepById('plate').when).toBeUndefined();
   });
 
-  it('is walked past once the owner confirmed a scanned plate', () => {
-    expect(plateWhen?.({ plate: 'AB12 CDE', plateFromScan: true })).toBe(false);
-  });
-
-  it('is STILL asked when a plate was typed by hand', () => {
-    // Only a confirmed READING retires the question. Someone who typed it has
-    // already been asked, so nothing changes for them either way.
-    expect(plateWhen?.({ plate: 'AB12 CDE' })).toBe(true);
-  });
-
-  it('is STILL asked when editing a saved car that has a plate', () => {
-    // The same wizard edits an existing car, seeded from the database with no
-    // plateFromScan. Keying off a non-empty plate would make the registration
-    // of every saved car impossible to reach.
-    expect(plateWhen?.({ plate: 'XY34 ZZZ', make: 'Ford' })).toBe(true);
-  });
-
-  it('stays on the review screen either way, so a misread is correctable', () => {
-    // `when` hides it from the WALK only. There is no DVLA lookup behind this,
-    // so review is the last chance to catch a confirmed misread.
+  it('shows on the review screen, so a misread is correctable', () => {
     expect(stepById('plate').reviewValue?.({ plate: 'AB12 CDE' })).toBe('AB12 CDE');
   });
 

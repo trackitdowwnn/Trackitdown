@@ -23,7 +23,7 @@
  *         to the caller and keeps nothing; callers must not persist or log it
  *         (plates are personal data — see redactPlate).
  * LINKS: src/shared/lib/plateCandidates.ts (the only consumer of the output);
- *        src/features/garage/components/PlateScanSheet.tsx;
+ *        src/features/vehicles/post/lib/usePlateScan.tsx;
  *        docs/SECURITY_AND_TRUST.md §3.
  */
 

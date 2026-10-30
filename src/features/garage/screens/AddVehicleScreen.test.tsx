@@ -17,6 +17,7 @@ jest.mock('expo-router', () => ({ useRouter: () => ({ back: jest.fn(), replace: 
 const mockFetchPostDetail = jest.fn();
 jest.mock('@/features/vehicles', () => ({
   fetchPostDetail: (...args: unknown[]) => mockFetchPostDetail(...args),
+  PlateScanProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 jest.mock('../hooks/useMyVehicles', () => ({

@@ -21,7 +21,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { fetchPostDetail, logPlateScanOutcome } from '@/features/vehicles';
+import { fetchPostDetail, logPlateScanOutcome, PlateScanProvider } from '@/features/vehicles';
 import { successHaptic } from '@/shared/lib/haptics';
 import { createLogger } from '@/shared/lib/logger';
 import { spacing } from '@/shared/theme';
@@ -142,12 +142,15 @@ export function AddVehicleScreen({ vehicleId, fromPostId }: AddVehicleScreenProp
   };
 
   return (
-    <WizardScreen
-      flow={flow}
-      initialAnswers={initialAnswers}
-      onExit={() => router.back()}
-      onComplete={handleComplete}
-    />
+    // The plate scan outlives the photos step: its plates wait on the plate step.
+    <PlateScanProvider>
+      <WizardScreen
+        flow={flow}
+        initialAnswers={initialAnswers}
+        onExit={() => router.back()}
+        onComplete={handleComplete}
+      />
+    </PlateScanProvider>
   );
 }
 
