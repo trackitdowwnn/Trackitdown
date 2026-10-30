@@ -313,6 +313,33 @@ describe('v2: one plate, two cars, or nothing', () => {
     expect(setAnswers.mock.calls.some(([patch]) => patch && Object.hasOwn(patch, 'plate'))).toBe(false);
   });
 
+  // 2026-10-30: on the phone every pick is the grid's shrunk upload copy; the
+  // second read only gains detail from the camera original.
+  it('reads the full-size original, not the shrunk upload copy', async () => {
+    mockReadPlate.mockResolvedValue({ kind: 'none' });
+    await renderStep();
+    await act(async () => {
+      emit?.([
+        { uri: 'file://small.jpg', width: 2000, height: 1500, originalUri: 'file://camera.jpg' },
+      ]);
+    });
+    await settle();
+
+    expect(mockReadPlate).toHaveBeenCalledWith('file://camera.jpg');
+    expect(setAnswers).toHaveBeenCalledWith({
+      photos: [expect.objectContaining({ uri: 'file://small.jpg' })],
+    });
+  });
+
+  it('reads the photo itself when the grid kept it as it was', async () => {
+    mockReadPlate.mockResolvedValue({ kind: 'none' });
+    await renderStep();
+    await addPhoto('file://as-picked.jpg');
+    await settle();
+
+    expect(mockReadPlate).toHaveBeenCalledWith('file://as-picked.jpg');
+  });
+
   it('offers both plates when two cars are equally in shot', async () => {
     mockReadPlate.mockResolvedValue({
       kind: 'pair',

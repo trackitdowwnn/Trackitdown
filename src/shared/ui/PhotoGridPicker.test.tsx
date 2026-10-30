@@ -330,6 +330,8 @@ describe('gallery selection', () => {
       `${photo(10).uri}-resized`, // longest edge > 2000 → processed
       photo(11).uri, // within bounds → untouched
     ]);
+    // The resized copy remembers the full-size file (plate scan reads it).
+    expect(next.map((p) => p.originalUri)).toEqual([undefined, photo(10).uri, undefined]);
   });
 
   it('shows processing tiles while the resize pipeline runs', async () => {

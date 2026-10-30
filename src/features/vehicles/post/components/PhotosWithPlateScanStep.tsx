@@ -195,6 +195,9 @@ export function PhotosWithPlateScanStep(props: WizardStepProps<PlateScanAnswers>
   // by the guard below — never actually looked at, while the status line
   // claimed otherwise.
   const queue = useRef<string[]>([]);
+  // Grid uri → the picker's full-size file. The grid shrinks picks for upload;
+  // v2's second read needs the original's detail (photos taken on the phone).
+  const originals = useRef(new Map<string, string>());
   // Readings the owner has explicitly turned down. They were looking at the
   // actual car; we are not going to ask twice.
   const rejected = useRef(new Set<string>());
@@ -262,7 +265,7 @@ export function PhotosWithPlateScanStep(props: WizardStepProps<PlateScanAnswers>
           if (v2) {
             // v2: two reads that must agree, with each plate's crop; one plate
             // per photo, or two when two cars are equally in shot (readPlate).
-            const reading = await readPlateFromPhoto(uri);
+            const reading = await readPlateFromPhoto(originals.current.get(uri) ?? uri);
             if (reading.kind === 'error') failed = true;
             else if ('plates' in reading) readings = reading.plates;
           } else {
@@ -416,6 +419,9 @@ export function PhotosWithPlateScanStep(props: WizardStepProps<PlateScanAnswers>
   const onChangePhotos = useCallback(
     (photos: PlateScanAnswers['photos'] | undefined) => {
       setAnswers({ photos });
+      for (const photo of photos ?? []) {
+        if (photo.originalUri) originals.current.set(photo.uri, photo.originalUri);
+      }
       // The whole array arrives on every change, so a reorder or a removal
       // mid-scan must not re-queue photos already waiting.
       const fresh = (photos ?? [])
