@@ -1,5 +1,5 @@
 /**
- * WHAT:  Tests for the garage photos step that reads a plate from the photos
+ * WHAT:  Tests for the photos step that reads a plate from the photos
  *        an owner adds.
  * WHY:   The valuable assertions here are the SILENCES. This runs on its own,
  *        uninvited, while somebody is doing something else — so the failure
@@ -95,7 +95,7 @@ let emit: ((photos: unknown) => void) | null = null;
 let tileStatus: Record<string, { kind: string; label?: string }> | undefined;
 /** Every distinct uri that has been dimmed, in order — proof that it MOVES. */
 let mockDimmedOrder: string[] = [];
-jest.mock('@/features/vehicles', () => ({
+jest.mock('./postSteps', () => ({
   PhotosStep: ({
     setAnswers,
     status,
@@ -744,7 +744,7 @@ describe('closing the question', () => {
     await settleAll();
 
     expect(mockShowToast).toHaveBeenCalledWith(
-      'Plate saved — you can change it when you check your car.',
+      'Plate saved — you can change it at the end.',
     );
   });
 
@@ -759,7 +759,7 @@ describe('closing the question', () => {
     await settleAll();
 
     expect(mockShowToast).toHaveBeenCalledWith(
-      'Plate updated — you can change it when you check your car.',
+      'Plate updated — you can change it at the end.',
     );
   });
 

@@ -107,8 +107,9 @@ const photoShape = z.object({
 // `undefined` the controller leaves for steps a user never edits) or .default()
 // so an untouched optional field never blanket-fails as INCOMPLETE.
 const submitAnswersSchema = z.object({
-  // Plate collection removed from the wizard (deferred) — every post is
-  // plate-less for now; make/model/colour identify it. p_plate → null below.
+  // Optional (2026-10-30): scanned or typed. create_post checks the format and
+  // that no live listing has it; '' (skipped) is sent as null.
+  plate: z.string().default(''),
   make: z.string().min(1),
   model: z.string().min(1),
   colour: z.string().min(1),
@@ -188,9 +189,9 @@ function emptyToNull(value: string): string | null {
 
 /**
  * Map validated answers + upload results onto the create_post RPC arguments.
- * Pure and mock-free so the mapping is unit-tested directly. NOTE: plate
- * collection is deferred (removed from the wizard), so p_plate is always null
- * for now — a post is identified by make/model/colour. The legacy
+ * Pure and mock-free so the mapping is unit-tested directly. The plate is
+ * optional: a skipped one is null, and make/model/colour identify the car. The
+ * legacy
  * `distinguishing_features` / `desc_recognise` free-text columns and the
  * `feature_keys` chip taxonomy are all null now — this flow collects the
  * distinctive-features evidence pairs (photo + description) instead. `owner_note`
@@ -209,8 +210,7 @@ export function buildCreatePostParams(
   },
 ): CreatePostParams {
   return {
-    // Plate collection deferred — always plate-less for now.
-    p_plate: null,
+    p_plate: emptyToNull(answers.plate),
     p_make: answers.make,
     p_model: answers.model,
     // A retired name ("Brown / Beige") is written as its current one.

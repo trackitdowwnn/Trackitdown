@@ -911,10 +911,10 @@ unpublished, unsearchable, and carries no money or lifecycle state.
   that listing closes. The server side exists (`posts.vehicle_id`,
   `is_currently_posted`, `VEHICLE_HAS_ACTIVE_POST`) and the UI renders it, but
   **nothing writes `posts.vehicle_id` yet**: `create_post` has no `p_vehicle_id`
-  parameter, and the posting client still sends `p_plate: null` (plate capture
-  was removed from the wizard on 2026-07-24). So today `is_currently_posted` is
-  always false, that UI never appears, and one-active-post-per-plate stays
-  dormant on every path. Closing this needs a `create_post` migration plus the
+  parameter, and a report started from a saved car still sends no plate (a
+  report from scratch sends its scanned or typed one since 2026-10-30). So today
+  `is_currently_posted` is always false, that UI never appears, and
+  one-active-post-per-plate guards only reports from scratch that carry a plate. Closing this needs a `create_post` migration plus the
   plate plumbed through `buildCreatePostParams` — tracked in
   `src/features/garage/README.md`.
 - **No ownership verification.** The garage deliberately does NOT collect a V5C:

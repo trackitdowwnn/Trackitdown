@@ -5,9 +5,10 @@
  *        sensible starting bounty so the slider and its schema begin valid).
  * WHY:   Flows are DATA, not code (the framework renders everything else). One
  *        readable table keeps the whole flow — order, gating, review copy — in
- *        one auditable place. Plate capture is deferred (removed for now), so
- *        the manual make/model/colour/year path is what identifies the car;
- *        create_post re-validates everything at submit. Copy follows
+ *        one auditable place. The plate is optional (2026-10-30): the photos
+ *        step reads it, and a plate step asks only when the scan could not;
+ *        make/model/colour identify a car without one. create_post
+ *        re-validates everything at submit. Copy follows
  *        DESIGN_SYSTEM tone — calm, practical, no dwelling.
  *
  *        NO PHASE INTROS (2026-10-08). Three screens that only said what was
@@ -49,6 +50,8 @@ import {
   PricingModeStep,
 } from './components/postSteps';
 import { LAST_SEEN_QUESTIONS } from './lib/lastSeenTime';
+import { PhotosWithPlateScanStep } from './components/PhotosWithPlateScanStep';
+import { PlateStep } from './components/PlateStep';
 import { buildVehicleSteps } from './lib/vehicleSteps';
 import type { PostACarAnswers } from './types';
 
@@ -67,11 +70,34 @@ export const POST_A_CAR_INITIAL_ANSWERS: Partial<PostACarAnswers> = {
  */
 export const EMPATHY_LINE = 'Sorry this happened — let’s get the details.';
 
-/** The shared vehicle steps, with the empathy line on the first. */
+/**
+ * The shared vehicle steps, with the empathy line on the first and the photos
+ * step reading the plate, then the plate question it may retire (owner,
+ * 2026-10-30: "plate scanning … in the report listing form as well").
+ */
 function carSteps() {
-  return buildVehicleSteps<PostACarAnswers>({ minPhotos: 3 }).map((step, index) =>
-    index === 0 ? { ...step, helper: EMPATHY_LINE } : step,
-  );
+  return [
+    ...buildVehicleSteps<PostACarAnswers>({ minPhotos: 3 }).map((step, index) =>
+      index === 0
+        ? { ...step, helper: EMPATHY_LINE }
+        : step.id === 'photos'
+          ? { ...step, component: PhotosWithPlateScanStep }
+          : step,
+    ),
+    {
+      // AFTER the photos, so it is only asked when the scan could not answer
+      // it; a confirmed reading walks past it (`when`) but stays on review,
+      // so a misread is still correctable. No helper: this flow has none.
+      id: 'plate',
+      question: "What's the number plate?",
+      component: PlateStep,
+      optional: true,
+      when: (answers: Partial<PostACarAnswers>) => !answers.plateFromScan,
+      schema: z.object({ plate: z.string().trim().min(1) }),
+      reviewLabel: 'Plate',
+      reviewValue: (answers: Partial<PostACarAnswers>) => answers.plate?.trim() || 'Not provided',
+    },
+  ];
 }
 
 export const postACarFlow: WizardFlow<PostACarAnswers> = {

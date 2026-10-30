@@ -83,6 +83,7 @@ beforeEach(() => {
 
 function readyAnswers(overrides: Partial<SubmitReadyAnswers> = {}): SubmitReadyAnswers {
   return {
+    plate: '',
     make: 'BMW',
     model: '320d',
     colour: 'Blue',
@@ -115,7 +116,7 @@ describe('buildCreatePostParams', () => {
     });
 
     expect(params).toMatchObject({
-      // Plate capture deferred — always plate-less for now.
+      // No plate given (skipped): sent as null.
       p_plate: null,
       p_make: 'BMW',
       p_year: 2019,
@@ -388,16 +389,32 @@ describe('submitPost', () => {
     expect((mockRpc.mock.calls[0][1] as Record<string, unknown>).p_colour_finish).toBeNull();
   });
 
-  it('always creates a plate-less post (p_plate null — plate capture deferred)', async () => {
+  it('sends the plate when there is one (scanned or typed, 2026-10-30)', async () => {
     mockRpc.mockResolvedValue({
       data: { post_id: '44444444-4444-4444-4444-444444444444', status: 'draft' },
       error: null,
     });
 
-    const result = await submitPost(readyAnswers());
+    await submitPost({ ...readyAnswers({ plate: ' AB12 CDE ' }), plateFromScan: true });
 
-    expect(result.status).toBe('draft');
+    const args = mockRpc.mock.calls[0][1] as Record<string, unknown>;
+    expect(args.p_plate).toBe('AB12 CDE');
+    // UI state only: it never reaches the server.
+    expect(args).not.toHaveProperty('plateFromScan');
+  });
+
+  it('a skipped plate (blank, or never answered) is sent as null', async () => {
+    mockRpc.mockResolvedValue({
+      data: { post_id: '44444444-4444-4444-4444-444444444444', status: 'draft' },
+      error: null,
+    });
+    const { plate: _plate, ...noPlate } = readyAnswers({ plate: '   ' });
+
+    await submitPost(readyAnswers({ plate: '   ' }));
+    await submitPost(noPlate);
+
     expect((mockRpc.mock.calls[0][1] as Record<string, unknown>).p_plate).toBeNull();
+    expect((mockRpc.mock.calls[1][1] as Record<string, unknown>).p_plate).toBeNull();
   });
 
   it('stops before the RPC and flags the tile when a photo upload fails', async () => {
