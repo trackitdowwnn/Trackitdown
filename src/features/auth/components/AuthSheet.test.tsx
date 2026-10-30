@@ -424,18 +424,25 @@ describe('Sign in with Apple — Android takes the web flow (2026-10-15)', () =>
     expect(screen.queryByTestId('apple-coming-soon')).toBeNull(); // not mounted until asked
 
     await act(async () => {
+      fireEvent.changeText(screen.getByLabelText('Email'), 'sam@example.com');
+    });
+    await act(async () => {
       await fireEvent.press(screen.getByText('Continue with Apple'));
     });
     expect(screen.getByTestId('apple-coming-soon')).toBeTruthy();
     expect(screen.getByText('Coming soon')).toBeTruthy();
     expect(mockSignInWithAppleWeb).not.toHaveBeenCalled();
+    // It takes the sign-in sheet's place (1.2.0 device check, 2026-10-30):
+    // stacked, the library dismissed the sheet beneath and dropped the gate.
+    expect(screen.queryByLabelText('Email')).toBeNull();
 
-    // "Got it" closes it, and the sign-in sheet is still there to use.
+    // "Got it" brings the sign-in sheet back, with what was typed.
     await act(async () => {
       await fireEvent.press(screen.getByText('Got it'));
     });
     await waitFor(() => expect(screen.queryByTestId('apple-coming-soon')).toBeNull());
-    expect(screen.getByLabelText('Email')).toBeTruthy();
+    await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
+    expect(screen.getByLabelText('Email').props.value).toBe('sam@example.com');
     // In act: taking the intent re-renders the sheet that watches it.
     const intent = await act(async () => consumePendingIntent());
     expect(intent).not.toBeNull(); // the gate was not cancelled

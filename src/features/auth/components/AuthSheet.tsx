@@ -106,6 +106,12 @@ export function AuthSheet() {
   // we call you?" starts filled in (2026-10-15) — still theirs to change.
   const [suggestedName, setSuggestedName] = useState('');
   const [appleComingSoon, setAppleComingSoon] = useState(false);
+  // Apple's "Coming soon" REPLACES this sheet instead of stacking on it:
+  // stacked, the library dismissed the sign-in sheet underneath, which
+  // dropped the gate and left people on the home screen (1.2.0 device check,
+  // 2026-10-30). Set while this sheet closes for it; the close then keeps the
+  // gate, and "Got it" brings the sign-in sheet back as it was.
+  const comingSoonHandoffRef = useRef(false);
   const renderStep: Step = intent && standing === 'incomplete' ? 'profile' : step;
 
   const openRef = useRef(false); // sheet currently presented (or presenting)
@@ -177,6 +183,12 @@ export function AuthSheet() {
 
   const handleDismiss = () => {
     openRef.current = false;
+    if (comingSoonHandoffRef.current) {
+      // Closed to make way for "Coming soon": keep the gate and what was typed.
+      comingSoonHandoffRef.current = false;
+      setAppleComingSoon(true);
+      return;
+    }
     // The signed-in path closed the sheet with an action waiting: now it runs.
     runPendingAction();
     // Reset for the next gate (an event handler, so plain setState is fine).
@@ -211,7 +223,8 @@ export function AuthSheet() {
               onSocialName={setSuggestedName}
               onAppleComingSoon={() => {
                 Keyboard.dismiss();
-                setAppleComingSoon(true);
+                comingSoonHandoffRef.current = true;
+                sheetRef.current?.close(); // handleDismiss then opens "Coming soon"
               }}
             />
           ) : renderStep === 'otp' ? (
@@ -222,10 +235,17 @@ export function AuthSheet() {
         </StepSlide>
       </BottomSheet>
       {/* Android's Apple button, before Apple is switched on (2026-10-15):
-          a sheet over this one saying it's coming. Mounted only while open. */}
+          a sheet in this one's place saying it's coming. Mounted only while open. */}
       {appleComingSoon ? (
         <AppleComingSoonSheet
-          onClose={() => setAppleComingSoon(false)}
+          onClose={() => {
+            setAppleComingSoon(false);
+            // Back to signing in, unless the gate went meanwhile.
+            if (intent) {
+              openRef.current = true;
+              sheetRef.current?.open();
+            }
+          }}
           googleAvailable={isGoogleSignInConfigured()}
         />
       ) : null}

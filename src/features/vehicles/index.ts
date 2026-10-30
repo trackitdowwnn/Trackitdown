@@ -33,6 +33,7 @@ export type { PostDetail, PostDetailResult, ClosedReason } from './types';
 // The report-sighting wizard reads the post's registered marks through this
 // (deferred-imported) to offer them as confirmable checkmarks.
 export { fetchPostDetail } from './api/vehicleApi';
+export { deleteDraft } from './api/draftApi';
 // The owner's sighting page offers "Got your car back?" after a confirmation,
 // on the same rule the post page uses (deferred-imported, like the above).
 export { canMarkRecovered } from './lib/ownerPermissions';
