@@ -22,6 +22,7 @@ jest.mock('expo-image-picker', () => ({
 
 const mockReadPlate = jest.fn();
 jest.mock('../lib/readPlate', () => ({
+  ...jest.requireActual('../lib/readPlate'),
   readPlateFromPhoto: (...args: unknown[]) => mockReadPlate(...args),
 }));
 
@@ -96,8 +97,17 @@ it('says the photos gave nothing and offers a close photo, until a plate is type
 
 it('reads the close photo and offers the plate; only a confirmation writes it', async () => {
   mockReadPlate.mockResolvedValue({
-    kind: 'likely',
-    plates: [{ canon: 'AB12CDE', display: 'AB12 CDE', format: 'current', coercions: 0, cropUri: 'c' }],
+    kind: 'read',
+    sawText: true,
+    sightings: [
+      {
+        candidate: { canon: 'AB12CDE', display: 'AB12 CDE', format: 'current', coercions: 0, cost: 0 },
+        share: 0.2,
+        fromCrop: true,
+        lowercase: false,
+        extra: 'c',
+      },
+    ],
   });
   const view = await renderStep({ plateScanNothing: true });
   await tapCloseUp(view);
@@ -114,7 +124,7 @@ it('reads the close photo and offers the plate; only a confirmation writes it', 
 });
 
 it('says so when the close photo gives nothing either', async () => {
-  mockReadPlate.mockResolvedValue({ kind: 'none' });
+  mockReadPlate.mockResolvedValue({ kind: 'read', sightings: [], sawText: true });
   const view = await renderStep({ plateScanNothing: true });
   await tapCloseUp(view);
 

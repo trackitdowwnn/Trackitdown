@@ -146,6 +146,7 @@ const mockRecognise = jest.fn(async () => {
 });
 const mockReadPlate = jest.fn();
 jest.mock('../lib/readPlate', () => ({
+  ...jest.requireActual('../lib/readPlate'),
   readPlateFromPhoto: (...args: unknown[]) => mockReadPlate(...args),
 }));
 
@@ -277,17 +278,24 @@ const dimmedUri = () => {
   return entries.length > 0 ? entries[0][0] : null;
 };
 
-// Plate scanning v2 (docs/plate-scan-decisions.md): two reads that must agree
-// (readPlate, mocked here — it has its own tests), one plate or two, or none.
-// Behind EXPO_PUBLIC_PLATE_SCAN_V2.
-describe('v2: one plate, two cars, or nothing', () => {
-  const plate = (canon: string, display: string) => ({
-    canon,
-    display,
-    format: 'current' as const,
-    coercions: 0,
-    cropUri: `file://crop-${canon}.jpg`,
+// Plate scanning v3 (docs/plate-scan-decisions.md): every photo read
+// (readPlate, mocked here — it has its own tests), the best three plates across
+// them offered. Behind EXPO_PUBLIC_PLATE_SCAN_V2.
+describe('v3: every photo read, the best plates offered', () => {
+  /** One reading of a plate, `share` of the photo tall. */
+  const seen = (canon: string, display: string, share = 0.08) => ({
+    candidate: { canon, display, format: 'current' as const, coercions: 0, cost: 0 },
+    share,
+    fromCrop: true,
+    lowercase: false,
+    extra: `file://crop-${canon}.jpg`,
   });
+  const read = (...sightings: ReturnType<typeof seen>[]) => ({
+    kind: 'read',
+    sightings,
+    sawText: true,
+  });
+  const nothing = { kind: 'read', sightings: [], sawText: true };
   const events = (name: string) =>
     mockLogInfo.mock.calls.filter(([event]) => event === name).map(([, data]) => data);
 
@@ -298,16 +306,16 @@ describe('v2: one plate, two cars, or nothing', () => {
     delete process.env.EXPO_PUBLIC_PLATE_SCAN_V2;
   });
 
-  it('offers the one plate the two reads agreed on, with its crop', async () => {
-    mockReadPlate.mockResolvedValue({ kind: 'likely', plates: [plate('AB12CDE', 'AB12 CDE')] });
+  it('offers the plate it read, with its crop', async () => {
+    mockReadPlate.mockResolvedValue(read(seen('AB12CDE', 'AB12 CDE')));
     await renderStep();
     await addPhoto();
 
     expect(mockOpened.current).toBe(true);
-    expect(mockRecognise).not.toHaveBeenCalled(); // v2 reads through readPlate only
+    expect(mockRecognise).not.toHaveBeenCalled(); // v3 reads through readPlate only
     expect(events('plate_scan_offered')).toEqual([{ candidates: 1, hadTypedPlate: false }]);
     expect(events('plate_scan_result')).toEqual([
-      expect.objectContaining({ mode: 'v2', kind: 'likely', count: 1 }),
+      expect.objectContaining({ mode: 'v3', kind: 'likely', count: 1 }),
     ]);
     expect(setAnswers).toHaveBeenCalledWith({ plateScanOffered: 'AB12CDE', plateScanNothing: false });
     expect(setAnswers.mock.calls.some(([patch]) => patch && Object.hasOwn(patch, 'plate'))).toBe(false);
@@ -316,7 +324,7 @@ describe('v2: one plate, two cars, or nothing', () => {
   // 2026-10-30: on the phone every pick is the grid's shrunk upload copy; the
   // second read only gains detail from the camera original.
   it('reads the full-size original, not the shrunk upload copy', async () => {
-    mockReadPlate.mockResolvedValue({ kind: 'none' });
+    mockReadPlate.mockResolvedValue(nothing);
     await renderStep();
     await act(async () => {
       emit?.([
@@ -332,7 +340,7 @@ describe('v2: one plate, two cars, or nothing', () => {
   });
 
   it('reads the photo itself when the grid kept it as it was', async () => {
-    mockReadPlate.mockResolvedValue({ kind: 'none' });
+    mockReadPlate.mockResolvedValue(nothing);
     await renderStep();
     await addPhoto('file://as-picked.jpg');
     await settle();
@@ -340,30 +348,66 @@ describe('v2: one plate, two cars, or nothing', () => {
     expect(mockReadPlate).toHaveBeenCalledWith('file://as-picked.jpg');
   });
 
-  it('offers both plates when two cars are equally in shot', async () => {
-    mockReadPlate.mockResolvedValue({
-      kind: 'pair',
-      plates: [plate('AB12CDE', 'AB12 CDE'), plate('XY34ZZZ', 'XY34 ZZZ')],
-    });
+  it('offers the best plates as a choice, best first', async () => {
+    mockReadPlate.mockResolvedValue(
+      read(seen('AB12CDE', 'AB12 CDE', 0.1), seen('XY34ZZZ', 'XY34 ZZZ', 0.05)),
+    );
     await renderStep();
     await addPhoto();
 
     expect(events('plate_scan_offered')).toEqual([{ candidates: 2, hadTypedPlate: false }]);
-    expect(events('plate_scan_result')).toEqual([expect.objectContaining({ kind: 'pair' })]);
+    expect(setAnswers).toHaveBeenCalledWith({ plateScanOffered: 'AB12CDE', plateScanNothing: false });
+  });
+
+  // 2026-10-30: v2 read three photos and stopped — "it stops half way".
+  it('⚠️ reads EVERY photo when none gives a strong plate', async () => {
+    mockReadPlate.mockResolvedValue(nothing);
+    await renderStep();
+    await addPhotos(['file://1.jpg', 'file://2.jpg', 'file://3.jpg', 'file://4.jpg', 'file://5.jpg']);
+    await settle();
+
+    expect(mockReadPlate).toHaveBeenCalledTimes(5);
+    expect(events('plate_scan_result')).toEqual([
+      expect.objectContaining({ mode: 'v3', kind: 'none', count: 5, reason: 'no_plate_shape' }),
+    ]);
+  });
+
+  it('ranks across photos: a plate in two photos beats one seen once', async () => {
+    // Small enough not to stop the walk early, so all three are read.
+    mockReadPlate
+      .mockResolvedValueOnce(read(seen('XY34ZZZ', 'XY34 ZZZ', 0.03)))
+      .mockResolvedValueOnce(read(seen('AB12CDE', 'AB12 CDE', 0.03)))
+      .mockResolvedValueOnce(read(seen('AB12CDE', 'AB12 CDE', 0.03)));
+    await renderStep();
+    await addPhotos(['file://1.jpg', 'file://2.jpg', 'file://3.jpg']);
+    await settle();
+
+    expect(setAnswers).toHaveBeenCalledWith({ plateScanOffered: 'AB12CDE', plateScanNothing: false });
+  });
+
+  it('says why when there was no text at all', async () => {
+    mockReadPlate.mockResolvedValue({ kind: 'read', sightings: [], sawText: false });
+    await renderStep();
+    await addPhoto();
+    await settle();
+
+    expect(events('plate_scan_result')).toEqual([
+      expect.objectContaining({ kind: 'none', reason: 'no_text' }),
+    ]);
   });
 
   it.each([
-    ['none', 'none'],
-    ['error', 'error'],
-  ] as const)('says nothing when the photo gives %s, and tells the plate step', async (kind, logged) => {
-    mockReadPlate.mockResolvedValue({ kind });
+    [nothing, 'none'],
+    [{ kind: 'error' }, 'error'],
+  ] as const)('says nothing when the photo gives %j, and tells the plate step', async (reading, logged) => {
+    mockReadPlate.mockResolvedValue(reading);
     await renderStep();
     await addPhoto();
     await settle(); // a photo with nothing to offer is held long enough to be seen
 
     expect(mockOpened.current).toBe(false);
     expect(events('plate_scan_result')).toEqual([
-      expect.objectContaining({ mode: 'v2', kind: logged, count: 1 }),
+      expect.objectContaining({ mode: 'v3', kind: logged, count: 1 }),
     ]);
     expect(setAnswers).toHaveBeenCalledWith({ plateScanNothing: true });
   });

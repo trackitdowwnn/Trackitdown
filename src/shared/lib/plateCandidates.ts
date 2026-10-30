@@ -75,6 +75,9 @@ export interface PlateCandidate {
   format: PlateFormat;
   /** How many glyphs had to be coerced to make it valid. 0 is a clean read. */
   coercions: number;
+  /** How much doubt the reading carries: weighted swaps, a trimmed end, and a
+   *  rarer format. 0 is a clean read. Lower is better. */
+  cost: number;
 }
 
 /**
@@ -97,6 +100,38 @@ const PLATE_ASPECT_RATIO = 4.6;
  * ones do not, so there we require the recogniser to have got it exactly right.
  */
 const MIN_LENGTH_FOR_COERCION = 6;
+
+/**
+ * What a swap costs. O/0 and I/1 are near-identical in the plate typeface; the
+ * rest are real misreads. 2026-10-30 real-photo set: counting every swap as 1
+ * turned "BVI8 0ZC" into the suffix plate BVI 802C (one swap) instead of the
+ * current plate BV18 OZC (two near-free ones).
+ */
+const SWAP_COST: Readonly<Record<string, number>> = {
+  O: 0.25,
+  '0': 0.25,
+  I: 0.25,
+  '1': 0.25,
+  Z: 0.5,
+  '2': 0.5,
+  S: 0.5,
+  '5': 0.5,
+  B: 0.5,
+  '8': 0.5,
+};
+const DEFAULT_SWAP_COST = 1;
+/** Below MIN_LENGTH_FOR_COERCION only the near-free swaps are allowed:
+ *  "SI NON" is S1 NON, but "2026" still never becomes "Z026". */
+const SHORT_SWAP_MAX_COST = 0.25;
+
+/** A coerced read leans towards the formats on the road today. */
+const FORMAT_COST: Readonly<Record<PlateCandidate['format'], number>> = {
+  current: 0,
+  prefix: 0.25,
+  suffix: 0.5,
+  northernIreland: 0.5,
+  dateless: 0.75,
+};
 
 /**
  * Glyphs that look alike in plate typefaces, mapped to what they become in a
@@ -146,8 +181,11 @@ export function extractPlateCandidates(
         continue;
       }
 
+      // A short plate may take near-free swaps only when it is the whole line:
+      // "SI NON" alone is S1 NON; "HOURS" on a parking sign is not H0 URS.
+      const wholeLine = piece.text === block.text.trim();
       const resolved =
-        canon.length > PLATE_MAX_CANON_LENGTH ? resolveOverlong(canon) : resolve(canon);
+        canon.length > PLATE_MAX_CANON_LENGTH ? resolveOverlong(canon) : resolve(canon, wholeLine);
       if (!resolved) {
         continue;
       }
@@ -160,7 +198,7 @@ export function extractPlateCandidates(
         continue;
       }
 
-      const score = scoreOf(resolved.coercions, block);
+      const score = scoreOf(resolved.cost, block);
       const existing = best.get(resolved.canon);
       // The same plate can be read from several blocks; keep the best reading.
       if (!existing || score > existing.score) {
@@ -182,15 +220,16 @@ export function extractPlateCandidates(
  * Returns null when nothing validates — which is the common case, because most
  * text in a photograph is not a registration.
  */
-function resolve(canon: string): PlateCandidate | null {
+function resolve(canon: string, shortSwaps = false): PlateCandidate | null {
   // A clean read needs no work and can never be beaten.
   const direct = matchPlateFormat(canon);
   if (direct) {
-    return { canon, display: formatPlate(canon), format: direct, coercions: 0 };
+    return { canon, display: formatPlate(canon), format: direct, coercions: 0, cost: 0 };
   }
 
   // Short strings do not earn the benefit of the doubt — see the constant.
-  if (canon.length < MIN_LENGTH_FOR_COERCION) {
+  const short = canon.length < MIN_LENGTH_FOR_COERCION;
+  if (short && !shortSwaps) {
     return null;
   }
 
@@ -199,6 +238,7 @@ function resolve(canon: string): PlateCandidate | null {
   for (const pattern of slotsFor(canon.length)) {
     let coerced = '';
     let coercions = 0;
+    let swapCost = 0;
     let possible = true;
 
     for (let i = 0; i < pattern.length; i += 1) {
@@ -211,13 +251,15 @@ function resolve(canon: string): PlateCandidate | null {
         continue;
       }
       const swap = wantsDigit ? TO_DIGIT[ch] : TO_LETTER[ch];
-      if (!swap) {
+      const cost = SWAP_COST[ch] ?? DEFAULT_SWAP_COST;
+      if (!swap || (short && cost > SHORT_SWAP_MAX_COST)) {
         // Not a known look-alike — this shape is simply wrong, don't force it.
         possible = false;
         break;
       }
       coerced += swap;
       coercions += 1;
+      swapCost += cost;
     }
 
     if (!possible) {
@@ -227,12 +269,14 @@ function resolve(canon: string): PlateCandidate | null {
     if (!format) {
       continue;
     }
-    if (!bestCandidate || coercions < bestCandidate.coercions) {
+    const cost = swapCost + FORMAT_COST[format];
+    if (!bestCandidate || cost < bestCandidate.cost) {
       bestCandidate = {
         canon: coerced,
         display: formatPlate(coerced),
         format,
         coercions,
+        cost,
       };
     }
   }
@@ -256,7 +300,7 @@ function resolveOverlong(canon: string): PlateCandidate | null {
   for (const trimmed of [canon.slice(1), canon.slice(0, -1)]) {
     const resolved = resolve(trimmed);
     if (resolved) {
-      return { ...resolved, coercions: resolved.coercions + 1 };
+      return { ...resolved, coercions: resolved.coercions + 1, cost: resolved.cost + 1 };
     }
   }
   return null;
@@ -269,8 +313,8 @@ function resolveOverlong(canon: string): PlateCandidate | null {
  * one we had to correct, however big and plate-shaped the corrected one looked.
  * Geometry only separates readings we are equally sure of.
  */
-function scoreOf(coercions: number, block: TextBlock): number {
-  let score = 1000 - coercions * 100;
+function scoreOf(cost: number, block: TextBlock): number {
+  let score = 1000 - cost * 100;
 
   const box = block.box;
   if (box && box.width > 0 && box.height > 0) {

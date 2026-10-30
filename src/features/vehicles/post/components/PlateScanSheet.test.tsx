@@ -47,6 +47,7 @@ const candidate = (canon: string, display: string): PlateCandidate => ({
   display,
   format: 'current',
   coercions: 0,
+  cost: 0,
 });
 
 const ONE = [candidate('AB12CDE', 'AB12 CDE')];

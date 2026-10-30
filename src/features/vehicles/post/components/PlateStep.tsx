@@ -31,7 +31,7 @@ import { spacing, typography, useThemedStyles, type Palette } from '@/shared/the
 import { Button, StepSkipButton, TextField, type BottomSheetRef } from '@/shared/ui';
 import type { WizardStepProps } from '@/shared/wizard';
 
-import { readPlateFromPhoto, type ScannedPlate } from '../lib/readPlate';
+import { rankScannedPlates, readPlateFromPhoto, type ScannedPlate } from '../lib/readPlate';
 import { PlateScanSheet } from './PlateScanSheet';
 
 const log = createLogger('vehicles');
@@ -83,17 +83,21 @@ export function PlateStep({ answers, setAnswers, onSkip, helper }: PlateStepProp
     setCloseUp('reading');
     const startedAt = Date.now();
     const reading = await readPlateFromPhoto(shot.assets[0].uri);
+    const plates = reading.kind === 'read' ? rankScannedPlates(reading.sightings) : [];
     log.info('plate_scan_result', {
-      mode: 'v2',
+      mode: 'v3',
       source: 'closeup',
-      kind: reading.kind,
+      kind: reading.kind === 'error' ? 'error' : plates.length > 0 ? 'likely' : 'none',
       count: 1,
       durationMs: Date.now() - startedAt,
+      ...(reading.kind === 'read' && plates.length === 0
+        ? { reason: reading.sawText ? 'no_plate_shape' : 'no_text' }
+        : {}),
     });
-    if ('plates' in reading) {
+    if (plates.length > 0) {
       setCloseUp('idle');
-      setOffer(reading.plates);
-      setAnswers({ plateScanOffered: reading.plates[0].canon });
+      setOffer(plates);
+      setAnswers({ plateScanOffered: plates[0].canon });
     } else {
       setCloseUp('nothing');
     }

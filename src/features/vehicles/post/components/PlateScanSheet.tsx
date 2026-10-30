@@ -217,7 +217,13 @@ export function PlateScanSheet({
                 for work, when declining a bad guess should cost nothing. */}
             <Button
               label={
-                disagreeing ? `Keep ${existingPlate}` : pair ? 'Neither of these' : "That's not it"
+                disagreeing
+                  ? `Keep ${existingPlate}`
+                  : pair
+                    ? candidates.length > 2
+                      ? 'None of these'
+                      : 'Neither of these'
+                    : "That's not it"
               }
               variant="ghost"
               onPress={onDecline}

@@ -1,13 +1,14 @@
 /**
- * WHAT:  Tests for readPlateFromPhoto — the two reads, where the crop is cut,
- *        and that a plate counts only when both reads agree.
- * WHY:   The second read is what took wrong suggestions from 28% to 16% on the
- *        80-photo set; a crop cut in the wrong place (or reads allowed to
- *        disagree) would quietly undo that.
+ * WHAT:  Tests for readPlateFromPhoto and rankScannedPlates — the two reads,
+ *        where the crop is cut, and that disagreeing reads are both offered
+ *        (ranked) instead of cancelling each other out.
+ * WHY:   v2 made the reads agree or say nothing, and on real phone photos said
+ *        nothing (2026-10-30). A crop cut in the wrong place, or the gate
+ *        coming back, would quietly undo v3.
  * LINKS: ./readPlate.ts; src/shared/lib/plateSelection.ts (the rules, tested there).
  */
 
-import { readPlateFromPhoto } from './readPlate';
+import { rankScannedPlates, readPlateFromPhoto, type PlateReading } from './readPlate';
 
 // The first read is 2000 wide; the full-size original is 4000: crops scale ×2.
 const mockCrops: unknown[] = [];
@@ -46,22 +47,24 @@ const line = (text: string, x: number, y: number, height: number) => ({
   box: { x, y, width: height * 4.6, height },
 });
 
+const offered = (reading: PlateReading) =>
+  reading.kind === 'read' ? rankScannedPlates(reading.sightings) : [];
+
 beforeEach(() => {
   mockCrops.length = 0;
   mockReads.length = 0;
 });
 
-it('suggests a plate when the crop reads the same, with the crop to show', async () => {
+it('offers the plate, with the crop to show', async () => {
   mockReads.push(
-    { status: 'ok', blocks: [line('AB12 CDE', 100, 200, 60)] },
+    { status: 'ok', blocks: [line('AB12 CDE', 100, 200, 120)] },
     { status: 'ok', blocks: [line('AB12 CDE', 10, 10, 300)] },
   );
-  const reading = await readPlateFromPhoto('file://photo.jpg');
+  const plates = offered(await readPlateFromPhoto('file://photo.jpg'));
 
-  expect(reading).toEqual({
-    kind: 'likely',
-    plates: [expect.objectContaining({ canon: 'AB12CDE', cropUri: 'file://crop-1.jpg' })],
-  });
+  expect(plates[0]).toEqual(
+    expect.objectContaining({ canon: 'AB12CDE', cropUri: 'file://crop-1.jpg' }),
+  );
 });
 
 it('cuts the crop from the FULL-SIZE photo around the line, with padding', async () => {
@@ -76,30 +79,44 @@ it('cuts the crop from the FULL-SIZE photo around the line, with padding', async
   expect(mockCrops[0]).toEqual({ originX: 62, originY: 304, width: 828, height: 312 });
 });
 
-it('⚠️ says nothing when the crop reads a DIFFERENT plate', async () => {
+it('⚠️ offers BOTH readings when the crop disagrees — never nothing', async () => {
+  // Real photo r31: the first read said VO63 CNT, the full-size crop VO63 CVT
+  // (right). v2 offered neither.
   mockReads.push(
-    { status: 'ok', blocks: [line('AB12 CDE', 100, 200, 60)] },
-    { status: 'ok', blocks: [line('AB12 CDF', 10, 10, 300)] },
+    { status: 'ok', blocks: [line('VO63 CNT', 100, 200, 120)] },
+    { status: 'ok', blocks: [line('VO63 CVT', 10, 10, 300)] },
   );
-  expect(await readPlateFromPhoto('file://photo.jpg')).toEqual({ kind: 'none' });
+  const plates = offered(await readPlateFromPhoto('file://photo.jpg'));
+
+  expect(plates.map((p) => p.canon).sort()).toEqual(['VO63CNT', 'VO63CVT']);
 });
 
-it('offers both when two cars are equally in shot', async () => {
+it('ranks a plate both reads agree on above one only one read saw', async () => {
   mockReads.push(
-    { status: 'ok', blocks: [line('AB12 CDE', 100, 200, 60), line('XY34 ZZZ', 900, 200, 55)] },
+    { status: 'ok', blocks: [line('AB12 CDE', 100, 200, 120), line('XY34 ZZZ', 900, 200, 120)] },
     { status: 'ok', blocks: [line('AB12 CDE', 10, 10, 300)] },
-    { status: 'ok', blocks: [line('XY34 ZZZ', 10, 10, 300)] },
+    { status: 'ok', blocks: [] },
   );
-  const reading = await readPlateFromPhoto('file://photo.jpg');
+  const plates = offered(await readPlateFromPhoto('file://photo.jpg'));
 
-  expect(reading.kind).toBe('pair');
-  expect('plates' in reading && reading.plates.map((p) => p.canon)).toEqual(['AB12CDE', 'XY34ZZZ']);
+  expect(plates.map((p) => p.canon)).toEqual(['AB12CDE', 'XY34ZZZ']);
 });
 
 it('reads nothing again when the first read has no plate-shaped line', async () => {
   mockReads.push({ status: 'ok', blocks: [line('High Street', 100, 200, 60)] });
-  expect(await readPlateFromPhoto('file://photo.jpg')).toEqual({ kind: 'none' });
+  const reading = await readPlateFromPhoto('file://photo.jpg');
+
+  expect(reading).toEqual({ kind: 'read', sightings: [], sawText: true });
   expect(mockCrops).toHaveLength(0);
+});
+
+it('tells a photo with no text at all from one with no plate', async () => {
+  mockReads.push({ status: 'ok', blocks: [] });
+  expect(await readPlateFromPhoto('file://photo.jpg')).toEqual({
+    kind: 'read',
+    sightings: [],
+    sawText: false,
+  });
 });
 
 it('reports an error, never throws, when the recogniser is unavailable', async () => {

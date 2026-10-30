@@ -1,23 +1,22 @@
 /**
- * WHAT:  The rules that decide which plate (if any) a photo suggests, plate
- *        scanning v2. Pure — readPlate.ts does the cropping and reading:
- *          1. linesToReread: the plate-shaped lines worth a second read —
- *             capitals only (badges and signs have lowercase), largest first,
- *             at most three
- *          2. cropReading: what the full-size crop of a line says — a plate
- *             with at most one corrected character on the structured current
- *             and prefix shapes, none on the loose ones (they turn ordinary
- *             text into "plates": 'ST LINE' was once offered as S71 INE)
- *          3. decideFromRereads: from the lines whose two reads AGREE — the
- *             largest; nothing if it is too small to be this car (a car across
- *             the street); both if a different plate is nearly as large (two
- *             cars equally in shot, the owner picks)
- * WHY:   Measured on 80 labelled photos (docs/plate-scan-decisions.md), the old
- *        choice — the best UK-shaped text anywhere — was wrong 45% of the time
- *        it suggested anything, and suggested something on 87% of photos with
- *        no plate. A listing's plate can never change, so these rules prefer
- *        silence to a guess. Measured: 40% of plates found (was 58%), 16% of
- *        suggestions wrong, silent on 13 of 15 no-plate photos (was 2).
+ * WHAT:  The rules that rank which plates a photo suggests, plate scanning v3.
+ *        Pure — readPlate.ts does the cropping and reading:
+ *          1. linesToReread: the plate-shaped lines worth a second, full-size
+ *             read — capitals only (badges and signs have lowercase), largest
+ *             first, at most three
+ *          2. sightingsIn: every plate reading in one pass (the first read, or
+ *             one crop), with how large its line is in the photo
+ *          3. rankPlates: one score per plate across every pass and photo —
+ *             certainty, size, a crop's finer read, and passes that agree
+ *             push it up. The best three are offered; nothing scores below
+ *             the floor (a word on a sign).
+ * WHY:   v2 offered a plate only when two reads agreed and the plate was ≥2% of
+ *        the photo. On real phone photos (2026-10-30, 40 labelled) that threw
+ *        away a third of the plates the recogniser did see: the crop's finer
+ *        read disagreed with a misread first one ("VO63 CNT" / "VO63 CVT"), so
+ *        neither was offered. Only owners scan, and they know their plate, so
+ *        the owner decided to always offer the best guess and let them fix it.
+ *        Agreement is now a bonus, never a gate.
  * SAFETY: sees every word in a photo; returns only plate candidates and keeps
  *         nothing (plates are personal data).
  * LINKS: ./plateCandidates.ts (shapes, glyph correction);
@@ -26,12 +25,22 @@
 
 import { extractPlateCandidates, type PlateCandidate, type TextBlock } from './plateCandidates';
 
-/** Text shorter than this share of the photo's height is a distant car. */
-export const MIN_PLATE_HEIGHT = 0.02;
-/** A different plate at least this share of the largest one's height = two cars. */
-export const AMBIGUOUS_RATIO = 0.7;
 /** How many lines of one photo get a second read. */
 export const MAX_REREADS = 3;
+/** How many plates are offered. */
+export const MAX_OFFERED = 3;
+
+// Weights, tuned on the 2026-10-30 real-photo set and the 80 Commons photos.
+const COST_WEIGHT = 2;
+/** Lowercase in the line: usually a badge or a sign, rarely a misread plate. */
+const LOWERCASE_PENALTY = 2;
+/** Each further pass (or photo) that reads the same plate. */
+const AGREE_BONUS = 1;
+const MAX_AGREE_BONUS = 2;
+/** The plate's share of the photo's height that scores 0; doubling adds 1. */
+const SIZE_PIVOT = 0.03;
+/** Below this a reading is not offered at all. */
+export const MIN_SCORE = -2;
 
 export interface RereadLine {
   /** The line as first read, with its box in the first read's image. */
@@ -51,39 +60,72 @@ export function linesToReread(lines: readonly TextBlock[]): RereadLine[] {
   return out.sort((a, b) => b.line.box!.height - a.line.box!.height).slice(0, MAX_REREADS);
 }
 
-/**
- * The crop's own reading of the plate: its largest capital-letter line that is
- * a plate with at most one corrected character on a structured (current or
- * prefix) shape, none otherwise. Null when the crop shows no plate.
- */
-export function cropReading(cropLines: readonly TextBlock[]): PlateCandidate | null {
-  const capitals = cropLines
-    .filter((l) => !/[a-z]/.test(l.text))
-    .sort((a, b) => (b.box?.height ?? 0) - (a.box?.height ?? 0));
-  for (const l of capitals) {
-    const candidate = extractPlateCandidates([{ text: l.text }], 1)[0];
-    const allowed = candidate?.format === 'current' || candidate?.format === 'prefix' ? 1 : 0;
-    if (candidate && candidate.coercions <= allowed) return candidate;
-  }
-  return null;
-}
-
-/** A line whose second read agreed, with its size in the photo. */
-export interface AgreedRead<T> {
+/** One plate reading from one pass over one photo. */
+export interface PlateSighting<T = undefined> {
   candidate: PlateCandidate;
-  /** Line height as a share of the photo's height. */
-  height: number;
+  /** The plate line's height as a share of the photo's (for a crop, the line
+   *  it was cut around). */
+  share: number;
+  /** Read from a full-size crop of the line. */
+  fromCrop: boolean;
+  lowercase: boolean;
   /** Whatever the caller needs back (the crop's file, for the sheet). */
   extra: T;
 }
 
-/**
- * From the AGREED reads (largest first): one plate, two when two cars are
- * equally in shot, or none when the largest is too small to be this car.
- */
-export function decideFromRereads<T>(agreed: readonly AgreedRead<T>[]): AgreedRead<T>[] {
-  const [top, ...rest] = agreed;
-  if (!top || top.height < MIN_PLATE_HEIGHT) return [];
-  const rival = rest.find((r) => r.candidate.canon !== top.candidate.canon);
-  return rival && rival.height >= AMBIGUOUS_RATIO * top.height ? [top, rival] : [top];
+/** Every plate reading in one pass. `shareOf` gives a line's size in the photo. */
+export function sightingsIn<T>(
+  lines: readonly TextBlock[],
+  shareOf: (line: TextBlock) => number,
+  fromCrop: boolean,
+  extraOf: (line: TextBlock) => T,
+): PlateSighting<T>[] {
+  return lines.flatMap((line) => {
+    const found = extractPlateCandidates([{ text: line.text }], MAX_OFFERED);
+    // A fragment of a longer plate on the same line ("M345" of "M345 WED") is
+    // not a plate of its own; it used to outrank the whole one.
+    const whole = found.filter((c) => !found.some((o) => o !== c && o.canon.includes(c.canon)));
+    return whole.map((candidate) => ({
+      candidate,
+      share: shareOf(line),
+      fromCrop,
+      lowercase: /[a-z]/.test(line.text),
+      extra: extraOf(line),
+    }));
+  });
+}
+
+export function sightingScore(s: PlateSighting<unknown>): number {
+  const size = Math.max(-3, Math.min(2, Math.log2(Math.max(s.share, 1e-4) / SIZE_PIVOT)));
+  return size - COST_WEIGHT * s.candidate.cost - (s.lowercase ? LOWERCASE_PENALTY : 0);
+}
+
+export interface RankedPlate<T> {
+  candidate: PlateCandidate;
+  score: number;
+  /** From the best-scoring sighting of this plate. */
+  extra: T;
+}
+
+/** The plates to offer, best first: at most MAX_OFFERED, none below MIN_SCORE. */
+export function rankPlates<T>(sightings: readonly PlateSighting<T>[]): RankedPlate<T>[] {
+  const byPlate = new Map<string, { best: PlateSighting<T>; bestScore: number; count: number }>();
+  for (const s of sightings) {
+    const score = sightingScore(s);
+    const entry = byPlate.get(s.candidate.canon);
+    if (!entry) byPlate.set(s.candidate.canon, { best: s, bestScore: score, count: 1 });
+    else {
+      entry.count += 1;
+      if (score > entry.bestScore) Object.assign(entry, { best: s, bestScore: score });
+    }
+  }
+  return [...byPlate.values()]
+    .map(({ best, bestScore, count }) => ({
+      candidate: best.candidate,
+      score: bestScore + Math.min(MAX_AGREE_BONUS, AGREE_BONUS * (count - 1)),
+      extra: best.extra,
+    }))
+    .filter((p) => p.score >= MIN_SCORE)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_OFFERED);
 }
