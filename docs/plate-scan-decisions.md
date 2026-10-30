@@ -2,6 +2,26 @@
 
 How the app suggests a number plate from the photos an owner adds (My cars → Add a car, and the stolen-car report). Agreed with the owner after a measured baseline; this records what was decided and why.
 
+## v3 (2026-10-30, later the same day) — supersedes the v2 target below
+
+v2 found nothing on the owner's own phone photos. The Commons set had been measured through a harness that cropped originals, while the app read a shrunk upload copy; and the set was tidy. So a new set was built: **40 phone-camera photos** from Wikimedia Commons (38 with a readable UK plate), run through **the app's own code path** on the emulator (`shipped` variant, branch `tools/plate-eval`).
+
+| 38 phone photos | First choice right | In its top 3 |
+|---|---|---|
+| Recogniser saw the plate (ceiling, ±1 look-alike) | 84% | |
+| v1 | 55% | |
+| v2 | 45% | |
+| **v3** | **71%** | **79%** |
+
+Commons set (offline, from saved reads): v3 57% / 63%. 1.8 s per photo.
+
+1. **The metric is now "is the right plate offered", not "fewest wrong".** Only owners scan, and they know their own plate: a wrong guess costs one tap. The owner decided: always offer the best guess.
+2. **Rank, don't gate** (`shared/lib/plateSelection.ts`). Every reading from the first read and each full-size crop, across every photo, is scored on certainty (weighted look-alike swaps, rarer formats), the plate's size in the photo, and how many passes agree. The best three are offered. Agreement and size are evidence, no longer gates: the crop's finer read often corrects a misread first one ("VO63 CNT" → "VO63 CVT"), which v2 threw away.
+3. **Look-alike swaps are weighted** (`plateCandidates.ts`): O/0 and I/1 are near-free, Z/2 S/5 B/8 half, the rest full; a corrected read leans to modern formats ("BVI8 0ZC" is BV18 OZC, not the suffix BVI 802C). A short plate alone on its line may take the near-free swaps ("SI NON" → S1 NON); a word picked out of a sign may not. The cherished `9AAA` shape (8 MLA) was added.
+4. **Every photo is read** (v2 stopped after three: "it stops half way"); the walk stops early only on a strong clean read.
+5. **Logging** adds why nothing was offered: `no_text` or `no_plate_shape`.
+6. **Not needed yet: an on-device plate detector.** The recogniser sees the plate 84% of the time; the gap was the rules. Revisit if real-world telemetry shows `no_text` on photos that have a plate.
+
 ## The problem, measured
 
 80 openly licensed photos of UK cars from Wikimedia Commons (65 with a readable plate, 15 without), labelled by hand and run through the real pipeline on an emulator (dev-only harness, never merged: branch `tools/plate-eval`).
