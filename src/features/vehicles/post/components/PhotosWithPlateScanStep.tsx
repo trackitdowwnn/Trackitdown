@@ -86,11 +86,11 @@ import { createLogger } from '@/shared/lib/logger';
 import { formatPlate, normalisePlate } from '@/shared/lib/plate';
 import { type PlateCandidate, extractPlateCandidates } from '@/shared/lib/plateCandidates';
 import { recogniseText } from '@/shared/lib/ocr/textRecognition';
-import { choosePlate } from '@/shared/lib/plateSelection';
 import { motion } from '@/shared/theme';
 import { useToast, type BottomSheetRef } from '@/shared/ui';
 import type { WizardStepProps } from '@/shared/wizard';
 
+import { readPlateFromPhoto } from '../lib/readPlate';
 import type { VehicleAnswers } from '../lib/vehicleSteps';
 import { PlateScanSheet } from './PlateScanSheet';
 import { PhotosStep } from './postSteps';
@@ -103,6 +103,9 @@ export type PlateScanAnswers = VehicleAnswers & {
   /** The plate last suggested (canonical), for the outcome log only. UI
    *  state: never sent to the server and never saved in a draft. */
   plateScanOffered?: string;
+  /** v2: the photos were read and gave no plate, so PlateStep offers a close
+   *  photo. UI state only, like plateScanOffered. */
+  plateScanNothing?: boolean;
 };
 
 const log = createLogger('vehicles');
@@ -230,7 +233,7 @@ export function PhotosWithPlateScanStep(props: WizardStepProps<PlateScanAnswers>
       let failed = false;
       // One line per batch, so real-world accuracy can be followed over time.
       // Counts and kinds only — never a plate.
-      const result = (kind: 'none' | 'likely' | 'agreed' | 'error') =>
+      const result = (kind: 'none' | 'likely' | 'pair' | 'agreed' | 'error') =>
         log.info('plate_scan_result', {
           mode: v2 ? 'v2' : 'v1',
           kind,
@@ -255,30 +258,30 @@ export function PhotosWithPlateScanStep(props: WizardStepProps<PlateScanAnswers>
             setScanningUri(uri);
           }
 
-          // SAFETY: re-encode before the OCR module sees the file — a photo
-          // from the camera roll carries EXIF, including the GPS of wherever
-          // it was taken, which for a picture of your own car is usually home.
-          const context = ImageManipulator.manipulate(uri);
-          context.resize({ width: SCAN_MAX_EDGE });
-          const rendered = await context.renderAsync();
-          const scanFile = await rendered.saveAsync({ format: SaveFormat.JPEG });
-
-          const recognised = await recogniseText(scanFile.uri);
-          read += 1;
-          if (recognised.status === 'ok') {
-            // v2 keeps at most ONE plate per photo, or none (plateSelection).
-            const readings = v2
-              ? [choosePlate(recognised.blocks, scanFile.height)].filter(
-                  (candidate): candidate is PlateCandidate => candidate !== null,
-                )
-              : extractPlateCandidates(recognised.blocks);
-            // A reading the owner has already turned down is not a finding.
-            // Re-offering it would be arguing with them, and worse, it would
-            // stop the walk on the very photo they just rejected.
-            found.push(...readings.filter((candidate) => !rejected.current.has(candidate.canon)));
+          let readings: PlateCandidate[] = [];
+          if (v2) {
+            // v2: two reads that must agree, with each plate's crop; one plate
+            // per photo, or two when two cars are equally in shot (readPlate).
+            const reading = await readPlateFromPhoto(uri);
+            if (reading.kind === 'error') failed = true;
+            else if ('plates' in reading) readings = reading.plates;
           } else {
-            failed = true;
+            // SAFETY: re-encode before the OCR module sees the file — a photo
+            // from the camera roll carries EXIF, including the GPS of wherever
+            // it was taken, which for a picture of your own car is usually home.
+            const context = ImageManipulator.manipulate(uri);
+            context.resize({ width: SCAN_MAX_EDGE });
+            const rendered = await context.renderAsync();
+            const scanFile = await rendered.saveAsync({ format: SaveFormat.JPEG });
+            const recognised = await recogniseText(scanFile.uri);
+            if (recognised.status === 'ok') readings = extractPlateCandidates(recognised.blocks);
+            else failed = true;
           }
+          read += 1;
+          // A reading the owner has already turned down is not a finding.
+          // Re-offering it would be arguing with them, and worse, it would
+          // stop the walk on the very photo they just rejected.
+          found.push(...readings.filter((candidate) => !rejected.current.has(candidate.canon)));
 
           // Stop at the first clean read (v2: the first plate it would offer) —
           // no point reading the rest. Checked BEFORE the hold below, because
@@ -299,6 +302,8 @@ export function PhotosWithPlateScanStep(props: WizardStepProps<PlateScanAnswers>
         if (found.length === 0) {
           // Silence. They did not ask for this and nothing was found.
           result(failed ? 'error' : 'none');
+          // v2: the plate step then says so and offers a close photo.
+          if (v2) setAnswersRef.current({ plateScanNothing: true });
           return { outcome: 'none', unread: [] };
         }
 
@@ -313,7 +318,7 @@ export function PhotosWithPlateScanStep(props: WizardStepProps<PlateScanAnswers>
           result('agreed');
           return { outcome: 'agreed', unread: [] };
         }
-        result('likely');
+        result(v2 && found.length === 2 ? 'pair' : 'likely');
 
         log.info('plate_scan_offered', {
           candidates: found.length,
@@ -322,8 +327,9 @@ export function PhotosWithPlateScanStep(props: WizardStepProps<PlateScanAnswers>
         // Frozen here, against the plate they had typed when the reading was
         // taken — the same value the agreement check above compared with.
         const asked: PlateOffer = {
-          // v2: ONE suggestion (three chips invited picking a wrong one).
-          candidates: v2 ? found.slice(0, 1) : found,
+          // v2: one suggestion, or two cars' plates side by side (readPlate
+          // decides); never v1's list of every candidate.
+          candidates: found,
           existing: typedPlate.current?.trim() || null,
         };
         pendingOffer.current = asked;
@@ -332,7 +338,7 @@ export function PhotosWithPlateScanStep(props: WizardStepProps<PlateScanAnswers>
         // it too, but it cannot run if a close was ever missed, and a stale
         // 'confirmed' would read the next refusal as a yes.
         decision.current = null;
-        setAnswersRef.current({ plateScanOffered: asked.candidates[0].canon });
+        setAnswersRef.current({ plateScanOffered: asked.candidates[0].canon, plateScanNothing: false });
         setOffer(asked);
         sheetRef.current?.open();
         return { outcome: 'offered', unread };

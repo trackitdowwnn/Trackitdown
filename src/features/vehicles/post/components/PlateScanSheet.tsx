@@ -23,11 +23,25 @@
 
 import { useState } from 'react';
 import type { Ref } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type ImageStyle,
+  type StyleProp,
+} from 'react-native';
 
 import type { PlateCandidate } from '@/shared/lib/plateCandidates';
 import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
-import { BottomSheet, Button, PlateChip, spellPlate, type BottomSheetRef } from '@/shared/ui';
+import {
+  AppImage,
+  BottomSheet,
+  Button,
+  PlateChip,
+  spellPlate,
+  type BottomSheetRef,
+} from '@/shared/ui';
 
 export interface PlateScanSheetProps {
   ref?: Ref<BottomSheetRef>;
@@ -40,7 +54,11 @@ export interface PlateScanSheetProps {
    * was deleted rather than kept, because permission is the photo grid's
    * business now and no future caller here would own it.)
    */
-  candidates: readonly PlateCandidate[];
+  candidates: readonly (PlateCandidate & {
+    /** v2: the plate's crop, shown beside it so the owner can check it at a
+     *  glance (docs/plate-scan-decisions.md). */
+    cropUri?: string;
+  })[];
   /**
    * What the owner already typed, if anything. Its presence changes the
    * QUESTION: with an empty field this is a discovery ("is this it?"), but
@@ -94,12 +112,19 @@ export function PlateScanSheet({
   const chosen = candidates[selected];
 
   const disagreeing = found && Boolean(existingPlate);
+  // v2 readings come with their crops, and ask in v2's words.
+  const withCrops = candidates.some((candidate) => candidate.cropUri);
+  const pair = withCrops && candidates.length > 1;
 
   const title = !found
     ? "Couldn't read it"
     : disagreeing
       ? 'Which one is right?'
-      : 'Is this your registration?';
+      : pair
+        ? "Which plate is your car's?"
+        : withCrops
+          ? 'Is this your plate?'
+          : 'Is this your registration?';
 
   return (
     <BottomSheet ref={ref} title={title} onDismiss={onDismiss}>
@@ -121,7 +146,7 @@ export function PlateScanSheet({
                 typed {existingPlate}. Yours may well be right — a plate is easy to
                 misread from a photo.
               </Text>
-            ) : candidates.length > 1 ? (
+            ) : candidates.length > 1 && !pair ? (
               // Not "tap": a switch or a screen reader does not tap, and the
               // sentence is about WHICH plate, not about fingers.
               <Text style={styles.body}>Pick the one that matches your car.</Text>
@@ -139,7 +164,10 @@ export function PlateScanSheet({
                 <View style={styles.option}>
                   {/* Standalone by design — see the note above: one reading is
                       not a choice, so nothing tappable encloses it. */}
-                  <PlateChip plate={candidates[0].display} onPress={null} />
+                  <View style={styles.reading}>
+                    <Crop uri={candidates[0].cropUri} style={styles.crop} />
+                    <PlateChip plate={candidates[0].display} onPress={null} />
+                  </View>
                 </View>
               </View>
             ) : (
@@ -162,10 +190,13 @@ export function PlateScanSheet({
                           would swallow the tap that PICKS this candidate —
                           leaving the plate itself the one dead spot in a
                           chooser made of plates. */}
-                      <PlateChip
-                        plate={candidate.display}
-                        onPress={() => setSelected(index)}
-                      />
+                      <View style={styles.reading}>
+                        <Crop uri={candidate.cropUri} style={styles.crop} />
+                        <PlateChip
+                          plate={candidate.display}
+                          onPress={() => setSelected(index)}
+                        />
+                      </View>
                     </Pressable>
                   );
                 })}
@@ -185,7 +216,9 @@ export function PlateScanSheet({
                 "No, I'll type it" — that made saying no sound like volunteering
                 for work, when declining a bad guess should cost nothing. */}
             <Button
-              label={disagreeing ? `Keep ${existingPlate}` : "That's not it"}
+              label={
+                disagreeing ? `Keep ${existingPlate}` : pair ? 'Neither of these' : "That's not it"
+              }
               variant="ghost"
               onPress={onDecline}
             />
@@ -196,7 +229,24 @@ export function PlateScanSheet({
   );
 }
 
+/** The plate's crop, a local file: no fade, and a label for screen readers. */
+function Crop({ uri, style }: { uri?: string; style: StyleProp<ImageStyle> }) {
+  if (!uri) return null;
+  return <AppImage uri={uri} style={style} transition={0} accessibilityLabel="Photo of the plate" />;
+}
+
 const makeStyles = (c: Palette) => StyleSheet.create({
+  reading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  /** The crop is about 2.6:1 (a plate with padding around it). */
+  crop: {
+    width: 120,
+    aspectRatio: 2.6,
+    borderRadius: radii.sm,
+  },
   content: {
     gap: spacing.md,
   },

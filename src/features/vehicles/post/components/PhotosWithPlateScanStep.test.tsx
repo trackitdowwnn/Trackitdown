@@ -144,6 +144,11 @@ const mockRecognise = jest.fn(async () => {
   const blocks = mockBlocksByCall ? (mockBlocksByCall.shift() ?? []) : mockBlocks;
   return { status: 'ok', blocks };
 });
+const mockReadPlate = jest.fn();
+jest.mock('../lib/readPlate', () => ({
+  readPlateFromPhoto: (...args: unknown[]) => mockReadPlate(...args),
+}));
+
 jest.mock('@/shared/lib/ocr/textRecognition', () => ({
   recogniseText: (...args: unknown[]) => mockRecognise(...(args as [])),
 }));
@@ -272,12 +277,16 @@ const dimmedUri = () => {
   return entries.length > 0 ? entries[0][0] : null;
 };
 
-// Plate scanning v2 (docs/plate-scan-decisions.md): at most one suggestion,
-// and silence whenever the reading is doubtful. Behind EXPO_PUBLIC_PLATE_SCAN_V2.
-describe('v2: one suggestion, or none', () => {
-  const sized = (text: string, height: number) => ({
-    text,
-    box: { x: 0, y: 0, width: height * 4.6, height }, // in a 1000px-tall photo
+// Plate scanning v2 (docs/plate-scan-decisions.md): two reads that must agree
+// (readPlate, mocked here — it has its own tests), one plate or two, or none.
+// Behind EXPO_PUBLIC_PLATE_SCAN_V2.
+describe('v2: one plate, two cars, or nothing', () => {
+  const plate = (canon: string, display: string) => ({
+    canon,
+    display,
+    format: 'current' as const,
+    coercions: 0,
+    cropUri: `file://crop-${canon}.jpg`,
   });
   const events = (name: string) =>
     mockLogInfo.mock.calls.filter(([event]) => event === name).map(([, data]) => data);
@@ -289,52 +298,47 @@ describe('v2: one suggestion, or none', () => {
     delete process.env.EXPO_PUBLIC_PLATE_SCAN_V2;
   });
 
-  it('offers ONE plate, the largest, where v1 offered every candidate', async () => {
-    mockBlocks = [sized('AB12 CDE', 100), sized('XY34 ZZZ', 30)];
+  it('offers the one plate the two reads agreed on, with its crop', async () => {
+    mockReadPlate.mockResolvedValue({ kind: 'likely', plates: [plate('AB12CDE', 'AB12 CDE')] });
     await renderStep();
     await addPhoto();
 
     expect(mockOpened.current).toBe(true);
+    expect(mockRecognise).not.toHaveBeenCalled(); // v2 reads through readPlate only
     expect(events('plate_scan_offered')).toEqual([{ candidates: 1, hadTypedPlate: false }]);
     expect(events('plate_scan_result')).toEqual([
       expect.objectContaining({ mode: 'v2', kind: 'likely', count: 1 }),
     ]);
-  });
-
-  it('records what it suggested (for the outcome log), never a plate in answers.plate', async () => {
-    mockBlocks = [sized('AB12 CDE', 100)];
-    await renderStep();
-    await addPhoto();
-
-    expect(setAnswers).toHaveBeenCalledWith({ plateScanOffered: 'AB12CDE' });
+    expect(setAnswers).toHaveBeenCalledWith({ plateScanOffered: 'AB12CDE', plateScanNothing: false });
     expect(setAnswers.mock.calls.some(([patch]) => patch && Object.hasOwn(patch, 'plate'))).toBe(false);
   });
 
+  it('offers both plates when two cars are equally in shot', async () => {
+    mockReadPlate.mockResolvedValue({
+      kind: 'pair',
+      plates: [plate('AB12CDE', 'AB12 CDE'), plate('XY34ZZZ', 'XY34 ZZZ')],
+    });
+    await renderStep();
+    await addPhoto();
+
+    expect(events('plate_scan_offered')).toEqual([{ candidates: 2, hadTypedPlate: false }]);
+    expect(events('plate_scan_result')).toEqual([expect.objectContaining({ kind: 'pair' })]);
+  });
+
   it.each([
-    ['a sign in mixed case', [sized('Pay Here', 100)]],
-    ["a badge ('ST LINE' was offered as S71 INE)", [sized('ST LINE', 100)]],
-    ['a plate too small to be this car', [sized('AB12 CDE', 15)]],
-    ['two plates equally in shot', [sized('AB12 CDE', 100), sized('XY34 ZZZ', 90)]],
-  ])('says nothing for %s, and logs that it found none', async (_name, blocks) => {
-    mockBlocks = blocks;
+    ['none', 'none'],
+    ['error', 'error'],
+  ] as const)('says nothing when the photo gives %s, and tells the plate step', async (kind, logged) => {
+    mockReadPlate.mockResolvedValue({ kind });
     await renderStep();
     await addPhoto();
     await settle(); // a photo with nothing to offer is held long enough to be seen
 
     expect(mockOpened.current).toBe(false);
     expect(events('plate_scan_result')).toEqual([
-      expect.objectContaining({ mode: 'v2', kind: 'none', count: 1 }),
+      expect.objectContaining({ mode: 'v2', kind: logged, count: 1 }),
     ]);
-  });
-
-  it('logs an error, and says nothing, when the recogniser is unavailable', async () => {
-    mockStatus = 'unavailable';
-    await renderStep();
-    await addPhoto();
-    await settle();
-
-    expect(mockOpened.current).toBe(false);
-    expect(events('plate_scan_result')).toEqual([expect.objectContaining({ kind: 'error' })]);
+    expect(setAnswers).toHaveBeenCalledWith({ plateScanNothing: true });
   });
 });
 
