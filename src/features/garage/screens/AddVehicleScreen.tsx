@@ -21,7 +21,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { fetchPostDetail } from '@/features/vehicles';
+import { fetchPostDetail, logPlateScanOutcome } from '@/features/vehicles';
 import { successHaptic } from '@/shared/lib/haptics';
 import { createLogger } from '@/shared/lib/logger';
 import { spacing } from '@/shared/theme';
@@ -130,6 +130,8 @@ export function AddVehicleScreen({ vehicleId, fromPostId }: AddVehicleScreenProp
       toast.show('Car updated', 'success');
     } else {
       await addVehicle(answers);
+      // How the plate was settled (accepted / edited / typed / skipped), once.
+      logPlateScanOutcome(answers);
       successHaptic();
       toast.show('Saved to My cars', 'success');
     }

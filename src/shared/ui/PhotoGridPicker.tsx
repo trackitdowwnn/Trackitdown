@@ -380,7 +380,7 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
         compress: PROCESS_COMPRESS,
         format: SaveFormat.JPEG,
       });
-      return { uri: saved.uri, width: saved.width, height: saved.height };
+      return { uri: saved.uri, width: saved.width, height: saved.height, originalUri: asset.uri };
     } catch {
       // Resize is an upload optimisation — never block a photo on it.
       return asset;

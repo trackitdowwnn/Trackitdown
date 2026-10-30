@@ -28,6 +28,9 @@ export interface GridPhoto {
 export interface PickedPhoto extends GridPhoto {
   width: number;
   height: number;
+  /** The picker's full-size file when `uri` is the shrunk upload copy. Read
+   *  on the phone only (plate scan wants the detail); never uploaded. */
+  originalUri?: string;
 }
 
 /** The grid's fixed shape: a full-width cover row, then two columns.

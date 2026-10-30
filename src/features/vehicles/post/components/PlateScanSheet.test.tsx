@@ -47,6 +47,7 @@ const candidate = (canon: string, display: string): PlateCandidate => ({
   display,
   format: 'current',
   coercions: 0,
+  cost: 0,
 });
 
 const ONE = [candidate('AB12CDE', 'AB12 CDE')];
@@ -238,5 +239,59 @@ describe('when nothing was read', () => {
     });
     expect(onDecline).toHaveBeenCalled();
     expect(onConfirm).not.toHaveBeenCalled();
+  });
+});
+
+// Plate scanning v2 (docs/plate-scan-decisions.md): each reading carries its
+// crop, so the owner can check the plate at a glance.
+describe('v2: with the plate crops', () => {
+  const withCrop = (canon: string, display: string) => ({
+    ...candidate(canon, display),
+    cropUri: `file://crop-${canon}.jpg`,
+  });
+
+  it('shows the crop beside one plate, labelled, and asks "Is this your plate?"', async () => {
+    const { getByText, getByLabelText } = await act(async () =>
+      render(
+        <PlateScanSheet
+          candidates={[withCrop('AB12CDE', 'AB12 CDE')]}
+          onConfirm={jest.fn()}
+          onDecline={jest.fn()}
+        />,
+      ),
+    );
+
+    expect(getByText('Is this your plate?')).toBeTruthy();
+    expect(getByLabelText('Photo of the plate')).toBeTruthy();
+    expect(getByText("That's not it")).toBeTruthy();
+  });
+
+  it('two cars: "Which plate is your car\'s?", each with its crop, and "Neither of these"', async () => {
+    const onConfirm = jest.fn();
+    const onDecline = jest.fn();
+    const { getByText, getAllByLabelText, getByTestId } = await act(async () =>
+      render(
+        <PlateScanSheet
+          candidates={[withCrop('AB12CDE', 'AB12 CDE'), withCrop('XY34ZZZ', 'XY34 ZZZ')]}
+          onConfirm={onConfirm}
+          onDecline={onDecline}
+        />,
+      ),
+    );
+
+    expect(getByText("Which plate is your car's?")).toBeTruthy();
+    expect(getAllByLabelText('Photo of the plate')).toHaveLength(2);
+    await act(async () => {
+      fireEvent.press(getByTestId('plate-candidate-XY34ZZZ'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText("Yes, that's it"));
+    });
+    expect(onConfirm).toHaveBeenCalledWith('XY34ZZZ');
+
+    await act(async () => {
+      fireEvent.press(getByText('Neither of these'));
+    });
+    expect(onDecline).toHaveBeenCalled();
   });
 });

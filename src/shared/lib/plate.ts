@@ -78,6 +78,8 @@ const FORMATS: readonly FormatSpec[] = [
   { id: 'dateless', pattern: '99AAA', spaceAt: 2 },
   { id: 'dateless', pattern: '9999A', spaceAt: 4 },
   { id: 'dateless', pattern: '999A', spaceAt: 3 },
+  // Cherished plates such as "8 MLA" and "1 HRV" (2026-10-30 real-photo set).
+  { id: 'dateless', pattern: '9AAA', spaceAt: 1 },
 ] as const;
 
 /** The longest canonical plate we recognise. +1 for the display space = 8,
