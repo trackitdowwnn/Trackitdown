@@ -45,11 +45,14 @@ never opens one person's last-seen location for the next.
 
 **Phase 1 — Tell us about your car**
 
-> **Plate capture is deferred (removed 2026-07-24).** The wizard no longer
-> collects a number plate — `buildCreatePostParams` always sends `p_plate:
-> null`, so every post is plate-less for now and make/model/colour are the
-> car's identity. The `plate_available` RPC + migration remain in the backend
-> for when the step is re-added; nothing in the wizard calls them today.
+> **The plate is optional, and read from the photos (2026-10-30).** The photos
+> step (`PhotosWithPlateScanStep`, shared with My cars) reads it on the device
+> and the owner confirms it; the optional plate step after it is asked only
+> when the scan didn't answer, and the plate stays on review either way.
+> `buildCreatePostParams` sends it as `p_plate` (blank → null). It goes on the
+> listing and can never change there; `create_post` checks the format and
+> raises `PLATE_IN_USE` if a live listing has it (at submit: `plate_available`
+> is still not called). A report from a saved car still sends no plate.
 > Steps no longer show a helper sub-heading (except the first — see above). The distinctive-features step keeps
 > a **"None to add"** skip: Next requires ≥1 mark, and a centred, underlined
 > `StepSkipButton` (shown while the list is empty) advances marks-less.

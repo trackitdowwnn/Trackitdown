@@ -40,8 +40,14 @@ export interface PostACarAnswers extends VehicleAnswers {
   // The vehicle-identity slice (make, model, colour, colourNote, colourFinish,
   // year, bodyType, distinctiveFeatures, photos) is INHERITED from VehicleAnswers — the same
   // fields the garage collects, so one shared step table serves both flows. See
-  // post/lib/vehicleSteps.tsx. Plate capture is deferred here (the garage does
-  // collect one); buildCreatePostParams sends p_plate: null.
+  // post/lib/vehicleSteps.tsx.
+
+  /** Optional; read from the photos (PhotosWithPlateScanStep) or typed at the
+   *  plate step (2026-10-30). Goes on the listing, where it can never change. */
+  plate: string;
+  /** Set only when the owner CONFIRMED a scanned plate; retires the plate step.
+   *  UI state: buildCreatePostParams never sends it. */
+  plateFromScan?: boolean;
 
   // --- Phase 2: when & where ------------------------------------------------
   /** ISO datetime; the step gates max = now. */

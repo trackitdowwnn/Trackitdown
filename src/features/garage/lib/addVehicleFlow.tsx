@@ -21,11 +21,10 @@
 
 import { z } from 'zod';
 
-import { buildVehicleSteps } from '@/features/vehicles';
+import { buildVehicleSteps, PhotosWithPlateScanStep } from '@/features/vehicles';
 import type { WizardFlow } from '@/shared/wizard';
 
-import { NicknameStep, PlateStep } from '../components/garageSteps';
-import { PhotosWithPlateScanStep } from '../components/PhotosWithPlateScanStep';
+import { GaragePlateStep, NicknameStep } from '../components/garageSteps';
 import type { AddVehicleAnswers } from '../types';
 
 /** Everything starts empty — there is no equivalent of the bounty seed here. */
@@ -68,7 +67,7 @@ export function buildAddVehicleFlow(): WizardFlow<AddVehicleAnswers> {
             id: 'plate',
             question: "What's the number plate?",
             helper: 'Optional — you can add it later.',
-            component: PlateStep,
+            component: GaragePlateStep,
             optional: true,
             when: (answers) => !answers.plateFromScan,
             schema: z.object({ plate: z.string().trim().min(1) }),

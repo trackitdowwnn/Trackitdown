@@ -43,9 +43,13 @@ export { canMarkRecovered } from './lib/ownerPermissions';
 // see src/features/garage/types.ts for why that direction is load-bearing.
 export type { DistinctiveFeature } from './post/lib/distinctiveFeatures';
 export { buildVehicleSteps } from './post/lib/vehicleSteps';
-// Exported so the GARAGE can wrap it (PhotosWithPlateScanStep). vehicles must
-// stay ignorant of the garage, so the override happens on the garage's side.
-export { PhotosStep } from './post/components/postSteps';
+// The photos step that reads the plate, and the plate question it retires:
+// both car flows use them (the garage's add-a-car and the report).
+export {
+  PhotosWithPlateScanStep,
+  type PlateScanAnswers,
+} from './post/components/PhotosWithPlateScanStep';
+export { PlateStep, type PlateStepProps } from './post/components/PlateStep';
 export type { VehicleAnswers, VehicleStepsOptions } from './post/lib/vehicleSteps';
 // The posting flow + its seed, so the garage can build a prefilled VARIANT of it
 // (its vehicle phase collapsed to a confirm step) and hand it back to

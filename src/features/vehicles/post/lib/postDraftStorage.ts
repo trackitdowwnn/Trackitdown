@@ -79,6 +79,8 @@ const MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
  * the owner would want back.
  */
 const PERSISTED_KEYS = [
+  'plate',
+  'plateFromScan',
   'make',
   'model',
   'colour',

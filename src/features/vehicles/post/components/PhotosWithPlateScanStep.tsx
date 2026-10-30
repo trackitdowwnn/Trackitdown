@@ -1,20 +1,15 @@
 /**
- * WHAT:  The garage's photos step — the SHARED `PhotosStep`, plus quiet OCR of
- *        the photos the owner adds, offering the registration it reads.
+ * WHAT:  The photos step of both car flows (My cars → Add a car, and the
+ *        stolen-car report) — the SHARED `PhotosStep`, plus quiet OCR of the
+ *        photos the owner adds, offering the registration it reads.
  * WHY:   People photograph their car; the plate is usually in shot. Asking them
  *        to take a SEPARATE picture of the plate — which is what the first
  *        version of this did — is asking twice for something we already have.
  *
- *        WHY A GARAGE COMPONENT AND NOT A FLAG ON `buildVehicleSteps`:
- *        the shared builder lives in `features/vehicles`, which must never
- *        import the garage (ARCHITECTURE rule 1 — the garage imports vehicles,
- *        and a flag would eventually drag the plate concept back the other
- *        way). Instead the garage swaps the step's COMPONENT for this one,
- *        which renders the shared step untouched and adds its own behaviour
- *        around it. `features/vehicles` learns nothing, and the posting
- *        wizard's photo step is unchanged BY CONSTRUCTION rather than by a
- *        flag someone could flip — which matters, because that wizard sends
- *        `p_plate: null` and has nowhere to put a detected plate anyway.
+ *        It began in the garage, when the report posted no plate; the owner
+ *        asked for it in the report too (2026-10-30), so it lives here in
+ *        `features/vehicles` and each flow swaps it in for the plain photos
+ *        step, followed by the optional PlateStep it retires.
  *
  * QUIET BY DEFAULT. Detection runs in the background and says nothing unless
  *        it has something worth saying:
@@ -27,7 +22,7 @@
  *
  *        The ONE thing it says out loud is the toast on a confirmed reading,
  *        and that is not a celebration: accepting one retires the plate step
- *        (`plateFromScan`, see addVehicleFlow), so the question they were
+ *        (`plateFromScan`, see the flows), so the question they were
  *        expecting next never arrives. Silence there is not restraint, it is a
  *        disappearance — hence a line saying it was taken and where to change
  *        it. The plate itself is deliberately not in the message: a toast is
@@ -78,7 +73,8 @@
  *        down, which by design outlive the sheet so the same misread is not
  *        offered twice. The toast carries no registration either.
  * LINKS: src/features/vehicles/post/components/postSteps.tsx (PhotosStep);
- *        src/features/garage/lib/addVehicleFlow.tsx (does the swap);
+ *        src/features/garage/lib/addVehicleFlow.tsx and ../postACarFlow.tsx
+ *          (do the swap); ./PlateStep.tsx;
  *        ./PlateScanSheet.tsx; src/shared/lib/plateCandidates.ts.
  */
 
@@ -86,7 +82,6 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo } from 'react-native';
 
-import { PhotosStep } from '@/features/vehicles';
 import { createLogger } from '@/shared/lib/logger';
 import { formatPlate, normalisePlate } from '@/shared/lib/plate';
 import { type PlateCandidate, extractPlateCandidates } from '@/shared/lib/plateCandidates';
@@ -95,10 +90,18 @@ import { motion } from '@/shared/theme';
 import { useToast, type BottomSheetRef } from '@/shared/ui';
 import type { WizardStepProps } from '@/shared/wizard';
 
-import type { AddVehicleAnswers } from '../types';
+import type { VehicleAnswers } from '../lib/vehicleSteps';
 import { PlateScanSheet } from './PlateScanSheet';
+import { PhotosStep } from './postSteps';
 
-const log = createLogger('garage');
+/** What this step reads and writes: the vehicle slice, plus the plate. */
+export type PlateScanAnswers = VehicleAnswers & {
+  plate: string;
+  /** Set only when the owner CONFIRMED a scanned plate; retires PlateStep. */
+  plateFromScan?: boolean;
+};
+
+const log = createLogger('vehicles');
 
 /** OCR wants detail, not megapixels. */
 const SCAN_MAX_EDGE = 2000;
@@ -146,7 +149,7 @@ const NO_CANDIDATES: readonly PlateCandidate[] = [];
 
 /**
  * The words shown on the tile being read, and spoken for it. Lives here rather
- * than in the grid because "number plate" is a garage sentence — `shared/ui`
+ * than in the grid because "number plate" is this step's sentence — `shared/ui`
  * only knows that a tile is busy.
  */
 export const PLATE_SCAN_LABEL = 'Looking for a number plate';
@@ -155,7 +158,7 @@ export const PLATE_SCAN_LABEL = 'Looking for a number plate';
 const settleFor = (ms: number) =>
   ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
 
-export function PhotosWithPlateScanStep(props: WizardStepProps<AddVehicleAnswers>) {
+export function PhotosWithPlateScanStep(props: WizardStepProps<PlateScanAnswers>) {
   const { answers, setAnswers } = props;
   const sheetRef = useRef<BottomSheetRef>(null);
   const toast = useToast();
@@ -368,7 +371,7 @@ export function PhotosWithPlateScanStep(props: WizardStepProps<AddVehicleAnswers
   }, [scanBatch]);
 
   const onChangePhotos = useCallback(
-    (photos: AddVehicleAnswers['photos'] | undefined) => {
+    (photos: PlateScanAnswers['photos'] | undefined) => {
       setAnswers({ photos });
       // The whole array arrives on every change, so a reorder or a removal
       // mid-scan must not re-queue photos already waiting.
@@ -439,8 +442,8 @@ export function PhotosWithPlateScanStep(props: WizardStepProps<AddVehicleAnswers
       // did not fill a blank — which "saved" would quietly understate.
       toast.show(
         asked?.existing
-          ? 'Plate updated — you can change it when you check your car.'
-          : 'Plate saved — you can change it when you check your car.',
+          ? 'Plate updated — you can change it at the end.'
+          : 'Plate saved — you can change it at the end.',
       );
       return;
     }

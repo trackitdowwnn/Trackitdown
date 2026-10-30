@@ -103,7 +103,8 @@ describe('postACarFlow structure', () => {
 
   it('every step has an id, question, component, schema, and a review value', () => {
     const steps = postACarFlow.phases.flatMap((p) => p.steps);
-    expect(steps).toHaveLength(12);
+    // 13 since the optional plate step joined the car phase (2026-10-30).
+    expect(steps).toHaveLength(13);
     for (const step of steps) {
       expect(step.id).toBeTruthy();
       expect(step.question).toBeTruthy();
@@ -240,6 +241,30 @@ describe('step gating', () => {
     // Out-of-range year is rejected at the step (posts.year CHECK is 1900–2100).
     expect(passes('year', { year: 19 })).toBe(false);
     expect(passes('year', { year: 2200 })).toBe(false);
+  });
+
+  // Owner, 2026-10-30: plate scanning in the report as well as My cars.
+  describe('the plate', () => {
+    const steps = postACarFlow.phases.flatMap((p) => p.steps);
+    const at = (id: string) => steps.findIndex((s) => s.id === id);
+
+    it('the photos step is the one that reads the plate', () => {
+      expect(stepById('photos').component.name).toBe('PhotosWithPlateScanStep');
+    });
+
+    it('is asked straight after the photos, and is optional', () => {
+      expect(at('plate')).toBe(at('photos') + 1);
+      expect(stepById('plate').optional).toBe(true);
+      expect(passes('plate', { plate: 'AB12 CDE' })).toBe(true);
+    });
+
+    it('steps aside once a scanned plate was confirmed, but stays on review', () => {
+      const { when, reviewValue } = stepById('plate');
+      expect(when?.({})).toBe(true);
+      expect(when?.({ plate: 'AB12 CDE', plateFromScan: true })).toBe(false);
+      expect(reviewValue?.({ plate: 'AB12 CDE', plateFromScan: true })).toBe('AB12 CDE');
+      expect(reviewValue?.({})).toBe('Not provided');
+    });
   });
 
   it('photos require 3 to 6', () => {

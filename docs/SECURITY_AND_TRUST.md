@@ -202,15 +202,13 @@ commenting standards.
   or in the garage at save time) is deferred and needs the moderation queue
   first. Any future document storage keeps the original rule: private bucket,
   uploader + moderators only, deleted 30 days after the post closes.
-- **OPEN GAP — one active post per plate is DORMANT on every path.**
-  `create_post` still raises `PLATE_IN_USE`, but it can never fire: plate
-  capture was removed from the posting wizard on 2026-07-24 and the client sends
-  `p_plate: null`. The garage collects a plate again and is *intended* to prefill
-  it, but that link is **not wired** — `create_post` takes no vehicle id and the
-  garage's plate is dropped on the way into the post (DOMAIN.md, "Garage"). So
-  nothing currently prevents the same car being posted repeatedly, and the V5C
-  check that was once the backstop for plate-less duplicates no longer exists
-  either. Closing this needs the `create_post` follow-up migration.
+- **PARTLY OPEN — one active post per plate.** Since 2026-10-30 a report from
+  scratch carries the plate its photos showed (owner-confirmed) or the owner
+  typed, so `create_post`'s `PLATE_IN_USE` guards those again. Still open: a
+  report with no plate, and a report started from a saved car (the garage's
+  plate is not yet carried into the post, DOMAIN.md "Garage"), can repeat a car
+  already listed, and the V5C check that was once the backstop for plate-less
+  duplicates no longer exists.
 
 ## 3. Data protection (UK GDPR)
 

@@ -18,7 +18,13 @@
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 
-import { NicknameStep, PlateStep } from './garageSteps';
+import { GaragePlateStep as PlateStep, NicknameStep } from './garageSteps';
+
+// The shared PlateStep, real, without the rest of the vehicles barrel (which
+// builds the Supabase client and the report's draft storage).
+jest.mock('@/features/vehicles', () => ({
+  PlateStep: jest.requireActual('@/features/vehicles/post/components/PlateStep').PlateStep,
+}));
 
 describe('PlateStep', () => {
   it('writes the plate as the user types', async () => {
