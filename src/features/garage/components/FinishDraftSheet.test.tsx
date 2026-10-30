@@ -36,6 +36,9 @@ jest.mock('@/shared/ui', () => {
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
 
+const mockDeleteDraft = jest.fn<Promise<void>, [string]>();
+jest.mock('@/features/vehicles', () => ({ deleteDraft: (id: string) => mockDeleteDraft(id) }));
+
 jest.mock('@/shared/lib/logger', () => ({
   createLogger: () => ({ info: jest.fn(), warn: jest.fn(), debug: jest.fn(), error: jest.fn() }),
 }));
@@ -66,9 +69,26 @@ it('Continue draft closes and opens that listing', async () => {
   expect(mockPush).toHaveBeenCalledWith('/post/d1');
 });
 
-it('Start a new one closes and opens the usual report', async () => {
+it('Delete draft and start again deletes THAT draft, then opens the usual report', async () => {
+  mockDeleteDraft.mockResolvedValue(undefined);
   const view = await openWithDraft();
-  await fireEvent.press(view.getByTestId('btn-Start a new one'));
+  await act(async () => {
+    await fireEvent.press(view.getByTestId('btn-Delete draft and start again'));
+  });
+  expect(mockDeleteDraft).toHaveBeenCalledWith('d1');
   expect(mockClose).toHaveBeenCalled();
   expect(mockPush).toHaveBeenCalledWith('/post-a-car');
+});
+
+it('a refused delete keeps the draft and the sheet, and says why', async () => {
+  mockDeleteDraft.mockRejectedValue(
+    new Error('A payment on this draft is still being processed. Please try again in a moment.'),
+  );
+  const view = await openWithDraft();
+  await act(async () => {
+    await fireEvent.press(view.getByTestId('btn-Delete draft and start again'));
+  });
+  expect(view.getByText(/still being processed/)).toBeTruthy();
+  expect(mockClose).not.toHaveBeenCalled();
+  expect(mockPush).not.toHaveBeenCalled();
 });
