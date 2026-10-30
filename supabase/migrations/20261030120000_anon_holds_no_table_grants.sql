@@ -73,7 +73,11 @@ end $$;
 -- to `anon`, and a public read must be granted deliberately.
 alter default privileges for role postgres in schema public revoke all on tables from anon;
 alter default privileges for role postgres in schema public revoke all on sequences from anon;
-alter default privileges for role postgres in schema public revoke execute on functions from anon, public;
+alter default privileges for role postgres in schema public revoke execute on functions from anon;
+-- PUBLIC's EXECUTE is a built-in GLOBAL default, which a per-schema revoke
+-- cannot remove, so this one has no `in schema`. authenticated and
+-- service_role keep EXECUTE through their explicit `in schema public` grants.
+alter default privileges for role postgres revoke execute on functions from public;
 
 -- =============================================================================
 -- END OF MIGRATION
