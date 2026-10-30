@@ -51,6 +51,7 @@ import {
   savePostDraft,
 } from '../lib/postDraftStorage';
 import { submitPost } from '../api/postApi';
+import { logPlateScanOutcome } from '../lib/plateScanOutcome';
 import { POST_A_CAR_INITIAL_ANSWERS, postACarFlow } from '../postACarFlow';
 import type { PostACarAnswers } from '../types';
 
@@ -172,6 +173,8 @@ export function PostACarScreen({
       const result = await submitPost(answers);
       postId = result.postId;
       createdPostIdRef.current = postId;
+      // How the plate was settled (accepted / edited / typed / skipped), once.
+      logPlateScanOutcome(answers);
 
       // ⚠️ CLEARED THE MOMENT THE POST EXISTS, not after payment (review #19).
       // From here the report lives on the server as a draft post with its own

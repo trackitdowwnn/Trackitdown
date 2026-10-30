@@ -118,7 +118,10 @@ jest.mock('expo-image-manipulator', () => ({
   ImageManipulator: {
     manipulate: () => ({
       resize: () => {},
-      renderAsync: async () => ({ saveAsync: async () => ({ uri: 'file://scan.jpg' }) }),
+      renderAsync: async () => ({
+        // v2 judges a plate's size against the photo's height.
+        saveAsync: async () => ({ uri: 'file://scan.jpg', width: 2000, height: 1000 }),
+      }),
     }),
   },
 }));
@@ -268,6 +271,72 @@ const dimmedUri = () => {
   const entries = Object.entries(tileStatus ?? {});
   return entries.length > 0 ? entries[0][0] : null;
 };
+
+// Plate scanning v2 (docs/plate-scan-decisions.md): at most one suggestion,
+// and silence whenever the reading is doubtful. Behind EXPO_PUBLIC_PLATE_SCAN_V2.
+describe('v2: one suggestion, or none', () => {
+  const sized = (text: string, height: number) => ({
+    text,
+    box: { x: 0, y: 0, width: height * 4.6, height }, // in a 1000px-tall photo
+  });
+  const events = (name: string) =>
+    mockLogInfo.mock.calls.filter(([event]) => event === name).map(([, data]) => data);
+
+  beforeEach(() => {
+    process.env.EXPO_PUBLIC_PLATE_SCAN_V2 = 'true';
+  });
+  afterEach(() => {
+    delete process.env.EXPO_PUBLIC_PLATE_SCAN_V2;
+  });
+
+  it('offers ONE plate, the largest, where v1 offered every candidate', async () => {
+    mockBlocks = [sized('AB12 CDE', 100), sized('XY34 ZZZ', 30)];
+    await renderStep();
+    await addPhoto();
+
+    expect(mockOpened.current).toBe(true);
+    expect(events('plate_scan_offered')).toEqual([{ candidates: 1, hadTypedPlate: false }]);
+    expect(events('plate_scan_result')).toEqual([
+      expect.objectContaining({ mode: 'v2', kind: 'likely', count: 1 }),
+    ]);
+  });
+
+  it('records what it suggested (for the outcome log), never a plate in answers.plate', async () => {
+    mockBlocks = [sized('AB12 CDE', 100)];
+    await renderStep();
+    await addPhoto();
+
+    expect(setAnswers).toHaveBeenCalledWith({ plateScanOffered: 'AB12CDE' });
+    expect(setAnswers.mock.calls.some(([patch]) => patch && Object.hasOwn(patch, 'plate'))).toBe(false);
+  });
+
+  it.each([
+    ['a sign in mixed case', [sized('Pay Here', 100)]],
+    ["a badge ('ST LINE' was offered as S71 INE)", [sized('ST LINE', 100)]],
+    ['a plate too small to be this car', [sized('AB12 CDE', 15)]],
+    ['two plates equally in shot', [sized('AB12 CDE', 100), sized('XY34 ZZZ', 90)]],
+  ])('says nothing for %s, and logs that it found none', async (_name, blocks) => {
+    mockBlocks = blocks;
+    await renderStep();
+    await addPhoto();
+    await settle(); // a photo with nothing to offer is held long enough to be seen
+
+    expect(mockOpened.current).toBe(false);
+    expect(events('plate_scan_result')).toEqual([
+      expect.objectContaining({ mode: 'v2', kind: 'none', count: 1 }),
+    ]);
+  });
+
+  it('logs an error, and says nothing, when the recogniser is unavailable', async () => {
+    mockStatus = 'unavailable';
+    await renderStep();
+    await addPhoto();
+    await settle();
+
+    expect(mockOpened.current).toBe(false);
+    expect(events('plate_scan_result')).toEqual([expect.objectContaining({ kind: 'error' })]);
+  });
+});
 
 describe('the silences — what it must NOT do', () => {
   it('says nothing when no plate is readable', async () => {
