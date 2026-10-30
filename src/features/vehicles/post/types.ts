@@ -45,9 +45,6 @@ export interface PostACarAnswers extends VehicleAnswers {
   /** Optional; read from the photos (PhotosWithPlateScanStep) or typed at the
    *  plate step (2026-10-30). Goes on the listing, where it can never change. */
   plate: string;
-  /** Set only when the owner CONFIRMED a scanned plate; retires the plate step.
-   *  UI state: buildCreatePostParams never sends it. */
-  plateFromScan?: boolean;
 
   // --- Phase 2: when & where ------------------------------------------------
   /** ISO datetime; the step gates max = now. */

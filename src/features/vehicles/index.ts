@@ -51,6 +51,7 @@ export {
 } from './post/components/PhotosWithPlateScanStep';
 export { PlateStep, type PlateStepProps } from './post/components/PlateStep';
 export { logPlateScanOutcome } from './post/lib/plateScanOutcome';
+export { PlateScanProvider } from './post/lib/usePlateScan';
 export type { VehicleAnswers, VehicleStepsOptions } from './post/lib/vehicleSteps';
 // The posting flow + its seed, so the garage can build a prefilled VARIANT of it
 // (its vehicle phase collapsed to a confirm step) and hand it back to

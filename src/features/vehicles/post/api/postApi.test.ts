@@ -395,12 +395,10 @@ describe('submitPost', () => {
       error: null,
     });
 
-    await submitPost({ ...readyAnswers({ plate: ' AB12 CDE ' }), plateFromScan: true });
+    await submitPost(readyAnswers({ plate: ' AB12 CDE ' }));
 
     const args = mockRpc.mock.calls[0][1] as Record<string, unknown>;
     expect(args.p_plate).toBe('AB12 CDE');
-    // UI state only: it never reaches the server.
-    expect(args).not.toHaveProperty('plateFromScan');
   });
 
   it('a skipped plate (blank, or never answered) is sent as null', async () => {

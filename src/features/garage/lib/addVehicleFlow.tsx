@@ -57,19 +57,13 @@ export function buildAddVehicleFlow(): WizardFlow<AddVehicleAnswers> {
             // Plate AFTER the photos (moved 2026-08-02; it used to be first).
             // The scan reads the photos an owner adds anyway, so asking first
             // meant typing a registration that was about to be offered for
-            // free. Asking after means the question is only ever put to people
-            // the scan could not answer it for.
-            //
-            // And when it DID answer — a reading the owner confirmed — `when`
-            // walks straight past this step. It stays on the review screen, so
-            // a misread is still correctable; `plateFromScan` rather than a
-            // non-empty `plate`, so editing a saved car still reaches it.
+            // free. Asking after means the plates read from the photos are
+            // waiting here as suggestions (2026-10-30: no pop-up).
             id: 'plate',
             question: "What's the number plate?",
             helper: 'Optional — you can add it later.',
             component: GaragePlateStep,
             optional: true,
-            when: (answers) => !answers.plateFromScan,
             schema: z.object({ plate: z.string().trim().min(1) }),
             reviewLabel: 'Plate',
             reviewValue: (answers) => answers.plate?.trim() || 'Not provided',

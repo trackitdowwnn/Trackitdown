@@ -156,6 +156,15 @@ uniqueness would leak other people's garages); plate optional throughout.
 
 ### Scanning the plate from a photo (2026-08-02)
 
+> **Superseded 2026-10-30.** The scan now lives in `features/vehicles`
+> (`post/lib/usePlateScan.tsx`, mounted above the wizard by both screens) and
+> uses no sheet: the photos step dims the photo being read and says "Reading
+> plates… n of m" under the grid; the plates found wait on the plate step as
+> tappable rows with their crops, best first, and never fill the field by
+> themselves. The plate step is always asked (`plateFromScan` is gone).
+> Accuracy and the reasons: `docs/plate-scan-decisions.md`. The notes below
+> describe the original sheet-based design and are kept for history.
+
 **The photos an owner adds are read for a registration.** There is no separate
 "take a photo of the plate" action — people photograph their car anyway and the
 plate is usually in shot, so asking again for something we already have is

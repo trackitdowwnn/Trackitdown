@@ -174,8 +174,6 @@ describe('postToAnswers (a recovered listing → a new saved car)', () => {
     expect(answers.distinctiveFeatures).toEqual([
       expect.objectContaining({ description: 'Dent', photo: expect.objectContaining({ uri: post.distinctiveFeatures[0].photoUrl }) }),
     ]);
-    // The plate still gets its step — it was never confirmed by a scan.
-    expect(answers.plateFromScan).toBeUndefined();
   });
 
   it('a plate-less listing gives an empty plate, and missing extras stay empty', () => {

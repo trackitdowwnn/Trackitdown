@@ -6,7 +6,7 @@
  * WHY:   Real-world accuracy, over time (docs/plate-scan-decisions.md): the
  *        scan's own events say what it offered; only this says whether the
  *        owner kept it. Kinds and counts only — never a plate.
- * LINKS: ../components/PhotosWithPlateScanStep.tsx (records plateScanOffered);
+ * LINKS: ../components/PlateStep.tsx (records plateScanOffered);
  *        ../screens/PostACarScreen.tsx and
  *        src/features/garage/screens/AddVehicleScreen.tsx (call it).
  */

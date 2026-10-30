@@ -85,14 +85,12 @@ function carSteps() {
           : step,
     ),
     {
-      // AFTER the photos, so it is only asked when the scan could not answer
-      // it; a confirmed reading walks past it (`when`) but stays on review,
-      // so a misread is still correctable. No helper: this flow has none.
+      // AFTER the photos, so the plates read from them are waiting here as
+      // suggestions (2026-10-30: no pop-up). No helper: this flow has none.
       id: 'plate',
       question: "What's the number plate?",
       component: PlateStep,
       optional: true,
-      when: (answers: Partial<PostACarAnswers>) => !answers.plateFromScan,
       schema: z.object({ plate: z.string().trim().min(1) }),
       reviewLabel: 'Plate',
       reviewValue: (answers: Partial<PostACarAnswers>) => answers.plate?.trim() || 'Not provided',

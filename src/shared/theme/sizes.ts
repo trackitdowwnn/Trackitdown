@@ -396,6 +396,11 @@ export const sizes = {
    * aspectRatio (width / height).
    */
   reviewPhotoAspect: 3 / 4,
+  /** The plate step's suggestion rows: the crop of the plate beside each
+   *  reading — wide enough to check every character at a glance. */
+  plateCropWidth: 120,
+  /** A plate line padded for the crop (readPlate.ts) is about 2.6:1. */
+  plateCropAspect: 2.6,
   /** The opening screen's slow-start progress line (BrandSplash): a stroke,
    *  like timelineRailStroke — thin enough to stay quiet under the mark. */
   splashProgressStroke: 2,

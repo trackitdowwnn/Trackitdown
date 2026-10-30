@@ -18,9 +18,10 @@ Commons set (offline, from saved reads): v3 57% / 63%. 1.8 s per photo.
 1. **The metric is now "is the right plate offered", not "fewest wrong".** Only owners scan, and they know their own plate: a wrong guess costs one tap. The owner decided: always offer the best guess.
 2. **Rank, don't gate** (`shared/lib/plateSelection.ts`). Every reading from the first read and each full-size crop, across every photo, is scored on certainty (weighted look-alike swaps, rarer formats), the plate's size in the photo, and how many passes agree. The best three are offered. Agreement and size are evidence, no longer gates: the crop's finer read often corrects a misread first one ("VO63 CNT" → "VO63 CVT"), which v2 threw away.
 3. **Look-alike swaps are weighted** (`plateCandidates.ts`): O/0 and I/1 are near-free, Z/2 S/5 B/8 half, the rest full; a corrected read leans to modern formats ("BVI8 0ZC" is BV18 OZC, not the suffix BVI 802C). A short plate alone on its line may take the near-free swaps ("SI NON" → S1 NON); a word picked out of a sign may not. The cherished `9AAA` shape (8 MLA) was added.
-4. **Every photo is read** (v2 stopped after three: "it stops half way"); the walk stops early only on a strong clean read.
+4. **Every photo is read** (v2 stopped after three: "it stops half way"), in the background, once each.
 5. **Logging** adds why nothing was offered: `no_text` or `no_plate_shape`.
 6. **Not needed yet: an on-device plate detector.** The recogniser sees the plate 84% of the time; the gap was the rules. Revisit if real-world telemetry shows `no_text` on photos that have a plate.
+7. **No pop-up (UX, same day).** The photos step only says "Reading your photos… n of m" under the grid; the plates wait on the plate step as rows with their crops, shown once every photo is read (rows that re-rank would move under a finger), and a tap fills the field — never by themselves, because a listing's plate cannot change. The sheet, the v1 path and the `EXPO_PUBLIC_PLATE_SCAN_V2` flag are gone (the EAS variable can be deleted). The reading lives above the wizard (`usePlateScan.tsx`) so it survives leaving the photos step.
 
 ## The problem, measured
 

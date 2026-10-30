@@ -258,11 +258,10 @@ describe('step gating', () => {
       expect(passes('plate', { plate: 'AB12 CDE' })).toBe(true);
     });
 
-    it('steps aside once a scanned plate was confirmed, but stays on review', () => {
+    it('is always asked (the scanned plates wait there), and shows on review', () => {
       const { when, reviewValue } = stepById('plate');
-      expect(when?.({})).toBe(true);
-      expect(when?.({ plate: 'AB12 CDE', plateFromScan: true })).toBe(false);
-      expect(reviewValue?.({ plate: 'AB12 CDE', plateFromScan: true })).toBe('AB12 CDE');
+      expect(when).toBeUndefined();
+      expect(reviewValue?.({ plate: 'AB12 CDE' })).toBe('AB12 CDE');
       expect(reviewValue?.({})).toBe('Not provided');
     });
   });
